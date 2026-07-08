@@ -16,7 +16,8 @@ tags: [macro-os, index]
 5. [[DIVERGENCE_ENGINE]] - Phase mapping, hysteresis, resonance
 6. [[CDP_BRIDGE]] - Pine Script data integration
 7. [[CONFIGURATION]] - thresholds.yaml & watchlist.yaml reference
-8. [[GLOSSARY]] - All terms, enums, state labels
+8. [[WORKBUDDY_HANDOFF]] - Project handoff for WorkBuddy
+9. [[GLOSSARY]] - All terms, enums, state labels
 
 ## Quick Reference
 
@@ -28,3 +29,5 @@ tags: [macro-os, index]
 | Constitution | decision_kernel | **Absolute VETO** |
 | Exposure | exposure_dampener | Shaping |
 | Allocation | fracture_aware_sizer | Targeted |
+
+
