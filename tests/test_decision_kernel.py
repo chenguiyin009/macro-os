@@ -82,3 +82,29 @@ class TestVeto:
         kd = decide({"dxy": 105.0}, "TIGHT_LIQUIDITY", "TIGHT_LIQUIDITY", 0.8, 0.8, CONFIG)
         assert kd.decision.action != DecisionAction.AGGRESSIVE
 
+    def test_hard_veto_emits_uniform_four_step_audit_trail(self) -> None:
+        """HARD_VETO 必须吐出与 SAFETY_GATE/SOFT_POLICY 完全相同的四步键，
+        未执行步骤标 SKIPPED_DUE_TO_VETO，杜绝下游按 step_1..step_4 取值的 KeyError。"""
+        kd = decide(
+            {"dxy": 105.0},
+            "TIGHT_LIQUIDITY",
+            "RISK_ON",
+            0.8,
+            0.8,
+            CONFIG,
+            proposed_risk=0.8,
+            previous_risk_budget=0.4,
+        )
+        assert kd.authority == AuthorityLevel.HARD_VETO
+        assert list(kd.audit_trail.keys()) == [
+            "step_1_safety_gate",
+            "step_2_hard_veto",
+            "step_3_soft_policy",
+            "step_4_global_velocity_limit",
+        ]
+        assert kd.audit_trail["step_1_safety_gate"]["status"] == "SKIPPED_DUE_TO_VETO"
+        assert kd.audit_trail["step_2_hard_veto"]["status"] == "TRIGGERED"
+        assert kd.audit_trail["step_2_hard_veto"]["clamped_risk_budget"] == 0.0
+        assert kd.audit_trail["step_3_soft_policy"]["status"] == "SKIPPED_DUE_TO_VETO"
+        assert kd.audit_trail["step_4_global_velocity_limit"]["status"] == "SKIPPED_DUE_TO_VETO"
+

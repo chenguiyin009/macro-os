@@ -194,6 +194,30 @@ def decide(
     # 2. HARD VETO: all non-RISK_ON regimes
     if hard_regime != RegimeType.RISK_ON.value:
         action, reason, reason_code = _veto_action(hard_regime)
+        # Unified four-step audit contract (same keys as SAFETY_GATE / SOFT_POLICY).
+        # Unexecuted steps are marked SKIPPED_DUE_TO_VETO so any consumer reading
+        # audit_trail["step_1_safety_gate".."step_4_global_velocity_limit"] stays
+        # KeyError-free regardless of the authority that fired.
+        audit_trail = {
+            "step_1_safety_gate": {
+                "status": "SKIPPED_DUE_TO_VETO",
+                "reason": "hard regime veto preempts the divergence safety gate",
+            },
+            "step_2_hard_veto": {
+                "status": "TRIGGERED",
+                "regime": hard_regime,
+                "clamped_risk_budget": 0.0,
+                "action": action.value,
+            },
+            "step_3_soft_policy": {
+                "status": "SKIPPED_DUE_TO_VETO",
+                "reason": "soft policy only applies to RISK_ON; blocked by hard veto",
+            },
+            "step_4_global_velocity_limit": {
+                "status": "SKIPPED_DUE_TO_VETO",
+                "reason": "risk budget already pinned at the 0.0 floor",
+            },
+        }
         return KernelDecision(
             authority=AuthorityLevel.HARD_VETO,
             decision=Decision(
@@ -209,7 +233,7 @@ def decide(
             veto_reason=reason,
             reason_code=reason_code,
             defense_budget=1.0,
-            audit_trail={},
+            audit_trail=audit_trail,
         )
 
     # 3. SOFT POLICY: only for RISK_ON
