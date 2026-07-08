@@ -1,0 +1,41 @@
+from __future__ import annotations
+
+from core.agents.cio_agent import CIOAgent, CioCopilot
+from core.schemas import FeatureSchema, RegimeName
+
+
+def test_generate_builds_v5_markdown_action_plan() -> None:
+    agent = CIOAgent()
+    report = agent.generate(
+        regime_probs={
+            RegimeName.AI_EXPANSION: 0.10,
+            RegimeName.NARROW_LEADERSHIP: 0.55,
+            RegimeName.FAST_LIQUIDITY_SHOCK: 0.20,
+            RegimeName.CASH_LIQUIDATION: 0.15,
+        },
+        allocation={"QQQ": 0.6, "CASH": 0.4},
+        diff_report={"QQQ": 0.05, "CASH": -0.05},
+        shadow_report="shadow context",
+        features_summary=FeatureSchema(vix=18.5, dxy=104.2, ovx=32.1),
+    )
+
+    assert report.startswith("# 🏛️ Macro OS v5.0 | 每日执行计划 (Daily Action Plan)")
+    assert "当前主导环境: **NARROW_LEADERSHIP** (55.0%)" in report
+    assert "- **QQQ**: 60.0%" in report
+    assert "- **CASH**: 40.0%" in report
+    assert "- 🟢 **买入 QQQ**: 增加 5.00% 目标仓位" in report
+    assert "- 🔴 **卖出 CASH**: 削减 5.00% 目标仓位" in report
+    assert "shadow context" in report
+
+
+def test_generate_daily_plan_alias_remains_available() -> None:
+    agent = CioCopilot()
+    report = agent.generate_daily_plan(
+        regime_probs={RegimeName.AI_EXPANSION: 1.0},
+        allocation={"QQQ": 1.0},
+        diff_report=None,
+        shadow_report="shadow context",
+        features_summary=FeatureSchema(),
+    )
+
+    assert "Macro OS v5.0" in report

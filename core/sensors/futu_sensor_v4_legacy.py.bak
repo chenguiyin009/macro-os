@@ -1,0 +1,57 @@
+"""Futu read-only position sensor ? physically isolated from trade execution."""
+from __future__ import annotations
+import logging
+import time
+from typing import Any
+import pandas as pd
+
+logger = logging.getLogger(__name__)
+
+class FutuPositionSensor:
+    """Read-only sensor for fetching real account positions via Futu OpenAPI."""
+
+    def __init__(self, host: str = "127.0.0.1", port: int = 11111, trd_env: str = "REAL"):
+        self.host = host
+        self.port = port
+        self.trd_env = trd_env
+        self._trd_ctx: Any = None
+        self.last_fetch_time: float = 0.0
+
+    def connect(self) -> None:
+        if self._trd_ctx is not None:
+            return
+        try:
+            from futu import OpenSecTradeContext
+            self._trd_ctx = OpenSecTradeContext(host=self.host, port=self.port)
+            logger.info("Futu sensor connected to %s:%s", self.host, self.port)
+        except ImportError:
+            logger.warning("futu SDK not available - sensor running in mock mode")
+        except Exception as exc:
+            logger.error("Futu connection failed: %s", exc)
+
+    def fetch_current_positions(self):
+        self.connect()
+        ts = time.time()
+        self.last_fetch_time = ts
+        if self._trd_ctx is not None:
+            try:
+                from futu import RET_OK
+                ret, data = self._trd_ctx.position_list_query(trd_env=self.trd_env)
+                if ret == RET_OK and data is not None and not data.empty:
+                    df = data[["code", "market_val", "pl_ratio"]].copy()
+                    total = float(df["market_val"].sum())
+                    df["actual_weight"] = df["market_val"] / total if total > 0 else 0.0
+                    df["ticker"] = df["code"].apply(lambda c: str(c).split(".")[-1])
+                    return df[["ticker", "actual_weight", "pl_ratio"]], ts
+            except Exception as exc:
+                logger.warning("Futu query failed: %s", exc)
+        return pd.DataFrame(columns=["ticker", "actual_weight", "pl_ratio"]), ts
+
+    def close(self) -> None:
+        if self._trd_ctx is not None:
+            try:
+                self._trd_ctx.close()
+            except Exception:
+                pass
+            self._trd_ctx = None
+            logger.info("Futu sensor disconnected")

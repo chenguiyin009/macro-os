@@ -1,0 +1,9 @@
+# Macro OS v4.7 - Portfolio Configuration
+hard_limits:
+  default: 0.30
+  SH_GOLD: 0.50
+  NORTH_EQUIP: 0.40
+
+cash_buffer_ratio: 0.05
+earnings_window_start: "2026-07-01"
+earnings_window_end: "2026-08-15"

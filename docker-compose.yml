@@ -1,0 +1,31 @@
+version: "3.9"
+
+services:
+  runtime:
+    build: .
+    container_name: macro-os
+    restart: unless-stopped
+    volumes:
+      - ./vault:/app/vault
+      - ./config:/app/config:ro
+    environment:
+      - MACRO_OS_MCP_TIMEOUT_SECONDS=${MACRO_OS_MCP_TIMEOUT_SECONDS:-8}
+      - MACRO_OS_SCHEDULER_INTERVAL_MINUTES=${MACRO_OS_SCHEDULER_INTERVAL_MINUTES:-15}
+      - MACRO_OS_FEISHU_WEBHOOK_URL=${MACRO_OS_FEISHU_WEBHOOK_URL:-}
+      - MACRO_OS_MCP_COMMAND=${MACRO_OS_MCP_COMMAND:-node}
+      - MACRO_OS_MCP_SCRIPT_PATH=${MACRO_OS_MCP_SCRIPT_PATH:-}
+    command: ["python", "-m", "runtime.main", "--loop"]
+
+  # Local dev mode — single cycle on demand
+  dev:
+    build: .
+    container_name: macro-os-dev
+    profiles:
+      - dev
+    volumes:
+      - ./vault:/app/vault
+      - ./config:/app/config:ro
+      - .:/app
+    environment:
+      - MACRO_OS_MCP_TIMEOUT_SECONDS=15
+    command: ["python", "-m", "runtime.main", "--dry-run"]

@@ -1,0 +1,76 @@
+﻿"""Macro OS — CIO Agent (Daily Report Generator).
+
+Combines L3 decision, L4 reconciliation report, and Shadow Engine report
+into a readable Markdown action plan.
+"""
+from __future__ import annotations
+
+import logging
+from typing import Any, Dict, Optional
+
+from core.schemas import RegimeName
+
+logger = logging.getLogger(__name__)
+
+
+class CIOAgent:
+    """Generates daily institutional-grade research report in Markdown."""
+
+    def __init__(self, llm_enabled: bool = False):
+        self.llm_enabled = llm_enabled
+
+    def generate(
+        self,
+        regime_probs: Dict[RegimeName, float],
+        allocation: Dict[str, float],
+        diff_report: Optional[Dict[str, float]],
+        shadow_report: str,
+        features_summary: Any,
+    ) -> str:
+        """Generate the Daily Action Plan Markdown report."""
+        dominant = max(regime_probs, key=regime_probs.get)
+        prob_val = regime_probs[dominant]
+        vix = getattr(features_summary, "vix", "N/A")
+        dxy = getattr(features_summary, "dxy", "N/A")
+        ovx = getattr(features_summary, "ovx", "N/A")
+
+        action_plan = "No adjustments needed (within noise threshold)."
+        if diff_report:
+            trades = []
+            for sym, val in sorted(diff_report.items(), key=lambda x: abs(x[1]), reverse=True):
+                if abs(val) > 0.001:
+                    direction = "BUY" if val > 0 else "SELL"
+                    trades.append(f"- **{sym}**: {direction} {abs(val):.2%} target")
+            if trades:
+                action_plan = "\n".join(trades)
+
+        report = f"""# Macro OS v5.0 | Daily Action Plan
+
+## Probabilistic Matrix
+Dominant regime: **{dominant.value}** ({prob_val:.1%})
+- VIX: {vix}
+- DXY: {dxy}
+- OVX: {ovx}
+
+| Regime | Probability |
+|---|---|
+| AI_EXPANSION | {regime_probs.get(RegimeName.AI_EXPANSION, 0):.1%} |
+| NARROW_LEADERSHIP | {regime_probs.get(RegimeName.NARROW_LEADERSHIP, 0):.1%} |
+| FAST_LIQUIDITY_SHOCK | {regime_probs.get(RegimeName.FAST_LIQUIDITY_SHOCK, 0):.1%} |
+| CASH_LIQUIDATION | {regime_probs.get(RegimeName.CASH_LIQUIDATION, 0):.1%} |
+
+## Target Allocation
+{chr(10).join([f"- {k}: {v:.1%}" for k, v in allocation.items()])}
+
+## Execution Deltas
+{action_plan}
+
+---
+{shadow_report}
+"""
+        logger.info("CIO Agent: Markdown report generated (%d chars).", len(report))
+        return report
+
+
+# Backward compatibility alias for existing orchestrator imports
+CioCopilot = CIOAgent

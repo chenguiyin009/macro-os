@@ -1,0 +1,58 @@
+# Macro OS v4.6 - Watchlist
+# Each asset has macro_sensitivity, moat_score, logic_stability, has_active_catalyst,
+# atr_percent_20d, beta_to_spy, and max_portfolio_weight.
+
+assets:
+  TLT:
+    macro_sensitivity: ["RATES"]
+    moat_score: 0.8
+    logic_stability: 0.9
+    has_active_catalyst: false
+    atr_percent_20d: 0.012
+    beta_to_spy: -0.25
+    max_portfolio_weight: 0.30
+
+  HYG:
+    macro_sensitivity: ["CREDIT"]
+    moat_score: 0.6
+    logic_stability: 0.7
+    has_active_catalyst: false
+    atr_percent_20d: 0.015
+    beta_to_spy: 0.65
+    max_portfolio_weight: 0.25
+
+  GLD:
+    macro_sensitivity: ["RATES", "CREDIT"]
+    moat_score: 0.9
+    logic_stability: 0.8
+    has_active_catalyst: true
+    atr_percent_20d: 0.011
+    beta_to_spy: 0.10
+    max_portfolio_weight: 0.30
+
+  SPY:
+    macro_sensitivity: ["RATES", "CREDIT"]
+    moat_score: 0.7
+    logic_stability: 0.6
+    has_active_catalyst: false
+    atr_percent_20d: 0.013
+    beta_to_spy: 1.00
+    max_portfolio_weight: 0.35
+
+  QQQ:
+    macro_sensitivity: ["RATES"]
+    moat_score: 0.6
+    logic_stability: 0.5
+    has_active_catalyst: true
+    atr_percent_20d: 0.018
+    beta_to_spy: 1.15
+    max_portfolio_weight: 0.40
+
+  USDJPY:
+    macro_sensitivity: ["RATES"]
+    moat_score: 0.5
+    logic_stability: 0.4
+    has_active_catalyst: false
+    atr_percent_20d: 0.009
+    beta_to_spy: -0.15
+    max_portfolio_weight: 0.20

@@ -1,0 +1,21 @@
+﻿# config/field_mappings.yaml
+# Macro OS v5.0 — External field alias normalization (Anti-Corruption Layer / SSOT)
+
+field_aliases:
+  tips_yield:
+    - "tip"
+    - "tips"
+    - "tips_10y"
+  hy_credit_spread:
+    - "hyg"
+    - "jnk"
+    - "hy_spread"
+  gold:
+    - "gld"
+    - "xauusd"
+  ovx:
+    - "oil_vix"
+    - "crude_volatility"
+  qqq_close:
+    - "qqq"
+    - "close"

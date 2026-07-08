@@ -1,0 +1,76 @@
+"""Portfolio reconciliation engine ? L4.5 Constitution checks."""
+
+from __future__ import annotations
+import time
+from typing import Any, Dict, List
+import pandas as pd
+from pydantic import BaseModel, Field
+
+CONSTITUTION: Dict[str, Any] = {
+    "single_name_max": 0.15,
+    "rebalance_threshold": 0.03,
+    "etf_tickers": ["QQQ", "SPY", "TLT", "GLD", "HYG"],
+}
+
+
+class DiffItem(BaseModel):
+    """Single ticker deviation item."""
+    ticker: str
+    target_weight: float = 0.0
+    actual_weight: float = 0.0
+    delta: float = 0.0
+    current_pnl_ratio: float = 0.0
+    deviation_type: str = "NONE"
+    action_required: bool = False
+    notes: str = ""
+
+
+class DiffReport(BaseModel):
+    """Structured output of the reconciliation engine."""
+    timestamp: float = 0.0
+    is_stale_data: bool = False
+    warnings: List[str] = Field(default_factory=list)
+    items: Dict[str, DiffItem] = Field(default_factory=dict)
+
+
+def compute_actionable_diff(
+    target_yaml: Dict[str, float],
+    actual_positions: pd.DataFrame,
+    fetch_timestamp: float,
+) -> DiffReport:
+    """Compare target weights vs actual positions, apply Constitution checks."""
+    report = DiffReport(timestamp=time.time())
+    if time.time() - fetch_timestamp > 900:
+        report.is_stale_data = True
+        report.warnings.append("Position data stale")
+    actual_dict = {} if actual_positions.empty else {
+        row["ticker"]: {"weight": row["actual_weight"], "pnl": row.get("pl_ratio", 0.0)}
+        for _, row in actual_positions.iterrows()
+    }
+    for ticker in set(target_yaml.keys()) | set(actual_dict.keys()):
+        target_w = target_yaml.get(ticker, 0.0)
+        ad = actual_dict.get(ticker, {"weight": 0.0, "pnl": 0.0})
+        actual_w = ad["weight"]
+        pnl = ad["pnl"]
+        delta = round(target_w - actual_w, 4)
+        abs_delta = abs(delta)
+        if ticker not in CONSTITUTION["etf_tickers"] and actual_w > CONSTITUTION["single_name_max"]:
+            dtyp, act, notes = ("CRITICAL_BREACH", True,
+                "Breach: %.1f%% > cap %.1f%%" % (actual_w*100, CONSTITUTION["single_name_max"]*100))
+        elif actual_w == 0.0 and target_w > 0:
+            dtyp, act, notes = "NEW_POSITION", True, "Open position needed"
+        elif target_w == 0.0 and actual_w > 0:
+            dtyp, act, notes = "UNEXECUTED_ADVICE", True, "Target=0 but still held"
+        elif abs_delta >= CONSTITUTION["rebalance_threshold"]:
+            dtyp, act, notes = ("DRIFT_REQUIRES_REBALANCE", True,
+                "Drift %.1f%% > %.0f%% threshold" % (abs_delta*100, CONSTITUTION["rebalance_threshold"]*100))
+        else:
+            dtyp, act, notes = "NOISE_IGNORED", False, "Within tolerance"
+        report.items[ticker] = DiffItem(
+            ticker=ticker, target_weight=target_w,
+            actual_weight=actual_w, delta=delta,
+            current_pnl_ratio=round(pnl, 2),
+            deviation_type=dtyp, action_required=act,
+            notes=notes,
+        )
+    return report

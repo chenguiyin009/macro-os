@@ -1,0 +1,22 @@
+policy_version: "2026.Q3.v5.Final"
+allowed_assets: ["QQQ", "CASH", "GLD", "THEME_DEF", "TLT"]
+
+regime_mappings:
+  STAGE_1_US_EXCEPTIONALISM:
+    macro_context: "US relative strength, ample liquidity, AI at highs"
+    preferred_sectors: ["QQQ", "CASH"]
+    min_budget: 0.80
+    max_budget: 1.00
+
+  STAGE_1.5_LIQUIDITY_SQUEEZE:
+    macro_context: "Rising funding costs, peripheral stress, no full dollar resonance"
+    preferred_sectors: ["QQQ", "THEME_DEF", "CASH"]
+    rationale: "Liquidity squeeze. No new AI risk. Force rotation to defense."
+    min_budget: 0.50
+    max_budget: 0.85
+
+  STAGE_2_OVERSEAS_CONTAGION:
+    macro_context: "Overseas contagion confirmed. Global liquidity crisis."
+    preferred_sectors: ["CASH", "GLD"]
+    min_budget: 0.10
+    max_budget: 0.40

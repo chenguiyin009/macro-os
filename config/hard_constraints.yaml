@@ -1,0 +1,46 @@
+# config/hard_constraints.yaml
+# Macro OS v5.0 Global Physical Red Lines & Constraints (Single Source of Truth)
+
+version: "5.0"
+
+portfolio_limits:
+  max_equity_exposure: 0.80
+  min_cash_buffer: 0.05
+  max_single_stock_weight: 0.15
+  max_daily_turnover: 0.25
+
+circuit_breakers:
+  max_consecutive_violations: 5
+  emergency_cooldown_sec: 900
+  global_velocity_clamp: 0.10
+
+reconciliation:
+  rebalance_threshold: 0.03
+
+constitution:
+  danger_crisis_threshold: 75
+  fragility_critical_threshold: 8.0
+  qqq_hard_cap_crisis: 0.10
+  theme_def_min_fragility: 0.30
+  gld_max_cash_liquidation: 0.10
+  cash_min_danger: 0.40
+
+sector_allocator:
+  single_stock_max_weight: 0.40
+  ema_smoothing_alpha: 0.3
+  min_diffusion_score_to_allocate: 45
+  hw_crowd_unwind_threshold: 60
+  pair_unwind_threshold: 60
+
+supported_assets:
+  equity_indices: ["QQQ", "SPY"]
+  tech_sectors:
+    - TECH_HW
+    - TECH_HYPER
+    - TECH_AI_APP
+    - TECH_OPTICAL
+    - TECH_POWER
+    - TECH_MEMORY
+    - TECH_NET
+  defensive: ["CASH", "GLD", "THEME_DEF", "TLT"]
+  credit: ["HYG"]
