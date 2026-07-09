@@ -1,0 +1,46 @@
+# ── Python ──
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# ── 测试 / 类型检查 / 覆盖率缓存 ──
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ── 虚拟环境 ──
+.venv/
+venv/
+env/
+
+# ── 项目运行产物（数据库 / 临时输出）──
+*.db
+*.sqlite
+*.sqlite3
+macro_os_ledger.db
+tmp_*
+tmp_*/
+
+# ── Node 前端依赖（如引入）──
+node_modules/
+
+# ── 编辑器 / 操作系统 ──
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# ── WorkBuddy 本地配置（含记忆 / 个人设置，不进版本库）──
+.workbuddy/
+
+# ── 日志 ──
+*.log
