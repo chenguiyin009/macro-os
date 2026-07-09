@@ -16,12 +16,26 @@ import signal
 import os
 from pathlib import Path
 
-# ================ Path Management ====================
-_project_root = Path(__file__).resolve().parent.parent
-# 鍏煎鐜鍙橀噺娉ㄥ叆锛屾彁楂?Docker 鐜涓嬬殑鍙Щ妞嶆€?
-if str(_project_root) not in sys.path and os.environ.get("MACRO_OS_ROOT"):
-    sys.path.insert(0, os.environ["MACRO_OS_ROOT"])
+# ================================================================
+# 绝对鲁棒的路径注入 (Robust Path Bootstrap)
+# 确保无论是 `python runtime/main.py` 还是 `python -m runtime.main`，
+# 仓库根目录始终位于 sys.path 首位，彻底杜绝 ModuleNotFoundError。
+# ================================================================
+_project_root = Path(__file__).resolve().parents[1]
+if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
+
+# ----------------------------------------------------------------
+# Optional override for containerized / Docker deployments.
+# 兼容原 MACRO_OS_ROOT 环境变量注入，不影响默认行为。
+# ----------------------------------------------------------------
+if os.environ.get("MACRO_OS_ROOT"):
+    _env_root = os.environ["MACRO_OS_ROOT"]
+    if _env_root not in sys.path:
+        sys.path.insert(0, _env_root)
+
+# 此后方可安全导入内部业务模块
+# ----------------------------------------------------------------
 
 # ================ Imports ============================
 from config.settings import settings
