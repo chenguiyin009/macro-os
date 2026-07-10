@@ -22,8 +22,8 @@ from trinity.ledger import validate_ledger
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Trinity OS 账本校验")
     parser.add_argument(
-        "--ledger", default="data/ledger.json",
-        help="账本文件路径 (默认 data/ledger.json)",
+        "--ledger", default="data/ledger.sample.json",
+        help="账本文件路径 (默认 data/ledger.sample.json; 运行时生成的 data/ledger.json 已被 gitignore)",
     )
     args = parser.parse_args(argv)
 

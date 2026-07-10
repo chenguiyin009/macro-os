@@ -214,14 +214,15 @@ class TestAttributionLoop:
 
 
 class TestRealLedger:
-    """守护真实账本 data/ledger.json 的丰富度与归因闭环
+    """守护账本基线 data/ledger.sample.json 的丰富度与归因闭环
 
-    该账本是"注入不同因子组合的模拟数据"的落地 (覆盖全部决策 regime),
+    该基线是"注入不同因子组合的模拟数据"的落地 (覆盖全部决策 regime),
+    提交进版本库作为测试/CI 的初始化基线 (运行时生成的 data/ledger.json 已被 gitignore)。
     本类防止有人误将其缩减回单事件, 或破坏 Ledger→OutcomeSimulator→
     PerformanceAggregator 闭环。
     """
 
-    LEDGER = os.path.join(os.path.dirname(__file__), "..", "data", "ledger.json")
+    LEDGER = os.path.join(os.path.dirname(__file__), "..", "data", "ledger.sample.json")
 
     def test_rich_ledger_has_enough_samples(self):
         events = load_ledger(self.LEDGER)
