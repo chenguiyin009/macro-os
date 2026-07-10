@@ -1,0 +1,1674 @@
+{
+  "version": "2.1.0",
+  "saved_at": 1783656444.200394,
+  "events": [
+    {
+      "event_id": "EVT-000001",
+      "timestamp": 1783656444.1987057,
+      "symbol": "000001",
+      "contexts": {
+        "J+2": {
+          "level": "J+2",
+          "symbol": "000001",
+          "state": "极强",
+          "state_evidence": [
+            "DIF=2.0000, DEA=1.8000"
+          ],
+          "structure": "A",
+          "structure_direction": "UP",
+          "ma55": 95.0,
+          "ma233": 0.0,
+          "price": 100.0,
+          "boll_mid": 0.0,
+          "dif": 2.0,
+          "dea": 1.8,
+          "macd_hist": 0.4
+        },
+        "J": {
+          "level": "J",
+          "symbol": "000001",
+          "state": "强",
+          "state_evidence": [
+            "DIF=1.0000, DEA=0.9000"
+          ],
+          "structure": "A",
+          "structure_direction": "UP",
+          "ma55": 98.0,
+          "ma233": 0.0,
+          "price": 100.0,
+          "boll_mid": 0.0,
+          "dif": 1.0,
+          "dea": 0.9,
+          "macd_hist": 0.2
+        },
+        "J-1": {
+          "level": "J-1",
+          "symbol": "000001",
+          "state": "中偏强",
+          "state_evidence": [
+            "DIF=0.4000, DEA=0.3000"
+          ],
+          "structure": "A",
+          "structure_direction": "UP",
+          "ma55": 99.0,
+          "ma233": 0.0,
+          "price": 100.0,
+          "boll_mid": 100.0,
+          "dif": 0.4,
+          "dea": 0.3,
+          "macd_hist": 0.2
+        },
+        "J-2": {
+          "level": "J-2",
+          "symbol": "000001",
+          "state": "中偏强",
+          "state_evidence": [
+            "DIF=0.0000, DEA=0.0000"
+          ],
+          "structure": "A",
+          "structure_direction": "UP",
+          "ma55": 99.0,
+          "ma233": 0.0,
+          "price": 100.0,
+          "boll_mid": 0.0,
+          "dif": 0.0,
+          "dea": 0.0,
+          "macd_hist": 0.0
+        }
+      },
+      "decision": {
+        "action": "STRONG_ADD",
+        "confidence": 1.0,
+        "spacetime_overall": 0.79,
+        "risk_level": 0.1,
+        "level": "J+2",
+        "evidence": [
+          "[J+2] 状态=极强 (大级别时空判定)",
+          "  DIF=2.0000, DEA=1.8000",
+          "[J] 结构=A, 方向=UP",
+          "  决策矩阵: 极强×UP → STRONG_ADD",
+          "  操作备注: 忽略顶部背离, 逢回抽55线买入机会",
+          "[主涨段狙击] 条件满足:",
+          "  J+2 极强=True",
+          "  J-1 回抽布林带确认=True",
+          "  J-2 MA55共振=True",
+          "[时空] 综合=0.79 (时间=0.70, 空间=0.85)",
+          "[置信度] 1.00",
+          "[风险] 0.10"
+        ],
+        "note": "忽略顶部背离, 逢回抽55线买入机会",
+        "symbol": "000001"
+      },
+      "evidence": [
+        "[J+2] 状态=极强 (大级别时空判定)",
+        "  DIF=2.0000, DEA=1.8000",
+        "[J] 结构=A, 方向=UP",
+        "  决策矩阵: 极强×UP → STRONG_ADD",
+        "  操作备注: 忽略顶部背离, 逢回抽55线买入机会",
+        "[主涨段狙击] 条件满足:",
+        "  J+2 极强=True",
+        "  J-1 回抽布林带确认=True",
+        "  J-2 MA55共振=True",
+        "[时空] 综合=0.79 (时间=0.70, 空间=0.85)",
+        "[置信度] 1.00",
+        "[风险] 0.10"
+      ],
+      "metadata": {
+        "dry_run": true,
+        "symbol": "SA1",
+        "bars": 100,
+        "scenario": "curated"
+      }
+    },
+    {
+      "event_id": "EVT-000003",
+      "timestamp": 1783656444.198904,
+      "symbol": "000001",
+      "contexts": {
+        "J+2": {
+          "level": "J+2",
+          "symbol": "000001",
+          "state": "强",
+          "state_evidence": [
+            "DIF=1.0000, DEA=0.9000"
+          ],
+          "structure": "B",
+          "structure_direction": "UP",
+          "ma55": 99.5,
+          "ma233": 0.0,
+          "price": 100.0,
+          "boll_mid": 0.0,
+          "dif": 1.0,
+          "dea": 0.9,
+          "macd_hist": 0.2
+        },
+        "J": {
+          "level": "J",
+          "symbol": "000001",
+          "state": "强",
+          "state_evidence": [
+            "DIF=0.5000, DEA=0.4000"
+          ],
+          "structure": "B",
+          "structure_direction": "UP",
+          "ma55": 98.0,
+          "ma233": 0.0,
+          "price": 100.0,
+          "boll_mid": 0.0,
+          "dif": 0.5,
+          "dea": 0.4,
+          "macd_hist": 0.1
+        },
+        "J-1": {
+          "level": "J-1",
+          "symbol": "000001",
+          "state": "中偏强",
+          "state_evidence": [
+            "DIF=0.3000, DEA=0.4000"
+          ],
+          "structure": "A",
+          "structure_direction": "UP",
+          "ma55": 99.0,
+          "ma233": 0.0,
+          "price": 100.0,
+          "boll_mid": 100.0,
+          "dif": 0.3,
+          "dea": 0.4,
+          "macd_hist": 0.2
+        },
+        "J-2": {
+          "level": "J-2",
+          "symbol": "000001",
+          "state": "中偏强",
+          "state_evidence": [
+            "DIF=0.0000, DEA=0.0000"
+          ],
+          "structure": "A",
+          "structure_direction": "UP",
+          "ma55": 99.0,
+          "ma233": 0.0,
+          "price": 100.0,
+          "boll_mid": 0.0,
+          "dif": 0.0,
+          "dea": 0.0,
+          "macd_hist": 0.0
+        }
+      },
+      "decision": {
+        "action": "TAKE_PROFIT_T",
+        "confidence": 1.0,
+        "spacetime_overall": 0.3,
+        "risk_level": 0.5,
+        "level": "J",
+        "evidence": [
+          "[J+2] 状态=强 (大级别时空判定)",
+          "  DIF=1.0000, DEA=0.9000",
+          "[J] 结构=B, 方向=UP",
+          "  决策矩阵: 强×UP → ADD_ON_PULLBACK",
+          "  操作备注: 忽略小级别波动, b1/b3/b5/b7波段买入机会",
+          "[做T止盈] 突破遇阻 + J-1背离 + 动能衰减",
+          "  → 转为 TAKE_PROFIT_T",
+          "[退出/观望] 结构破坏或时空未达标",
+          "[置信度] 1.00",
+          "[风险] 0.50"
+        ],
+        "note": "突破遇阻+背离+动能衰减, 转为 TAKE_PROFIT_T",
+        "symbol": "000001"
+      },
+      "evidence": [
+        "[J+2] 状态=强 (大级别时空判定)",
+        "  DIF=1.0000, DEA=0.9000",
+        "[J] 结构=B, 方向=UP",
+        "  决策矩阵: 强×UP → ADD_ON_PULLBACK",
+        "  操作备注: 忽略小级别波动, b1/b3/b5/b7波段买入机会",
+        "[做T止盈] 突破遇阻 + J-1背离 + 动能衰减",
+        "  → 转为 TAKE_PROFIT_T",
+        "[退出/观望] 结构破坏或时空未达标",
+        "[置信度] 1.00",
+        "[风险] 0.50"
+      ],
+      "metadata": {
+        "dry_run": true,
+        "symbol": "TP1",
+        "bars": 100,
+        "scenario": "curated"
+      }
+    },
+    {
+      "event_id": "EVT-000005",
+      "timestamp": 1783656444.1990368,
+      "symbol": "000001",
+      "contexts": {
+        "J+2": {
+          "level": "J+2",
+          "symbol": "000001",
+          "state": "强",
+          "state_evidence": [
+            "DIF=1.0000, DEA=0.9000"
+          ],
+          "structure": "B",
+          "structure_direction": "UP",
+          "ma55": 80.0,
+          "ma233": 0.0,
+          "price": 100.0,
+          "boll_mid": 0.0,
+          "dif": 1.0,
+          "dea": 0.9,
+          "macd_hist": 0.2
+        },
+        "J": {
+          "level": "J",
+          "symbol": "000001",
+          "state": "强",
+          "state_evidence": [
+            "DIF=0.5000, DEA=0.4000"
+          ],
+          "structure": "B",
+          "structure_direction": "UP",
+          "ma55": 98.0,
+          "ma233": 0.0,
+          "price": 100.0,
+          "boll_mid": 0.0,
+          "dif": 0.5,
+          "dea": 0.4,
+          "macd_hist": 0.1
+        },
+        "J-1": {
+          "level": "J-1",
+          "symbol": "000001",
+          "state": "中偏强",
+          "state_evidence": [
+            "DIF=0.4000, DEA=0.3000"
+          ],
+          "structure": "A",
+          "structure_direction": "UP",
+          "ma55": 98.0,
+          "ma233": 0.0,
+          "price": 100.0,
+          "boll_mid": 100.0,
+          "dif": 0.4,
+          "dea": 0.3,
+          "macd_hist": 0.2
+        },
+        "J-2": {
+          "level": "J-2",
+          "symbol": "000001",
+          "state": "中偏强",
+          "state_evidence": [
+            "DIF=0.0000, DEA=0.0000"
+          ],
+          "structure": "A",
+          "structure_direction": "UP",
+          "ma55": 99.0,
+          "ma233": 0.0,
+          "price": 100.0,
+          "boll_mid": 0.0,
+          "dif": 0.0,
+          "dea": 0.0,
+          "macd_hist": 0.0
+        }
+      },
+      "decision": {
+        "action": "ADD_ON_PULLBACK",
+        "confidence": 1.0,
+        "spacetime_overall": 0.56,
+        "risk_level": 0.5,
+        "level": "J",
+        "evidence": [
+          "[J+2] 状态=强 (大级别时空判定)",
+          "  DIF=1.0000, DEA=0.9000",
+          "[J] 结构=B, 方向=UP",
+          "  决策矩阵: 强×UP → ADD_ON_PULLBACK",
+          "  操作备注: 忽略小级别波动, b1/b3/b5/b7波段买入机会",
+          "[置信度] 1.00",
+          "[风险] 0.50"
+        ],
+        "note": "忽略小级别波动, b1/b3/b5/b7波段买入机会",
+        "symbol": "000001"
+      },
+      "evidence": [
+        "[J+2] 状态=强 (大级别时空判定)",
+        "  DIF=1.0000, DEA=0.9000",
+        "[J] 结构=B, 方向=UP",
+        "  决策矩阵: 强×UP → ADD_ON_PULLBACK",
+        "  操作备注: 忽略小级别波动, b1/b3/b5/b7波段买入机会",
+        "[置信度] 1.00",
+        "[风险] 0.50"
+      ],
+      "metadata": {
+        "dry_run": true,
+        "symbol": "AP1",
+        "bars": 100,
+        "scenario": "curated"
+      }
+    },
+    {
+      "event_id": "EVT-000008",
+      "timestamp": 1783656444.1993163,
+      "symbol": "000001",
+      "contexts": {
+        "J+2": {
+          "level": "J+2",
+          "symbol": "000001",
+          "state": "强",
+          "state_evidence": [
+            "DIF=-0.5000, DEA=-0.4000"
+          ],
+          "structure": "D",
+          "structure_direction": "DOWN",
+          "ma55": 105.0,
+          "ma233": 0.0,
+          "price": 100.0,
+          "boll_mid": 0.0,
+          "dif": -0.5,
+          "dea": -0.4,
+          "macd_hist": -0.2
+        },
+        "J": {
+          "level": "J",
+          "symbol": "000001",
+          "state": "强",
+          "state_evidence": [
+            "DIF=-0.3000, DEA=-0.2000"
+          ],
+          "structure": "D",
+          "structure_direction": "DOWN",
+          "ma55": 105.0,
+          "ma233": 0.0,
+          "price": 100.0,
+          "boll_mid": 0.0,
+          "dif": -0.3,
+          "dea": -0.2,
+          "macd_hist": -0.1
+        },
+        "J-1": {
+          "level": "J-1",
+          "symbol": "000001",
+          "state": "中偏强",
+          "state_evidence": [
+            "DIF=0.4000, DEA=0.3000"
+          ],
+          "structure": "A",
+          "structure_direction": "UP",
+          "ma55": 99.0,
+          "ma233": 0.0,
+          "price": 100.0,
+          "boll_mid": 100.0,
+          "dif": 0.4,
+          "dea": 0.3,
+          "macd_hist": 0.2
+        },
+        "J-2": {
+          "level": "J-2",
+          "symbol": "000001",
+          "state": "中偏强",
+          "state_evidence": [
+            "DIF=0.0000, DEA=0.0000"
+          ],
+          "structure": "A",
+          "structure_direction": "UP",
+          "ma55": 104.0,
+          "ma233": 0.0,
+          "price": 100.0,
+          "boll_mid": 0.0,
+          "dif": 0.0,
+          "dea": 0.0,
+          "macd_hist": 0.0
+        }
+      },
+      "decision": {
+        "action": "REDUCE_CAUTIOUSLY",
+        "confidence": 0.95,
+        "spacetime_overall": 0.66,
+        "risk_level": 0.5,
+        "level": "J",
+        "evidence": [
+          "[J+2] 状态=强 (大级别时空判定)",
+          "  DIF=-0.5000, DEA=-0.4000",
+          "[J] 结构=D, 方向=DOWN",
+          "  决策矩阵: 强×DOWN → REDUCE_CAUTIOUSLY",
+          "  操作备注: 卖出需谨慎, d1卖d2接, d3不稳定, d4买",
+          "[置信度] 0.95",
+          "[风险] 0.50"
+        ],
+        "note": "卖出需谨慎, d1卖d2接, d3不稳定, d4买",
+        "symbol": "000001"
+      },
+      "evidence": [
+        "[J+2] 状态=强 (大级别时空判定)",
+        "  DIF=-0.5000, DEA=-0.4000",
+        "[J] 结构=D, 方向=DOWN",
+        "  决策矩阵: 强×DOWN → REDUCE_CAUTIOUSLY",
+        "  操作备注: 卖出需谨慎, d1卖d2接, d3不稳定, d4买",
+        "[置信度] 0.95",
+        "[风险] 0.50"
+      ],
+      "metadata": {
+        "dry_run": true,
+        "symbol": "RC1",
+        "bars": 100,
+        "scenario": "curated"
+      }
+    },
+    {
+      "event_id": "EVT-000010",
+      "timestamp": 1783656444.1994588,
+      "symbol": "000001",
+      "contexts": {
+        "J+2": {
+          "level": "J+2",
+          "symbol": "000001",
+          "state": "中偏强",
+          "state_evidence": [
+            "DIF=0.3000, DEA=0.2000"
+          ],
+          "structure": "C",
+          "structure_direction": "UP",
+          "ma55": 95.0,
+          "ma233": 0.0,
+          "price": 100.0,
+          "boll_mid": 0.0,
+          "dif": 0.3,
+          "dea": 0.2,
+          "macd_hist": 0.1
+        },
+        "J": {
+          "level": "J",
+          "symbol": "000001",
+          "state": "强",
+          "state_evidence": [
+            "DIF=0.2000, DEA=0.1500"
+          ],
+          "structure": "C",
+          "structure_direction": "UP",
+          "ma55": 98.0,
+          "ma233": 0.0,
+          "price": 100.0,
+          "boll_mid": 0.0,
+          "dif": 0.2,
+          "dea": 0.15,
+          "macd_hist": 0.05
+        },
+        "J-1": {
+          "level": "J-1",
+          "symbol": "000001",
+          "state": "中偏强",
+          "state_evidence": [
+            "DIF=0.4000, DEA=0.3000"
+          ],
+          "structure": "A",
+          "structure_direction": "UP",
+          "ma55": 99.0,
+          "ma233": 0.0,
+          "price": 100.0,
+          "boll_mid": 90.0,
+          "dif": 0.4,
+          "dea": 0.3,
+          "macd_hist": 0.2
+        },
+        "J-2": {
+          "level": "J-2",
+          "symbol": "000001",
+          "state": "中偏强",
+          "state_evidence": [
+            "DIF=0.0000, DEA=0.0000"
+          ],
+          "structure": "A",
+          "structure_direction": "UP",
+          "ma55": 99.0,
+          "ma233": 0.0,
+          "price": 100.0,
+          "boll_mid": 0.0,
+          "dif": 0.0,
+          "dea": 0.0,
+          "macd_hist": 0.0
+        }
+      },
+      "decision": {
+        "action": "SCOUT_WITH_STOP",
+        "confidence": 0.8,
+        "spacetime_overall": 0.66,
+        "risk_level": 0.5,
+        "level": "J",
+        "evidence": [
+          "[J+2] 状态=中偏强 (大级别时空判定)",
+          "  DIF=0.3000, DEA=0.2000",
+          "[J] 结构=C, 方向=UP",
+          "  决策矩阵: 中偏强×UP → SCOUT_WITH_STOP",
+          "  操作备注: 中枢底部可以试仓, 但要注意严格止损",
+          "[时空] 综合=0.66 (时间=0.60, 空间=0.70)",
+          "  时空不充分, 降低置信度",
+          "[置信度] 0.80",
+          "[风险] 0.50"
+        ],
+        "note": "中枢底部可以试仓, 但要注意严格止损",
+        "symbol": "000001"
+      },
+      "evidence": [
+        "[J+2] 状态=中偏强 (大级别时空判定)",
+        "  DIF=0.3000, DEA=0.2000",
+        "[J] 结构=C, 方向=UP",
+        "  决策矩阵: 中偏强×UP → SCOUT_WITH_STOP",
+        "  操作备注: 中枢底部可以试仓, 但要注意严格止损",
+        "[时空] 综合=0.66 (时间=0.60, 空间=0.70)",
+        "  时空不充分, 降低置信度",
+        "[置信度] 0.80",
+        "[风险] 0.50"
+      ],
+      "metadata": {
+        "dry_run": true,
+        "symbol": "SC1",
+        "bars": 100,
+        "scenario": "curated"
+      }
+    },
+    {
+      "event_id": "EVT-000012",
+      "timestamp": 1783656444.1995811,
+      "symbol": "000001",
+      "contexts": {
+        "J+2": {
+          "level": "J+2",
+          "symbol": "000001",
+          "state": "弱",
+          "state_evidence": [
+            "DIF=-0.3000, DEA=-0.2500"
+          ],
+          "structure": "D",
+          "structure_direction": "UP",
+          "ma55": 95.0,
+          "ma233": 0.0,
+          "price": 100.0,
+          "boll_mid": 0.0,
+          "dif": -0.3,
+          "dea": -0.25,
+          "macd_hist": -0.05
+        },
+        "J": {
+          "level": "J",
+          "symbol": "000001",
+          "state": "强",
+          "state_evidence": [
+            "DIF=0.2000, DEA=0.1500"
+          ],
+          "structure": "D",
+          "structure_direction": "UP",
+          "ma55": 98.0,
+          "ma233": 0.0,
+          "price": 100.0,
+          "boll_mid": 0.0,
+          "dif": 0.2,
+          "dea": 0.15,
+          "macd_hist": 0.05
+        },
+        "J-1": {
+          "level": "J-1",
+          "symbol": "000001",
+          "state": "中偏强",
+          "state_evidence": [
+            "DIF=0.4000, DEA=0.3000"
+          ],
+          "structure": "A",
+          "structure_direction": "UP",
+          "ma55": 99.0,
+          "ma233": 0.0,
+          "price": 100.0,
+          "boll_mid": 100.0,
+          "dif": 0.4,
+          "dea": 0.3,
+          "macd_hist": 0.2
+        },
+        "J-2": {
+          "level": "J-2",
+          "symbol": "000001",
+          "state": "中偏强",
+          "state_evidence": [
+            "DIF=0.0000, DEA=0.0000"
+          ],
+          "structure": "A",
+          "structure_direction": "UP",
+          "ma55": 99.0,
+          "ma233": 0.0,
+          "price": 100.0,
+          "boll_mid": 0.0,
+          "dif": 0.0,
+          "dea": 0.0,
+          "macd_hist": 0.0
+        }
+      },
+      "decision": {
+        "action": "BUY_CAUTIOUSLY",
+        "confidence": 0.55,
+        "spacetime_overall": 0.66,
+        "risk_level": 0.95,
+        "level": "J",
+        "evidence": [
+          "[J+2] 状态=弱 (大级别时空判定)",
+          "  DIF=-0.3000, DEA=-0.2500",
+          "[J] 结构=D, 方向=UP",
+          "  决策矩阵: 弱×UP → BUY_CAUTIOUSLY",
+          "  操作备注: 买入需谨慎, d1买d2卖, d3不稳定, d4卖",
+          "[时空] 综合=0.66 (时间=0.60, 空间=0.70)",
+          "  时空不充分, 降低置信度",
+          "[置信度] 0.55",
+          "[风险] 0.95"
+        ],
+        "note": "买入需谨慎, d1买d2卖, d3不稳定, d4卖",
+        "symbol": "000001"
+      },
+      "evidence": [
+        "[J+2] 状态=弱 (大级别时空判定)",
+        "  DIF=-0.3000, DEA=-0.2500",
+        "[J] 结构=D, 方向=UP",
+        "  决策矩阵: 弱×UP → BUY_CAUTIOUSLY",
+        "  操作备注: 买入需谨慎, d1买d2卖, d3不稳定, d4卖",
+        "[时空] 综合=0.66 (时间=0.60, 空间=0.70)",
+        "  时空不充分, 降低置信度",
+        "[置信度] 0.55",
+        "[风险] 0.95"
+      ],
+      "metadata": {
+        "dry_run": true,
+        "symbol": "BC1",
+        "bars": 100,
+        "scenario": "curated"
+      }
+    },
+    {
+      "event_id": "EVT-000014",
+      "timestamp": 1783656444.1996832,
+      "symbol": "000001",
+      "contexts": {
+        "J+2": {
+          "level": "J+2",
+          "symbol": "000001",
+          "state": "弱",
+          "state_evidence": [
+            "DIF=-0.3000, DEA=-0.2500"
+          ],
+          "structure": "B",
+          "structure_direction": "DOWN",
+          "ma55": 105.0,
+          "ma233": 0.0,
+          "price": 100.0,
+          "boll_mid": 0.0,
+          "dif": -0.3,
+          "dea": -0.25,
+          "macd_hist": -0.05
+        },
+        "J": {
+          "level": "J",
+          "symbol": "000001",
+          "state": "强",
+          "state_evidence": [
+            "DIF=-0.2000, DEA=-0.1500"
+          ],
+          "structure": "B",
+          "structure_direction": "DOWN",
+          "ma55": 105.0,
+          "ma233": 0.0,
+          "price": 100.0,
+          "boll_mid": 0.0,
+          "dif": -0.2,
+          "dea": -0.15,
+          "macd_hist": -0.03
+        },
+        "J-1": {
+          "level": "J-1",
+          "symbol": "000001",
+          "state": "中偏强",
+          "state_evidence": [
+            "DIF=0.4000, DEA=0.3000"
+          ],
+          "structure": "A",
+          "structure_direction": "UP",
+          "ma55": 99.0,
+          "ma233": 0.0,
+          "price": 100.0,
+          "boll_mid": 90.0,
+          "dif": 0.4,
+          "dea": 0.3,
+          "macd_hist": 0.2
+        },
+        "J-2": {
+          "level": "J-2",
+          "symbol": "000001",
+          "state": "中偏强",
+          "state_evidence": [
+            "DIF=0.0000, DEA=0.0000"
+          ],
+          "structure": "A",
+          "structure_direction": "UP",
+          "ma55": 104.0,
+          "ma233": 0.0,
+          "price": 100.0,
+          "boll_mid": 0.0,
+          "dif": 0.0,
+          "dea": 0.0,
+          "macd_hist": 0.0
+        }
+      },
+      "decision": {
+        "action": "SELL_ON_BOUNCE",
+        "confidence": 0.5,
+        "spacetime_overall": 0.66,
+        "risk_level": 0.8,
+        "level": "J",
+        "evidence": [
+          "[J+2] 状态=弱 (大级别时空判定)",
+          "  DIF=-0.3000, DEA=-0.2500",
+          "[J] 结构=B, 方向=DOWN",
+          "  决策矩阵: 弱×DOWN → SELL_ON_BOUNCE",
+          "  操作备注: 忽略小级别波动, b1/b3/b5/b7波段卖出机会",
+          "[置信度] 0.50",
+          "[风险] 0.80"
+        ],
+        "note": "忽略小级别波动, b1/b3/b5/b7波段卖出机会",
+        "symbol": "000001"
+      },
+      "evidence": [
+        "[J+2] 状态=弱 (大级别时空判定)",
+        "  DIF=-0.3000, DEA=-0.2500",
+        "[J] 结构=B, 方向=DOWN",
+        "  决策矩阵: 弱×DOWN → SELL_ON_BOUNCE",
+        "  操作备注: 忽略小级别波动, b1/b3/b5/b7波段卖出机会",
+        "[置信度] 0.50",
+        "[风险] 0.80"
+      ],
+      "metadata": {
+        "dry_run": true,
+        "symbol": "SB1",
+        "bars": 100,
+        "scenario": "curated"
+      }
+    },
+    {
+      "event_id": "EVT-000015",
+      "timestamp": 1783656444.1997566,
+      "symbol": "000001",
+      "contexts": {
+        "J+2": {
+          "level": "J+2",
+          "symbol": "000001",
+          "state": "极弱",
+          "state_evidence": [
+            "DIF=-1.0000, DEA=-0.9000"
+          ],
+          "structure": "A",
+          "structure_direction": "DOWN",
+          "ma55": 105.0,
+          "ma233": 0.0,
+          "price": 100.0,
+          "boll_mid": 0.0,
+          "dif": -1.0,
+          "dea": -0.9,
+          "macd_hist": -0.2
+        },
+        "J": {
+          "level": "J",
+          "symbol": "000001",
+          "state": "强",
+          "state_evidence": [
+            "DIF=-0.5000, DEA=-0.4000"
+          ],
+          "structure": "A",
+          "structure_direction": "DOWN",
+          "ma55": 105.0,
+          "ma233": 0.0,
+          "price": 100.0,
+          "boll_mid": 0.0,
+          "dif": -0.5,
+          "dea": -0.4,
+          "macd_hist": -0.1
+        },
+        "J-1": {
+          "level": "J-1",
+          "symbol": "000001",
+          "state": "中偏强",
+          "state_evidence": [
+            "DIF=0.4000, DEA=0.3000"
+          ],
+          "structure": "A",
+          "structure_direction": "UP",
+          "ma55": 99.0,
+          "ma233": 0.0,
+          "price": 100.0,
+          "boll_mid": 100.0,
+          "dif": 0.4,
+          "dea": 0.3,
+          "macd_hist": 0.2
+        },
+        "J-2": {
+          "level": "J-2",
+          "symbol": "000001",
+          "state": "中偏强",
+          "state_evidence": [
+            "DIF=0.0000, DEA=0.0000"
+          ],
+          "structure": "A",
+          "structure_direction": "UP",
+          "ma55": 104.0,
+          "ma233": 0.0,
+          "price": 100.0,
+          "boll_mid": 0.0,
+          "dif": 0.0,
+          "dea": 0.0,
+          "macd_hist": 0.0
+        }
+      },
+      "decision": {
+        "action": "STRONG_REDUCE",
+        "confidence": 0.4,
+        "spacetime_overall": 0.24,
+        "risk_level": 0.6,
+        "level": "J+2",
+        "evidence": [
+          "[J+2] 状态=极弱 (大级别时空判定)",
+          "  DIF=-1.0000, DEA=-0.9000",
+          "[J] 结构=A, 方向=DOWN",
+          "  决策矩阵: 极弱×DOWN → STRONG_REDUCE",
+          "  操作备注: 忽略底部背离, 逢回抽55线卖出机会",
+          "[退出/观望] 结构破坏或时空未达标",
+          "[置信度] 0.40",
+          "[风险] 0.60"
+        ],
+        "note": "忽略底部背离, 逢回抽55线卖出机会",
+        "symbol": "000001"
+      },
+      "evidence": [
+        "[J+2] 状态=极弱 (大级别时空判定)",
+        "  DIF=-1.0000, DEA=-0.9000",
+        "[J] 结构=A, 方向=DOWN",
+        "  决策矩阵: 极弱×DOWN → STRONG_REDUCE",
+        "  操作备注: 忽略底部背离, 逢回抽55线卖出机会",
+        "[退出/观望] 结构破坏或时空未达标",
+        "[置信度] 0.40",
+        "[风险] 0.60"
+      ],
+      "metadata": {
+        "dry_run": true,
+        "symbol": "SR1",
+        "bars": 100,
+        "scenario": "curated"
+      }
+    },
+    {
+      "event_id": "EVT-000017",
+      "timestamp": 1783656444.1998675,
+      "symbol": "000001",
+      "contexts": {
+        "J+2": {
+          "level": "J+2",
+          "symbol": "000001",
+          "state": "强",
+          "state_evidence": [
+            "DIF=1.0000, DEA=0.9000"
+          ],
+          "structure": "C",
+          "structure_direction": "UP",
+          "ma55": 95.0,
+          "ma233": 0.0,
+          "price": 100.0,
+          "boll_mid": 0.0,
+          "dif": 1.0,
+          "dea": 0.9,
+          "macd_hist": 0.2
+        },
+        "J": {
+          "level": "J",
+          "symbol": "000001",
+          "state": "强",
+          "state_evidence": [
+            "DIF=0.4000, DEA=0.3000"
+          ],
+          "structure": "C",
+          "structure_direction": "UP",
+          "ma55": 98.0,
+          "ma233": 0.0,
+          "price": 100.0,
+          "boll_mid": 0.0,
+          "dif": 0.4,
+          "dea": 0.3,
+          "macd_hist": 0.1
+        },
+        "J-1": {
+          "level": "J-1",
+          "symbol": "000001",
+          "state": "中偏强",
+          "state_evidence": [
+            "DIF=0.4000, DEA=0.3000"
+          ],
+          "structure": "A",
+          "structure_direction": "UP",
+          "ma55": 99.0,
+          "ma233": 0.0,
+          "price": 100.0,
+          "boll_mid": 100.0,
+          "dif": 0.4,
+          "dea": 0.3,
+          "macd_hist": 0.2
+        },
+        "J-2": {
+          "level": "J-2",
+          "symbol": "000001",
+          "state": "中偏强",
+          "state_evidence": [
+            "DIF=0.0000, DEA=0.0000"
+          ],
+          "structure": "A",
+          "structure_direction": "UP",
+          "ma55": 99.0,
+          "ma233": 0.0,
+          "price": 100.0,
+          "boll_mid": 0.0,
+          "dif": 0.0,
+          "dea": 0.0,
+          "macd_hist": 0.0
+        }
+      },
+      "decision": {
+        "action": "HOLD",
+        "confidence": 0.9,
+        "spacetime_overall": 0.66,
+        "risk_level": 0.5,
+        "level": "J",
+        "evidence": [
+          "[J+2] 状态=强 (大级别时空判定)",
+          "  DIF=1.0000, DEA=0.9000",
+          "[J] 结构=C, 方向=UP",
+          "  结构 C 不在匹配列表 ['B'], 降级为观望",
+          "  决策矩阵: 强×UP → HOLD",
+          "  操作备注: 结构不匹配, 观望",
+          "[置信度] 0.90",
+          "[风险] 0.50"
+        ],
+        "note": "结构不匹配, 观望",
+        "symbol": "000001"
+      },
+      "evidence": [
+        "[J+2] 状态=强 (大级别时空判定)",
+        "  DIF=1.0000, DEA=0.9000",
+        "[J] 结构=C, 方向=UP",
+        "  结构 C 不在匹配列表 ['B'], 降级为观望",
+        "  决策矩阵: 强×UP → HOLD",
+        "  操作备注: 结构不匹配, 观望",
+        "[置信度] 0.90",
+        "[风险] 0.50"
+      ],
+      "metadata": {
+        "dry_run": true,
+        "symbol": "H1",
+        "bars": 100,
+        "scenario": "curated"
+      }
+    },
+    {
+      "event_id": "EVT-000002",
+      "timestamp": 1783656444.1988251,
+      "symbol": "000001",
+      "contexts": {
+        "J+2": {
+          "level": "J+2",
+          "symbol": "000001",
+          "state": "极强",
+          "state_evidence": [
+            "DIF=2.0000, DEA=1.8000"
+          ],
+          "structure": "A",
+          "structure_direction": "UP",
+          "ma55": 76.0,
+          "ma233": 0.0,
+          "price": 80.0,
+          "boll_mid": 0.0,
+          "dif": 2.0,
+          "dea": 1.8,
+          "macd_hist": 0.4
+        },
+        "J": {
+          "level": "J",
+          "symbol": "000001",
+          "state": "强",
+          "state_evidence": [
+            "DIF=1.0000, DEA=0.9000"
+          ],
+          "structure": "A",
+          "structure_direction": "UP",
+          "ma55": 78.4,
+          "ma233": 0.0,
+          "price": 80.0,
+          "boll_mid": 0.0,
+          "dif": 1.0,
+          "dea": 0.9,
+          "macd_hist": 0.2
+        },
+        "J-1": {
+          "level": "J-1",
+          "symbol": "000001",
+          "state": "中偏强",
+          "state_evidence": [
+            "DIF=0.3000, DEA=0.4000"
+          ],
+          "structure": "A",
+          "structure_direction": "UP",
+          "ma55": 79.2,
+          "ma233": 0.0,
+          "price": 80.0,
+          "boll_mid": 72.0,
+          "dif": 0.3,
+          "dea": 0.4,
+          "macd_hist": 0.2
+        },
+        "J-2": {
+          "level": "J-2",
+          "symbol": "000001",
+          "state": "中偏强",
+          "state_evidence": [
+            "DIF=0.0000, DEA=0.0000"
+          ],
+          "structure": "A",
+          "structure_direction": "UP",
+          "ma55": 79.2,
+          "ma233": 0.0,
+          "price": 80.0,
+          "boll_mid": 0.0,
+          "dif": 0.0,
+          "dea": 0.0,
+          "macd_hist": 0.0
+        }
+      },
+      "decision": {
+        "action": "STRONG_ADD",
+        "confidence": 1.0,
+        "spacetime_overall": 0.79,
+        "risk_level": 0.1,
+        "level": "J+2",
+        "evidence": [
+          "[J+2] 状态=极强 (大级别时空判定)",
+          "  DIF=2.0000, DEA=1.8000",
+          "[J] 结构=A, 方向=UP",
+          "  决策矩阵: 极强×UP → STRONG_ADD",
+          "  操作备注: 忽略顶部背离, 逢回抽55线买入机会",
+          "[主涨段狙击] 条件满足:",
+          "  J+2 极强=True",
+          "  J-1 回抽布林带确认=True",
+          "  J-2 MA55共振=True",
+          "[时空] 综合=0.79 (时间=0.70, 空间=0.85)",
+          "[置信度] 1.00",
+          "[风险] 0.10"
+        ],
+        "note": "忽略顶部背离, 逢回抽55线买入机会",
+        "symbol": "000001"
+      },
+      "evidence": [
+        "[J+2] 状态=极强 (大级别时空判定)",
+        "  DIF=2.0000, DEA=1.8000",
+        "[J] 结构=A, 方向=UP",
+        "  决策矩阵: 极强×UP → STRONG_ADD",
+        "  操作备注: 忽略顶部背离, 逢回抽55线买入机会",
+        "[主涨段狙击] 条件满足:",
+        "  J+2 极强=True",
+        "  J-1 回抽布林带确认=True",
+        "  J-2 MA55共振=True",
+        "[时空] 综合=0.79 (时间=0.70, 空间=0.85)",
+        "[置信度] 1.00",
+        "[风险] 0.10"
+      ],
+      "metadata": {
+        "dry_run": true,
+        "symbol": "SA2",
+        "bars": 100,
+        "scenario": "curated"
+      }
+    },
+    {
+      "event_id": "EVT-000004",
+      "timestamp": 1783656444.1989732,
+      "symbol": "000001",
+      "contexts": {
+        "J+2": {
+          "level": "J+2",
+          "symbol": "000001",
+          "state": "强",
+          "state_evidence": [
+            "DIF=1.0000, DEA=0.9000"
+          ],
+          "structure": "B",
+          "structure_direction": "UP",
+          "ma55": 49.75,
+          "ma233": 0.0,
+          "price": 50.0,
+          "boll_mid": 0.0,
+          "dif": 1.0,
+          "dea": 0.9,
+          "macd_hist": 0.2
+        },
+        "J": {
+          "level": "J",
+          "symbol": "000001",
+          "state": "强",
+          "state_evidence": [
+            "DIF=0.5000, DEA=0.4000"
+          ],
+          "structure": "B",
+          "structure_direction": "UP",
+          "ma55": 49.0,
+          "ma233": 0.0,
+          "price": 50.0,
+          "boll_mid": 0.0,
+          "dif": 0.5,
+          "dea": 0.4,
+          "macd_hist": 0.1
+        },
+        "J-1": {
+          "level": "J-1",
+          "symbol": "000001",
+          "state": "中偏强",
+          "state_evidence": [
+            "DIF=0.3000, DEA=0.4000"
+          ],
+          "structure": "A",
+          "structure_direction": "UP",
+          "ma55": 49.5,
+          "ma233": 0.0,
+          "price": 50.0,
+          "boll_mid": 45.0,
+          "dif": 0.3,
+          "dea": 0.4,
+          "macd_hist": 0.2
+        },
+        "J-2": {
+          "level": "J-2",
+          "symbol": "000001",
+          "state": "中偏强",
+          "state_evidence": [
+            "DIF=0.0000, DEA=0.0000"
+          ],
+          "structure": "A",
+          "structure_direction": "UP",
+          "ma55": 49.5,
+          "ma233": 0.0,
+          "price": 50.0,
+          "boll_mid": 0.0,
+          "dif": 0.0,
+          "dea": 0.0,
+          "macd_hist": 0.0
+        }
+      },
+      "decision": {
+        "action": "TAKE_PROFIT_T",
+        "confidence": 1.0,
+        "spacetime_overall": 0.3,
+        "risk_level": 0.5,
+        "level": "J",
+        "evidence": [
+          "[J+2] 状态=强 (大级别时空判定)",
+          "  DIF=1.0000, DEA=0.9000",
+          "[J] 结构=B, 方向=UP",
+          "  决策矩阵: 强×UP → ADD_ON_PULLBACK",
+          "  操作备注: 忽略小级别波动, b1/b3/b5/b7波段买入机会",
+          "[做T止盈] 突破遇阻 + J-1背离 + 动能衰减",
+          "  → 转为 TAKE_PROFIT_T",
+          "[退出/观望] 结构破坏或时空未达标",
+          "[置信度] 1.00",
+          "[风险] 0.50"
+        ],
+        "note": "突破遇阻+背离+动能衰减, 转为 TAKE_PROFIT_T",
+        "symbol": "000001"
+      },
+      "evidence": [
+        "[J+2] 状态=强 (大级别时空判定)",
+        "  DIF=1.0000, DEA=0.9000",
+        "[J] 结构=B, 方向=UP",
+        "  决策矩阵: 强×UP → ADD_ON_PULLBACK",
+        "  操作备注: 忽略小级别波动, b1/b3/b5/b7波段买入机会",
+        "[做T止盈] 突破遇阻 + J-1背离 + 动能衰减",
+        "  → 转为 TAKE_PROFIT_T",
+        "[退出/观望] 结构破坏或时空未达标",
+        "[置信度] 1.00",
+        "[风险] 0.50"
+      ],
+      "metadata": {
+        "dry_run": true,
+        "symbol": "TP2",
+        "bars": 100,
+        "scenario": "curated"
+      }
+    },
+    {
+      "event_id": "EVT-000006",
+      "timestamp": 1783656444.1990902,
+      "symbol": "000001",
+      "contexts": {
+        "J+2": {
+          "level": "J+2",
+          "symbol": "000001",
+          "state": "强",
+          "state_evidence": [
+            "DIF=1.0000, DEA=0.9000"
+          ],
+          "structure": "B",
+          "structure_direction": "UP",
+          "ma55": 96.0,
+          "ma233": 0.0,
+          "price": 120.0,
+          "boll_mid": 0.0,
+          "dif": 1.0,
+          "dea": 0.9,
+          "macd_hist": 0.2
+        },
+        "J": {
+          "level": "J",
+          "symbol": "000001",
+          "state": "强",
+          "state_evidence": [
+            "DIF=0.5000, DEA=0.4000"
+          ],
+          "structure": "B",
+          "structure_direction": "UP",
+          "ma55": 117.6,
+          "ma233": 0.0,
+          "price": 120.0,
+          "boll_mid": 0.0,
+          "dif": 0.5,
+          "dea": 0.4,
+          "macd_hist": 0.1
+        },
+        "J-1": {
+          "level": "J-1",
+          "symbol": "000001",
+          "state": "中偏强",
+          "state_evidence": [
+            "DIF=0.4000, DEA=0.3000"
+          ],
+          "structure": "A",
+          "structure_direction": "UP",
+          "ma55": 117.6,
+          "ma233": 0.0,
+          "price": 120.0,
+          "boll_mid": 108.0,
+          "dif": 0.4,
+          "dea": 0.3,
+          "macd_hist": 0.2
+        },
+        "J-2": {
+          "level": "J-2",
+          "symbol": "000001",
+          "state": "中偏强",
+          "state_evidence": [
+            "DIF=0.0000, DEA=0.0000"
+          ],
+          "structure": "A",
+          "structure_direction": "UP",
+          "ma55": 118.8,
+          "ma233": 0.0,
+          "price": 120.0,
+          "boll_mid": 0.0,
+          "dif": 0.0,
+          "dea": 0.0,
+          "macd_hist": 0.0
+        }
+      },
+      "decision": {
+        "action": "ADD_ON_PULLBACK",
+        "confidence": 1.0,
+        "spacetime_overall": 0.56,
+        "risk_level": 0.5,
+        "level": "J",
+        "evidence": [
+          "[J+2] 状态=强 (大级别时空判定)",
+          "  DIF=1.0000, DEA=0.9000",
+          "[J] 结构=B, 方向=UP",
+          "  决策矩阵: 强×UP → ADD_ON_PULLBACK",
+          "  操作备注: 忽略小级别波动, b1/b3/b5/b7波段买入机会",
+          "[置信度] 1.00",
+          "[风险] 0.50"
+        ],
+        "note": "忽略小级别波动, b1/b3/b5/b7波段买入机会",
+        "symbol": "000001"
+      },
+      "evidence": [
+        "[J+2] 状态=强 (大级别时空判定)",
+        "  DIF=1.0000, DEA=0.9000",
+        "[J] 结构=B, 方向=UP",
+        "  决策矩阵: 强×UP → ADD_ON_PULLBACK",
+        "  操作备注: 忽略小级别波动, b1/b3/b5/b7波段买入机会",
+        "[置信度] 1.00",
+        "[风险] 0.50"
+      ],
+      "metadata": {
+        "dry_run": true,
+        "symbol": "AP2",
+        "bars": 100,
+        "scenario": "curated"
+      }
+    },
+    {
+      "event_id": "EVT-000007",
+      "timestamp": 1783656444.1992393,
+      "symbol": "000001",
+      "contexts": {
+        "J+2": {
+          "level": "J+2",
+          "symbol": "000001",
+          "state": "强",
+          "state_evidence": [
+            "DIF=1.0000, DEA=0.9000"
+          ],
+          "structure": "B",
+          "structure_direction": "UP",
+          "ma55": 80.0,
+          "ma233": 0.0,
+          "price": 100.0,
+          "boll_mid": 0.0,
+          "dif": 1.0,
+          "dea": 0.9,
+          "macd_hist": 0.2
+        },
+        "J": {
+          "level": "J",
+          "symbol": "000001",
+          "state": "强",
+          "state_evidence": [
+            "DIF=0.5000, DEA=0.4000"
+          ],
+          "structure": "B",
+          "structure_direction": "UP",
+          "ma55": 98.0,
+          "ma233": 0.0,
+          "price": 100.0,
+          "boll_mid": 0.0,
+          "dif": 0.5,
+          "dea": 0.4,
+          "macd_hist": 0.1
+        },
+        "J-1": {
+          "level": "J-1",
+          "symbol": "000001",
+          "state": "中偏强",
+          "state_evidence": [
+            "DIF=0.3000, DEA=0.4000"
+          ],
+          "structure": "A",
+          "structure_direction": "UP",
+          "ma55": 98.0,
+          "ma233": 0.0,
+          "price": 100.0,
+          "boll_mid": 100.0,
+          "dif": 0.3,
+          "dea": 0.4,
+          "macd_hist": 0.2
+        },
+        "J-2": {
+          "level": "J-2",
+          "symbol": "000001",
+          "state": "中偏强",
+          "state_evidence": [
+            "DIF=0.0000, DEA=0.0000"
+          ],
+          "structure": "A",
+          "structure_direction": "UP",
+          "ma55": 99.0,
+          "ma233": 0.0,
+          "price": 100.0,
+          "boll_mid": 0.0,
+          "dif": 0.0,
+          "dea": 0.0,
+          "macd_hist": 0.0
+        }
+      },
+      "decision": {
+        "action": "ADD_ON_PULLBACK",
+        "confidence": 1.0,
+        "spacetime_overall": 0.56,
+        "risk_level": 0.5,
+        "level": "J",
+        "evidence": [
+          "[J+2] 状态=强 (大级别时空判定)",
+          "  DIF=1.0000, DEA=0.9000",
+          "[J] 结构=B, 方向=UP",
+          "  决策矩阵: 强×UP → ADD_ON_PULLBACK",
+          "  操作备注: 忽略小级别波动, b1/b3/b5/b7波段买入机会",
+          "[置信度] 1.00",
+          "[风险] 0.50"
+        ],
+        "note": "忽略小级别波动, b1/b3/b5/b7波段买入机会",
+        "symbol": "000001"
+      },
+      "evidence": [
+        "[J+2] 状态=强 (大级别时空判定)",
+        "  DIF=1.0000, DEA=0.9000",
+        "[J] 结构=B, 方向=UP",
+        "  决策矩阵: 强×UP → ADD_ON_PULLBACK",
+        "  操作备注: 忽略小级别波动, b1/b3/b5/b7波段买入机会",
+        "[置信度] 1.00",
+        "[风险] 0.50"
+      ],
+      "metadata": {
+        "dry_run": true,
+        "symbol": "AP3",
+        "bars": 100,
+        "scenario": "curated"
+      }
+    },
+    {
+      "event_id": "EVT-000009",
+      "timestamp": 1783656444.1993966,
+      "symbol": "000001",
+      "contexts": {
+        "J+2": {
+          "level": "J+2",
+          "symbol": "000001",
+          "state": "强",
+          "state_evidence": [
+            "DIF=-0.5000, DEA=-0.4000"
+          ],
+          "structure": "D",
+          "structure_direction": "DOWN",
+          "ma55": 63.0,
+          "ma233": 0.0,
+          "price": 60.0,
+          "boll_mid": 0.0,
+          "dif": -0.5,
+          "dea": -0.4,
+          "macd_hist": -0.2
+        },
+        "J": {
+          "level": "J",
+          "symbol": "000001",
+          "state": "强",
+          "state_evidence": [
+            "DIF=-0.3000, DEA=-0.2000"
+          ],
+          "structure": "D",
+          "structure_direction": "DOWN",
+          "ma55": 63.0,
+          "ma233": 0.0,
+          "price": 60.0,
+          "boll_mid": 0.0,
+          "dif": -0.3,
+          "dea": -0.2,
+          "macd_hist": -0.1
+        },
+        "J-1": {
+          "level": "J-1",
+          "symbol": "000001",
+          "state": "中偏强",
+          "state_evidence": [
+            "DIF=0.4000, DEA=0.3000"
+          ],
+          "structure": "A",
+          "structure_direction": "UP",
+          "ma55": 59.4,
+          "ma233": 0.0,
+          "price": 60.0,
+          "boll_mid": 54.0,
+          "dif": 0.4,
+          "dea": 0.3,
+          "macd_hist": 0.2
+        },
+        "J-2": {
+          "level": "J-2",
+          "symbol": "000001",
+          "state": "中偏强",
+          "state_evidence": [
+            "DIF=0.0000, DEA=0.0000"
+          ],
+          "structure": "A",
+          "structure_direction": "UP",
+          "ma55": 62.4,
+          "ma233": 0.0,
+          "price": 60.0,
+          "boll_mid": 0.0,
+          "dif": 0.0,
+          "dea": 0.0,
+          "macd_hist": 0.0
+        }
+      },
+      "decision": {
+        "action": "REDUCE_CAUTIOUSLY",
+        "confidence": 0.95,
+        "spacetime_overall": 0.66,
+        "risk_level": 0.5,
+        "level": "J",
+        "evidence": [
+          "[J+2] 状态=强 (大级别时空判定)",
+          "  DIF=-0.5000, DEA=-0.4000",
+          "[J] 结构=D, 方向=DOWN",
+          "  决策矩阵: 强×DOWN → REDUCE_CAUTIOUSLY",
+          "  操作备注: 卖出需谨慎, d1卖d2接, d3不稳定, d4买",
+          "[置信度] 0.95",
+          "[风险] 0.50"
+        ],
+        "note": "卖出需谨慎, d1卖d2接, d3不稳定, d4买",
+        "symbol": "000001"
+      },
+      "evidence": [
+        "[J+2] 状态=强 (大级别时空判定)",
+        "  DIF=-0.5000, DEA=-0.4000",
+        "[J] 结构=D, 方向=DOWN",
+        "  决策矩阵: 强×DOWN → REDUCE_CAUTIOUSLY",
+        "  操作备注: 卖出需谨慎, d1卖d2接, d3不稳定, d4买",
+        "[置信度] 0.95",
+        "[风险] 0.50"
+      ],
+      "metadata": {
+        "dry_run": true,
+        "symbol": "RC2",
+        "bars": 100,
+        "scenario": "curated"
+      }
+    },
+    {
+      "event_id": "EVT-000011",
+      "timestamp": 1783656444.199517,
+      "symbol": "000001",
+      "contexts": {
+        "J+2": {
+          "level": "J+2",
+          "symbol": "000001",
+          "state": "中偏弱",
+          "state_evidence": [
+            "DIF=0.3000, DEA=0.2000"
+          ],
+          "structure": "C",
+          "structure_direction": "UP",
+          "ma55": 95.0,
+          "ma233": 0.0,
+          "price": 100.0,
+          "boll_mid": 0.0,
+          "dif": 0.3,
+          "dea": 0.2,
+          "macd_hist": 0.1
+        },
+        "J": {
+          "level": "J",
+          "symbol": "000001",
+          "state": "强",
+          "state_evidence": [
+            "DIF=0.2000, DEA=0.1500"
+          ],
+          "structure": "C",
+          "structure_direction": "UP",
+          "ma55": 98.0,
+          "ma233": 0.0,
+          "price": 100.0,
+          "boll_mid": 0.0,
+          "dif": 0.2,
+          "dea": 0.15,
+          "macd_hist": 0.05
+        },
+        "J-1": {
+          "level": "J-1",
+          "symbol": "000001",
+          "state": "中偏强",
+          "state_evidence": [
+            "DIF=0.4000, DEA=0.3000"
+          ],
+          "structure": "A",
+          "structure_direction": "UP",
+          "ma55": 99.0,
+          "ma233": 0.0,
+          "price": 100.0,
+          "boll_mid": 100.0,
+          "dif": 0.4,
+          "dea": 0.3,
+          "macd_hist": 0.2
+        },
+        "J-2": {
+          "level": "J-2",
+          "symbol": "000001",
+          "state": "中偏强",
+          "state_evidence": [
+            "DIF=0.0000, DEA=0.0000"
+          ],
+          "structure": "A",
+          "structure_direction": "UP",
+          "ma55": 99.0,
+          "ma233": 0.0,
+          "price": 100.0,
+          "boll_mid": 0.0,
+          "dif": 0.0,
+          "dea": 0.0,
+          "macd_hist": 0.0
+        }
+      },
+      "decision": {
+        "action": "SCOUT_WITH_STOP",
+        "confidence": 0.7,
+        "spacetime_overall": 0.66,
+        "risk_level": 0.95,
+        "level": "J",
+        "evidence": [
+          "[J+2] 状态=中偏弱 (大级别时空判定)",
+          "  DIF=0.3000, DEA=0.2000",
+          "[J] 结构=C, 方向=UP",
+          "  决策矩阵: 中偏弱×UP → SCOUT_WITH_STOP",
+          "  操作备注: 中枢底部可以试仓, 但要注意严格止损",
+          "[时空] 综合=0.66 (时间=0.60, 空间=0.70)",
+          "  时空不充分, 降低置信度",
+          "[置信度] 0.70",
+          "[风险] 0.95"
+        ],
+        "note": "中枢底部可以试仓, 但要注意严格止损",
+        "symbol": "000001"
+      },
+      "evidence": [
+        "[J+2] 状态=中偏弱 (大级别时空判定)",
+        "  DIF=0.3000, DEA=0.2000",
+        "[J] 结构=C, 方向=UP",
+        "  决策矩阵: 中偏弱×UP → SCOUT_WITH_STOP",
+        "  操作备注: 中枢底部可以试仓, 但要注意严格止损",
+        "[时空] 综合=0.66 (时间=0.60, 空间=0.70)",
+        "  时空不充分, 降低置信度",
+        "[置信度] 0.70",
+        "[风险] 0.95"
+      ],
+      "metadata": {
+        "dry_run": true,
+        "symbol": "SC2",
+        "bars": 100,
+        "scenario": "curated"
+      }
+    }
+  ]
+}

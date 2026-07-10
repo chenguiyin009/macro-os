@@ -1,0 +1,166 @@
+# Trinity OS v2.1 配置文件
+# 三位一体交易决策操作系统 - 宏观配置
+# ==========================================
+
+# --- 级别嵌套定义 ---
+# J+2 做时空判断, J 判断结构, J-1 判断回抽布林带, J-2 辅助共振
+levels:
+  J_PLUS_2:
+    name: "J+2"
+    timeframe: "1W"          # 周线 (月线主涨段时为 1M)
+    role: "spacetime"        # 时空判定
+    description: "大级别时空极强，确保胜率"
+  J:
+    name: "J"
+    timeframe: "1D"          # 日线
+    role: "structure"        # 结构判定
+    description: "判断主升/主跌结构"
+  J_MINUS_1:
+    name: "J-1"
+    timeframe: "60"          # 60分钟
+    role: "pullback"         # 回抽布林带确认
+    description: "回抽布林带中轨确认主涨段"
+  J_MINUS_2:
+    name: "J-2"
+    timeframe: "15"          # 15分钟
+    role: "resonance"        # 均线共振辅助
+    description: "MA55 共振双重确认"
+
+# --- 指标参数 ---
+indicators:
+  ma:
+    periods: [55, 233]       # 斐波那契数列关键均线
+  macd:
+    fast: 12
+    slow: 26
+    signal: 9
+  bollinger:
+    period: 20
+    num_std: 2.0
+  zigzag:
+    threshold: 0.03          # ZigZag 转折阈值 (3%)
+
+# --- 时空充分性约束 ---
+spacetime:
+  # 时间对称: 周线级别两段下跌时间偏差不超过 N 周
+  time_symmetry_tolerance_weeks: 3
+  # 空间完整: 上一笔周线下跌须包含日线 D 型结构
+  require_d_structure: true
+  # 变盘窗口参考 (斐波那契/江恩)
+  time_windows: [13, 18, 21, 34, 55]
+  # 结构必完美: 最小结构段数
+  min_structure_segments: 3
+
+# --- 状态机定义 (MACD 拓扑六态) ---
+# 定义见《三位一体时空要素和结构要素》对应表
+state_machine:
+  states:
+    - EXTREME_STRONG    # 极强: DIF首穿零轴 → DEA首穿零轴
+    - STRONG            # 强: DEA首穿零轴 → 高位死叉
+    - MODERATE_STRONG   # 中偏强: 低位金叉 → DIF首穿零轴
+    - MODERATE_WEAK     # 中偏弱: 高位死叉 → DIF首穿零轴
+    - WEAK              # 弱: DEA首穿零轴 → 低位金叉
+    - EXTREME_WEAK      # 极弱: DIF首穿零轴 → DEA首穿零轴
+  # 极强状态判定辅助: 有效突破55线则极强概率大
+  extreme_state_ma_confirm: 55
+  # 极端状态提前半根K线判定
+  lookahead_half_bar: true
+
+# --- 决策逻辑矩阵 ---
+# 状态 × 结构 → 操作 (对应表)
+# 结构类型: A=五段式, B=双平台, C=单平台, D=三段式
+# 方向: UP=上涨, DOWN=下跌
+decision_matrix:
+  EXTREME_STRONG:
+    UP:
+      structures: ["A", "B"]
+      action: "STRONG_ADD"
+      note: "忽略顶部背离, 逢回抽55线买入"
+    DOWN:
+      structures: []
+      action: "HOLD"
+      note: "无对应下跌结构, 小心被洗走"
+  STRONG:
+    UP:
+      structures: ["B"]
+      action: "ADD_ON_PULLBACK"
+      note: "忽略小级别波动, b1/b3/b5/b7波段买入"
+    DOWN:
+      structures: ["D"]
+      action: "REDUCE_CAUTIOUSLY"
+      note: "卖出需谨慎, d1卖d2接, d3不稳定, d4买"
+  MODERATE_STRONG:
+    UP:
+      structures: ["C"]
+      action: "SCOUT_WITH_STOP"
+      note: "中枢底部试仓, 严格止损"
+    DOWN:
+      structures: ["C"]
+      action: "SCOUT_WITH_STOP"
+      note: "中枢底部试仓, 严格止损"
+  MODERATE_WEAK:
+    UP:
+      structures: ["C"]
+      action: "SCOUT_WITH_STOP"
+      note: "中枢底部试仓, 严格止损"
+    DOWN:
+      structures: ["C"]
+      action: "SCOUT_WITH_STOP"
+      note: "中枢底部试仓, 严格止损"
+  WEAK:
+    UP:
+      structures: ["D"]
+      action: "BUY_CAUTIOUSLY"
+      note: "买入需谨慎, d1买d2卖, d3不稳定, d4卖"
+    DOWN:
+      structures: ["B"]
+      action: "SELL_ON_BOUNCE"
+      note: "忽略小级别波动, b1/b3/b5/b7波段卖出"
+  EXTREME_WEAK:
+    UP:
+      structures: []
+      action: "HOLD"
+      note: "无对应上涨结构, 小心被骗线"
+    DOWN:
+      structures: ["A", "B"]
+      action: "STRONG_REDUCE"
+      note: "忽略底部背离, 逢回抽55线卖出"
+
+# --- 主涨段狙击条件 ---
+main_surge:
+  # J+2 极强 + J 结构主升 + J-1 回抽布林带中轨 + J-2 MA55共振
+  require_j2_state: "EXTREME_STRONG"
+  require_j1_bollinger_pullback: true
+  require_j2_ma55_resonance: false  # 双重确认可选
+  # 主涨段不最短 (波浪理论)
+  not_shortest_segment: true
+  # 末期加速特征
+  late_stage_acceleration: true
+
+# --- 风控参数 ---
+risk:
+  # 单票最大仓位 (按资金量分档)
+  position_tiers:
+    - max_capital: 200000
+      max_holding: 3
+      max_single_position: 0.30
+      initial_position: 0.15
+    - max_capital: 1000000
+      max_holding: 7
+      max_single_position: 0.20
+      initial_position: 0.10
+    - max_capital: 999999999
+      max_holding: 10
+      max_single_position: 0.15
+      initial_position: 0.05
+  # 止损: 依据入场级别止损, 不跨级别
+  stop_loss_same_level: true
+  # 加仓: 正金字塔递减
+  pyramiding_decreasing: true
+  # 止盈: 倒金字塔
+  take_profit_inverted_pyramid: true
+
+# --- 数据源 ---
+gateway:
+  default_source: "synthetic"   # synthetic | tv_mcp | futu | tdx
+  cache_dir: "data"

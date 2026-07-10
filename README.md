@@ -87,6 +87,37 @@ macro-os/
 └── README.md
 ```
 
+## Subsystems: Top-Down Flow
+
+Macro OS and Trinity OS together form one end-to-end, **top-down** investment
+pipeline — they are independent packages that coexist in this repo and neither
+overwrites the other:
+
+- **Macro OS (top)** — macro / sector-rotation analysis. Derives the investable
+  universe and risk budget from the macro regime state (`core/`, `runtime/`).
+- **Trinity OS (bottom)** — individual-stock buy/sell analysis. Consumes
+  candidate symbols and emits entry/exit decisions via the three-pillar model
+  (MA state machine × structure × space-time). Lives under `trinity/`.
+
+### Trinity OS entry points
+
+```bash
+# Trinity dry run (no ledger written)
+python -m trinity --dry-run --symbol 000001 --bars 100
+python -m trinity --dry-run --symbol 000001 --save-ledger data/ledger.json
+
+# Validate Trinity config / ledger
+python scripts/validate_trinity_macro_config.py
+python scripts/validate_trinity_ledger.py
+
+# Trinity tests
+python -m pytest tests/test_trinity_runtime_main.py tests/test_trinity_replay.py tests/test_causal_wiring.py -v
+```
+
+> Note: Trinity's runtime entry was moved from the top-level `runtime/` into
+> `trinity/main.py` so it would not collide with Macro OS's `runtime/main.py`.
+> Macro OS keeps `python -m runtime.main`; Trinity uses `python -m trinity`.
+
 ## Deployment
 
 ```bash
