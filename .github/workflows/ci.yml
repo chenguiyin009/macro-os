@@ -1,0 +1,52 @@
+# CI: regression guard for macro-os (macro/sector rotation) + trinity (bottom-up stock) subsystems.
+# Runs on every push to main and on every PR. Fails the build if ANY verification command fails.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # --- 1/7 full test suite (macro-os + trinity) ---
+      - name: Pytest (full suite)
+        run: python -m pytest tests/ -q --tb=short
+
+      # --- 2/7 macro-os config validation ---
+      - name: Validate macro config
+        run: python scripts/validate_macro_config.py
+
+      # --- 3/7 macro-os event ledger validation ---
+      - name: Validate macro ledger
+        run: python scripts/validate_ledger.py
+
+      # --- 4/7 trinity event-sourcing ledger validation ---
+      - name: Validate trinity ledger
+        run: python scripts/validate_trinity_ledger.py
+
+      # --- 5/7 macro-os runtime dry-run (main path) ---
+      - name: Dry-run macro runtime
+        run: python -m runtime.main --dry-run
+
+      # --- 6/7 trinity dry-run (bottom-up main path) ---
+      - name: Dry-run trinity
+        run: python -m trinity --dry-run
+
+      # --- 7/7 dependency smoke test (guards the pandas gap fixed in this branch) ---
+      - name: Smoke test critical imports
+        run: python -c "import pandas, pydantic, yaml, polars, numpy, httpx, pytest"
