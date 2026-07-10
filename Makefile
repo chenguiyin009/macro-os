@@ -1,4 +1,4 @@
-.PHONY: lint test run-runtime replay-events clean
+.PHONY: lint test run-runtime run-loop dry-run dry-run-trinity validate validate-config validate-ledger validate-trinity clean
 
 # ── Lint ──────────────────────────────────────────────────────────────────────
 lint:
@@ -12,7 +12,7 @@ test:
 	@echo "Running tests..."
 	@python -m pytest tests/ -v --tb=short
 
-# ── Run ────────────────────────────────────────────────────────────────────────
+# ── Run (macro-os) ─────────────────────────────────────────────────────────────
 run-runtime:
 	@echo "Running macro pipeline (single cycle)..."
 	@python -m runtime.main
@@ -22,16 +22,26 @@ run-loop:
 	@python -m runtime.main --loop
 
 dry-run:
-	@echo "Running dry run..."
+	@echo "Running macro dry run..."
 	@python -m runtime.main --dry-run
 
-# ── Replay (placeholder for Step 2) ────────────────────────────────────────────
-replay-events:
-	@echo "Replay engine not yet implemented — see Step 2"
+# ── Run (trinity, bottom-up subsystem) ─────────────────────────────────────────
+dry-run-trinity:
+	@echo "Running trinity dry run..."
+	@python -m trinity --dry-run
 
 # ── Validate ───────────────────────────────────────────────────────────────────
-validate:
+validate: validate-config validate-ledger validate-trinity
+	@echo "✓ All validations passed."
+
+validate-config:
+	@python scripts/validate_macro_config.py
+
+validate-ledger:
 	@python scripts/validate_ledger.py
+
+validate-trinity:
+	@python scripts/validate_trinity_ledger.py
 
 # ── Clean ──────────────────────────────────────────────────────────────────────
 clean:
