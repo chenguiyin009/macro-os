@@ -107,3 +107,34 @@ class PipelineEngine:
 
         with open(self.state_file, "w", encoding="utf-8") as sf:
             sf.write(content)
+
+
+class PineAnalysisNode(PipelineNode):
+    """Fetch a Pine script conclusion from TradingView and stage it for scoring.
+
+    Bridges macro-os to the live chart via adapters.TradingViewAdapter.fetch_pine_conclusions
+    (which shells out to relay/pine-bridge.mjs over CDP). The resulting PineConclusionSchema
+    is stored on the pipeline context so later nodes (scoring / decision kernel) can consume
+    it as a confirmation / divergence signal.
+    """
+
+    name = "pine_analysis"
+
+    def __init__(self, adapter, symbol: str | None = None, script_name: str | None = None):
+        self.adapter = adapter
+        self.symbol = symbol
+        self.script_name = script_name
+
+    def execute(self, ctx: PipelineContext) -> bool:
+        conclusion = self.adapter.fetch_pine_conclusions(
+            symbol=self.symbol,
+            script_name=self.script_name,
+        )
+        if conclusion is None:
+            ctx.errors.append("[pine_analysis] No Pine conclusion available")
+            return False
+
+        ctx.data["pine_conclusion"] = conclusion.model_dump()
+        signals = ctx.data.setdefault("signals", {})
+        signals["pine"] = conclusion.model_dump()
+        return True

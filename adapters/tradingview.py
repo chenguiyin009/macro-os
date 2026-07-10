@@ -15,9 +15,14 @@ import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from core.schemas import DataSource, FeatureSchema
+from core.schemas import DataSource, FeatureSchema, PineConclusionSchema
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_PINE_BRIDGE_SCRIPT = (
+    Path(__file__).resolve().parents[1] / "relay" / "pine-bridge.mjs"
+)
+DEFAULT_PINE_TIMEOUT_SECONDS = 30
 
 DEFAULT_RELAY_LOG_PATH = (
     Path(__file__).resolve().parents[2] / "relay" / "logs" / "tv-desktop-monitor.out.log"
@@ -228,6 +233,100 @@ class TradingViewAdapter:
             return relay_snapshot.model_dump_json()
 
         return self._mock_snapshot().model_dump_json()
+
+    # ── Pine conclusion bridge (relay/pine-bridge.mjs over CDP) ──
+
+    def fetch_pine_conclusions(
+        self,
+        symbol: Optional[str] = None,
+        script_name: Optional[str] = None,
+        cdp_url: str = "http://127.0.0.1:9222",
+    ) -> Optional[PineConclusionSchema]:
+        """Fetch a Pine script conclusion from TradingView via the CDP bridge.
+
+        Fallback chain: live bridge subprocess -> mock conclusion.
+        """
+        result = self._run_pine_bridge(symbol=symbol, script_name=script_name, cdp_url=cdp_url)
+        if result is not None:
+            return result
+        return self._mock_pine_conclusion(symbol=symbol, script_name=script_name)
+
+    def _run_pine_bridge(
+        self,
+        symbol: Optional[str],
+        script_name: Optional[str],
+        cdp_url: str,
+    ) -> Optional[PineConclusionSchema]:
+        bridge = DEFAULT_PINE_BRIDGE_SCRIPT
+        if not bridge.exists():
+            self._last_error = f"pine bridge missing: {bridge}"
+            logger.warning("TradingView pine bridge missing: %s", bridge)
+            return None
+
+        # Bridge always emits one JSON line on stdout; --json is accepted (no-op)
+        # and kept for parity with the bridge's documented CLI.
+        cmd = [self.mcp_command, str(bridge), "--json", "--cdp-url", cdp_url]
+        if symbol:
+            cmd += ["--symbol", symbol]
+        if script_name:
+            cmd += ["--script", script_name]
+
+        try:
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=DEFAULT_PINE_TIMEOUT_SECONDS,
+            )
+        except (subprocess.TimeoutExpired, subprocess.SubprocessError, FileNotFoundError) as exc:
+            self._last_error = f"pine bridge subprocess failed: {exc}"
+            logger.warning("TradingView pine bridge subprocess failed: %s", exc)
+            return None
+
+        if proc.returncode != 0:
+            self._last_error = f"pine bridge exited {proc.returncode}: {proc.stderr.strip()[:200]}"
+            logger.warning("TradingView pine bridge error: %s", self._last_error)
+            return None
+
+        return self._parse_pine_output(proc.stdout)
+
+    def _parse_pine_output(self, raw_text: str) -> Optional[PineConclusionSchema]:
+        """Parse the bridge's single-line JSON conclusion."""
+        # The bridge prints exactly one JSON line; tolerate extra whitespace.
+        for line in raw_text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            if not line.startswith("{"):
+                continue
+            try:
+                data = json.loads(line)
+                conclusion = PineConclusionSchema(**data)
+                self._last_success_time = time.time()
+                self._last_error = None
+                return conclusion
+            except (json.JSONDecodeError, ValueError, TypeError) as exc:
+                self._last_error = f"pine output parse failed: {exc}"
+                logger.warning("TradingView pine output parse failed: %s", exc)
+        return None
+
+    def _mock_pine_conclusion(
+        self,
+        symbol: Optional[str],
+        script_name: Optional[str],
+    ) -> PineConclusionSchema:
+        """Return a clearly-labeled mock Pine conclusion for local development."""
+        return PineConclusionSchema(
+            source_script=script_name or "MOCK",
+            symbol=symbol or "TVC:GOLD",
+            tf="1D",
+            chart_title="mock",
+            signal=None,
+            confidence=None,
+            value=None,
+            label=None,
+            payload={"study_name": "MOCK", "study_kind": "", "values": [], "plots": []},
+        )
 
     def health(self) -> Dict[str, Any]:
         """Return adapter health status."""
