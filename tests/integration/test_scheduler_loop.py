@@ -15,11 +15,13 @@ largest untested blind spot in the system. Verified against source (AST + read):
     The time-block point is ``time.sleep`` imported at module top, so the only
     safe patch target is ``runtime.scheduler.time.sleep``.
   * There is NO max-iteration / watchdog / timeout guard. The loop only exits
-    when ``stop()`` flips ``self._running`` to False.  ``run_loop`` itself has
-    no try/except, so an exception raised inside ``run_once`` (i.e. inside
-    ``Orchestrator.run_pipeline``) propagates straight out of ``run_loop`` — a
-    single bad cycle kills the whole 7x24 daemon.  That fragility is asserted
-    here as a REGRESSION GUARD (and flagged as a risk to harden), NOT changed.
+    when ``stop()`` flips ``self._running`` to False.  ``run_loop`` isolates
+    each cycle in a ``try/except Exception``: a cycle that raises inside
+    ``run_once`` (i.e. inside ``Orchestrator.run_pipeline``) is caught, logged,
+    and reported via ``_notify_crash`` (a best-effort ``[CRITICAL_ALERT]`` to
+    the Feishu adapter), then the loop sleeps and proceeds to the next cycle.
+    A single bad cycle can NO LONGER kill the 7x24 daemon.  This contract is
+    locked by ``test_run_loop_recovers_from_pipeline_exception_and_alerts``.
 
 THE HARD PART — avoiding a real (or infinite) sleep in the test:
   ``run_loop`` would otherwise block for ``interval_seconds`` (>=900s at the
@@ -109,30 +111,37 @@ class TestSchedulerLoop:
 
         assert sleep_calls == [120], "循环未按 interval_minutes*60 秒阻塞"
 
-    def test_run_loop_propagates_pipeline_exception(self):
-        """REGRESSION GUARD: a single bad cycle kills the daemon.
+    def test_run_loop_recovers_from_pipeline_exception_and_alerts(self):
+        """HARDENED CONTRACT: a bad cycle is isolated, alerted, and the loop
+        proceeds to the next cycle instead of dying.
 
-        ``run_loop`` has no internal try/except, so an exception raised inside
-        ``run_once`` (i.e. ``Orchestrator.run_pipeline``) propagates straight
-        out of ``run_loop``.  This is the fragile behavior we must NOT silently
-        paper over — it is asserted so any future hardening (e.g. a per-cycle
-        try/except) is a deliberate, visible change rather than an accident.
+        Replaces the old regression guard (exception propagated out of
+        run_loop).  The previous fragility — a single failed cycle killing the
+        entire 7x24 daemon — was explicitly hardened; this test now locks the
+        NEW behavior: catch + log + ``[CRITICAL_ALERT]`` + continue.  Any future
+        regression back to "one bad cycle kills the daemon" will fail here.
         """
         orch = _make_orchestrator(side_effect=RuntimeError("pipeline boom"))
 
-        def fake_sleep(seconds):  # never reached; exception precedes the sleep
-            sched.stop()
+        sleep_calls = []
+
+        def fake_sleep(seconds):
+            sleep_calls.append(seconds)
+            sched.stop()  # signal-driven graceful shutdown still ends the loop
 
         sched = Scheduler(orch, interval_minutes=0)
         with patch("runtime.scheduler.time.sleep", side_effect=fake_sleep):
-            try:
-                sched.run_loop()
-            except RuntimeError as exc:
-                assert str(exc) == "pipeline boom"
-            else:
-                raise AssertionError(
-                    "run_loop 未将 pipeline 异常向上传播 — 守护进程脆点已被静默"
-                )
+            sched.run_loop()  # must NOT raise — the daemon survives the bad cycle
+
+        # pipeline ran once, crashed, and was caught (no propagation upward)
+        assert orch.run_pipeline.call_count == 1
+        # crash alert dispatched with the required [CRITICAL_ALERT] token
+        assert orch.feishu.send_alert.called, "崩溃未触发 [CRITICAL_ALERT] 通知"
+        alert_msg = orch.feishu.send_alert.call_args.args[0]
+        assert "[CRITICAL_ALERT]" in alert_msg, "告警消息缺少 [CRITICAL_ALERT] 标识"
+        # loop still slept and honored the interval before the next cycle
+        assert sleep_calls == [0], "容错恢复后未执行 time.sleep 进入下一周期"
+        assert sched._running is False, "stop() 未生效"
 
 
 class TestSchedulerStopHealth:

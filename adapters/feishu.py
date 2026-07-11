@@ -64,6 +64,19 @@ class FeishuAdapter:
         }
         return self._post(payload)
 
+    def send_alert(self, message: str) -> bool:
+        """Send a critical-alert notification from a single string.
+
+        Thin wrapper over :meth:`send_message` so callers (the scheduler's
+        crash alert in ``runtime/scheduler.py`` and the error path in
+        ``runtime/main.py``) can raise an alert with one argument.
+
+        NOTE: this method was previously *called* (e.g. ``main.py`` error
+        path) but never *implemented* — a latent ``AttributeError`` in the
+        very error path it was meant to guard.  Now implemented.
+        """
+        return self.send_message(title="[CRITICAL_ALERT]", text=message)
+
     def _build_card(self, decision: Decision, features_summary: str) -> Dict[str, Any]:
         """Build a Feishu interactive card payload."""
         return {
