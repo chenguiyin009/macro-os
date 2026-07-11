@@ -12,5 +12,9 @@ aiosqlite>=0.19,<1.0
 httpx>=0.27,<1.0
 fastapi>=0.110,<1.0
 
+# --- soft / optional runtime deps (not imported at module load; degrade gracefully) ---
+futu-api>=6.0.0   # FutuSensor: lazy `import futu` wrapped in try/except -> DEGRADED mode when absent
+uvicorn>=0.22.0   # runtime/macro_core.py `__main__`: lazy import only when launched as ASGI server
+
 # --- test / verification ---
 pytest>=8.0,<10.0
