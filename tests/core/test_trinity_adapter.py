@@ -104,3 +104,37 @@ def test_fail_safe_returns_hold_on_exception():
     assert ra.action_type == RiskActionType.HOLD
     assert "adapter_exception" in ra.reason
     assert "simulated crash" in ra.metadata.get("exception", "")
+
+
+def test_extract_size_trailing_exit():
+    """_extract_size 修复：trailing_exit 场景返回 exit_size 而非 0。"""
+    from core.adapters.trinity_adapter import TrinityAdapter as TA
+
+    adapter = TA()
+    # trailing_exit 的 log 结构：无 position 对象，有 exit_size
+    log = {"action": "trailing_exit", "exit_size": 150.5}
+    assert adapter._extract_size(log) == 150.5
+
+
+def test_extract_size_initial_entry():
+    from core.adapters.trinity_adapter import TrinityAdapter as TA
+    from core.risk_gateway_v2_2_1 import Position
+
+    adapter = TA()
+    log = {"action": "initial_entry", "position": Position(entry_price=100.0, size=3333.33, hard_stop=95.0)}
+    assert adapter._extract_size(log) == 3333.33
+
+
+def test_extract_size_fatal_gap():
+    from core.adapters.trinity_adapter import TrinityAdapter as TA
+
+    adapter = TA()
+    log = {"action": "fatal_gap_liquidation", "total_closed_size": 1200.0}
+    assert adapter._extract_size(log) == 1200.0
+
+
+def test_extract_size_fallback_zero():
+    from core.adapters.trinity_adapter import TrinityAdapter as TA
+
+    adapter = TA()
+    assert adapter._extract_size({"action": "hold"}) == 0.0

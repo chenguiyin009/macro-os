@@ -135,8 +135,21 @@ class TrinityAdapter:
         """从网关日志中提取 size，兼容不同返回结构。
 
         - initial_entry / pyramid_add → position.size
+        - trailing_exit → exit_size
         - fatal_gap_liquidation → total_closed_size（全平后无 position 对象）
         """
+        # 1. 尝试从 position 对象获取 size
         if "position" in log and log["position"] is not None:
-            return float(getattr(log["position"], "size", 0.0))
-        return float(log.get("total_closed_size", 0.0))
+            size = getattr(log["position"], "size", 0)
+            if size and size > 0:
+                return float(size)
+
+        # 2. trailing_exit 场景（log 中直接有 exit_size）
+        if "exit_size" in log and log.get("exit_size"):
+            return float(log["exit_size"])
+
+        # 3. FATAL_GAP_LIQUIDATION 全平场景
+        if "total_closed_size" in log and log.get("total_closed_size"):
+            return float(log["total_closed_size"])
+
+        return 0.0
