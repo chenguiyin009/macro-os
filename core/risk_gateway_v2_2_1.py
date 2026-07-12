@@ -34,6 +34,7 @@ class MarketState:
     atr: float
     spacetime_score: float
     j1_confirmed: bool               # J-1 回抽确认标志
+    open: Optional[float] = None     # 当根 bar 开盘价（用于检测跳空低开穿透硬止损）
     macro_vix: float = 20.0          # VIX 或等效宏观波动率
     macro_commodity_shock: float = 0.0  # 布伦特等大宗商品异动幅度（可选）
     timestamp: datetime = field(default_factory=datetime.now)
@@ -208,6 +209,12 @@ class RiskGateway:
                 log = {"action": "initial_entry", "position": pos}
             return log
 
+        # 1.5 Phase 2 硬止损跳空强制全平（最高优先级，阻断后续加仓/跟踪止盈）
+        # 消除回测“理想止损”幻觉：价格跳空低开/跌破 hard_stop 时，按真实跳空价全平。
+        breach, gap_price = self._detect_hard_stop_breach(state)
+        if breach:
+            return self._fatal_gap_liquidation(gap_price)
+
         current_total_risk = self._calculate_total_risk_pct(account_balance)
 
         # 2. 金字塔加仓（含宏观熔断）
@@ -247,6 +254,56 @@ class RiskGateway:
         self.active_positions = [p for p in self.active_positions if p.remaining_size > 0.0001]
 
         return log
+
+    # ------------------------------------------------------------------
+    # Phase 2: 硬止损跳空强制全平（Gap Liquidation）
+    # ------------------------------------------------------------------
+    def _detect_hard_stop_breach(self, state: MarketState) -> "tuple[bool, Optional[float]]":
+        """检测是否发生硬止损跳空穿透。
+
+        判定（任一成立即视为穿透）：
+          * 当根 bar 开盘价直接低于 hard_stop（跳空低开）；
+          * 当根 bar 当前价低于 hard_stop（盘中击穿）。
+        返回 (是否穿透, 触发穿透的参考价)；参考价用于计算真实撮合价。
+        """
+        if self.initial_hard_stop is None:
+            return False, None
+        if state.open is not None and state.open < self.initial_hard_stop:
+            return True, state.open
+        if state.current_price < self.initial_hard_stop:
+            return True, state.current_price
+        return False, None
+
+    def _fatal_gap_liquidation(self, gap_price: Optional[float]) -> Dict[str, Any]:
+        """硬止损跳空强制全平：清空所有持仓，返回强平动作日志。
+
+        真实撮合价 = min(hard_stop, gap_price)（跳空越深，成交越差），
+        由回测器在 _execute_action 中再叠加 ATR 滑点 + 手续费，体现真实“流血”。
+        """
+        ref = gap_price if gap_price is not None else self.initial_hard_stop
+        liq_price = min(self.initial_hard_stop, ref) if self.initial_hard_stop is not None else ref
+        closed = [
+            {
+                "entry_price": p.entry_price,
+                "size": p.remaining_size,
+                "hard_stop": p.hard_stop,
+            }
+            for p in self.active_positions
+        ]
+        total_closed_size = sum(c["size"] for c in closed)
+        self.active_positions = []
+        self.initial_hard_stop = None
+        logger.warning(
+            "FATAL_GAP_LIQUIDATION: 硬止损跳空穿透，强制全平 | liq_price=%.2f | size=%.4f",
+            liq_price,
+            total_closed_size,
+        )
+        return {
+            "action": "fatal_gap_liquidation",
+            "liquidation_price": liq_price,
+            "closed_positions": closed,
+            "total_closed_size": total_closed_size,
+        }
 
     def get_status(self) -> Dict[str, Any]:
         return {

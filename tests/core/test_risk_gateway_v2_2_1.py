@@ -259,3 +259,36 @@ def test_gateway_status_fields():
         "active_positions_count", "total_remaining_size",
         "current_trailing_stop", "pyramid_step", "initial_hard_stop",
     }
+
+
+# ---------------- Phase 2: 硬止损跳空强制全平 ----------------
+def test_gateway_gap_liquidation_on_open_below_hard_stop():
+    gw = RiskGateway()
+    gw.process_tick(1_000_000, make_state(current_price=100, d3_low=95, atr=2, spacetime_score=0.87, j1_confirmed=False))
+    # 跳空低开 90，击穿 hard_stop=95
+    res = gw.process_tick(1_000_000, make_state(current_price=90, open=90, d3_low=95, atr=2, spacetime_score=0.87))
+    assert res["action"] == "fatal_gap_liquidation"
+    # 真实撮合价 = min(hard_stop, gap_price) = min(95, 90) = 90
+    assert abs(res["liquidation_price"] - 90.0) < 1e-9
+    assert len(gw.active_positions) == 0
+    assert gw.initial_hard_stop is None
+    assert res["total_closed_size"] > 0
+
+
+def test_gateway_gap_liquidation_on_current_price_below_hard_stop():
+    gw = RiskGateway()
+    gw.process_tick(1_000_000, make_state(current_price=100, d3_low=95, atr=2, spacetime_score=0.87, j1_confirmed=False))
+    # 盘中击穿（open 未破，但 current_price 跌破）
+    res = gw.process_tick(1_000_000, make_state(current_price=92, open=96, d3_low=95, atr=2, spacetime_score=0.87))
+    assert res["action"] == "fatal_gap_liquidation"
+    # 真实撮合价 = min(95, 92) = 92
+    assert abs(res["liquidation_price"] - 92.0) < 1e-9
+
+
+def test_gateway_no_fatal_when_price_holds_above_hard_stop():
+    gw = RiskGateway()
+    gw.process_tick(1_000_000, make_state(current_price=100, d3_low=95, atr=2, spacetime_score=0.87, j1_confirmed=False))
+    # 价格仍在 hard_stop 之上 -> 不触发强平
+    res = gw.process_tick(1_000_000, make_state(current_price=98, open=97, d3_low=95, atr=2, spacetime_score=0.87))
+    assert res["action"] != "fatal_gap_liquidation"
+    assert len(gw.active_positions) >= 1

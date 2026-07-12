@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 
 from core.backtester import BacktestResult, SimpleBacktester, compute_atr
-from core.risk_gateway_v2_2_1 import RiskGateway
+from core.risk_gateway_v2_2_1 import MarketState, RiskGateway
 from core.structure_parser import StructureParser
 
 
@@ -101,3 +101,39 @@ def test_backtester_empty_df_no_crash():
     res = bt.run(df, StructureParser(), RiskGateway())
     assert res.metrics["total_trades"] == 0
     assert len(res.equity_curve) == 0
+
+
+def test_backtester_fatal_gap_liquidation_records_loss():
+    # 直接进入持仓，再以跳空强平动作清仓，验证真实撮合价 + 亏损 round-trip
+    bt = SimpleBacktester()
+    bt.initial_capital = 1_000_000.0
+    bt.cash = 1_000_000.0
+    bt.positions = [{"entry_price": 100.0, "size": 10.0, "entry_cost": 1000.0, "realized_proceeds": 0.0}]
+    row = pd.Series({"close": 90.0, "open": 90.0, "atr": 2.0, "vix": 22.0})
+    state = MarketState(
+        current_price=90.0, d3_low=95.0, atr=2.0, spacetime_score=0.9,
+        j1_confirmed=False, open=90.0, macro_vix=22.0,
+    )
+    log = {"action": "fatal_gap_liquidation", "liquidation_price": 90.0}
+    bt._execute_action(log, row, state)
+    assert bt.positions == []  # 全平
+    assert len(bt.trades) == 1 and bt.trades[0]["type"] == "fatal_gap_liquidation"
+    # 跳空价 90 叠加卖空滑点 -> 成交价 < 90；round-trip 为亏损
+    assert bt.round_trips and bt.round_trips[0] < 0
+
+
+def test_backtester_gateway_integration_gap_liquidation():
+    # 集成：网关判定跳空强平 -> 回测器真实全平并记录亏损回合
+    gw = RiskGateway()
+    bt = SimpleBacktester()
+    s1 = MarketState(current_price=100.0, d3_low=95.0, atr=2.0, spacetime_score=0.95, j1_confirmed=False)
+    log1 = gw.process_tick(1_000_000.0, s1)
+    bt._execute_action(log1, pd.Series({"close": 100.0, "open": 100.0, "atr": 2.0, "vix": 22.0}), s1)
+    assert len(bt.positions) == 1
+
+    s2 = MarketState(current_price=90.0, d3_low=95.0, atr=2.0, spacetime_score=0.95, j1_confirmed=False, open=90.0)
+    log2 = gw.process_tick(1_000_000.0, s2)
+    assert log2["action"] == "fatal_gap_liquidation"
+    bt._execute_action(log2, pd.Series({"close": 90.0, "open": 90.0, "atr": 2.0, "vix": 22.0}), s2)
+    assert len(bt.positions) == 0
+    assert bt.round_trips and bt.round_trips[0] < 0  # 跳空流血 -> 亏损

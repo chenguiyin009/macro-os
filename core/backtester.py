@@ -135,6 +135,7 @@ class SimpleBacktester:
                 atr=float(row["atr"]) if "atr" in df.columns else float(row["close"]) * 0.02,
                 spacetime_score=self.spacetime_score,
                 j1_confirmed=struct.j1_confirmed,
+                open=float(row["open"]) if "open" in df.columns else None,
                 macro_vix=float(row.get("vix", 22.0)),
             )
             log = risk_gateway.process_tick(self.cash, state)
@@ -191,6 +192,22 @@ class SimpleBacktester:
                         # 完整 round-trip 结算：净盈亏 = 已实现 proceeds - 建仓成本
                         self.round_trips.append(pos["realized_proceeds"] - pos["entry_cost"])
                 self.positions = [p for p in self.positions if p["size"] > 1e-9]
+        elif action == "fatal_gap_liquidation":
+            # Phase 2 硬止损跳空强制全平：按真实跳空价（叠加卖空滑点+手续费）清掉所有持仓，
+            # 每笔完整 round-trip 记录 realized PnL，体现真实“流血”程度。
+            liq_price = float(log.get("liquidation_price", row["close"]))
+            if self.positions:
+                exec_price = self._apply_slippage(liq_price, state.atr, is_buy=False)
+                for pos in self.positions[:]:
+                    proceeds = pos["size"] * exec_price * (1 - self.commission_rate)
+                    self.cash += proceeds
+                    pos["realized_proceeds"] += proceeds
+                    self.trades.append(
+                        {"type": "fatal_gap_liquidation", "price": exec_price, "size": pos["size"], "proceeds": proceeds}
+                    )
+                    # 完整 round-trip 结算：净盈亏 = 已实现 proceeds - 建仓成本
+                    self.round_trips.append(pos["realized_proceeds"] - pos["entry_cost"])
+                self.positions = []
 
     # ------------------------------------------------------------------
     # 指标（已修复 win_rate / profit_factor 的逐笔误判 bug）
