@@ -1,112 +1,94 @@
-"""Phase 2 回归测试：Trinity OS v2.2.1 结构解析器 (StructureParser)。
+"""Phase 2 回归测试：Trinity OS v2.2.1 结构解析器（D 结构修订版）。
 
 锁定：
-  * 分形摆动低点识别（左右窗口严格小于邻 bar）；
-  * D3 低点 = 最近 lookback 内最低摆动低点；
-  * J-1 回抽确认（更高低点 + 收阳）及其反面（下破结构）。
+  * 2-bar 窗口 H/L 分形识别；
+  * D 结构校验（最近 4 pivot 须为 H-L-H-L 且 D3<D1）；
+  * J-1 回抽确认（当前 low 守住结构 + 近 5 根出现过更低低点）；
+  * parse 的早退/有效性门控（idx<20、pivot 不足、atr>0）。
 """
 from __future__ import annotations
 
 import pandas as pd
 
-from core.structure_parser import StructureParser, build_market_state
+from core.structure_parser import StructureParser, StructureResult
 
 
-def _ohlc(lows, opens=None, closes=None, highs=None):
-    n = len(lows)
-    opens = opens if opens is not None else lows
-    closes = closes if closes is not None else [x + 0.5 for x in lows]
-    highs = highs if highs is not None else [x + 1.0 for x in lows]
-    return pd.DataFrame({"open": opens, "high": highs, "low": lows, "close": closes})
+def test_detect_pivots_finds_hl():
+    highs = [10, 11, 15, 12, 9, 11, 16, 13, 10]
+    lows = [9, 10, 14, 11, 8, 10, 15, 12, 9]
+    df = pd.DataFrame({"open": lows, "high": highs, "low": lows, "close": lows, "atr": [1.0] * 9})
+    sp = StructureParser()
+    tuples = [(t, v, i) for (t, v, i) in sp._detect_pivots(df)]
+    assert ("H", 15.0, 2) in tuples
+    assert ("L", 8.0, 4) in tuples
 
 
-def test_detect_pivots_finds_swing_lows():
-    lows = [10, 8, 12, 9, 14, 7, 15]
-    df = _ohlc(lows)
-    sp = StructureParser(lookback=20, pivot_left=1, pivot_right=1)
-    idxs = [i for (i, _) in sp._detect_pivots(df)]
-    assert 1 in idxs and 3 in idxs and 5 in idxs
-    assert 0 not in idxs and 6 not in idxs
+def test_detect_pivots_too_short():
+    df = pd.DataFrame({"open": [1, 2], "high": [2, 3], "low": [1, 2], "close": [1, 2], "atr": [1, 1]})
+    sp = StructureParser()
+    assert sp._detect_pivots(df) == []
 
 
-def test_find_d3_low_returns_lowest_recent_pivot():
-    lows = [10, 8, 12, 9, 14, 7, 15]
-    df = _ohlc(lows)
-    sp = StructureParser(lookback=20, pivot_left=1, pivot_right=1)
-    pivots = sp._detect_pivots(df)
-    assert sp._find_d3_low(pivots, current_idx=6) == 7.0
+def test_validate_d_structure_valid():
+    sp = StructureParser()
+    assert sp._validate_d_structure([("H", 12, 1), ("L", 8, 3), ("H", 14, 5), ("L", 7, 7)]) == 7.0
 
 
-def test_find_d3_low_respects_lookback():
-    lows = [3, 8, 12, 9, 14, 7, 15]
-    df = _ohlc(lows)
-    sp = StructureParser(lookback=3, pivot_left=1, pivot_right=1)
-    pivots = sp._detect_pivots(df)
-    # 在 idx=6 处，lookback=3 只看 idx>=4 的摆动低点 -> 只有 5(7.0)
-    assert sp._find_d3_low(pivots, current_idx=6) == 7.0
+def test_validate_d_structure_d3_not_below_d1():
+    sp = StructureParser()
+    assert sp._validate_d_structure([("H", 12, 1), ("L", 8, 3), ("H", 14, 5), ("L", 9, 7)]) is None
 
 
-def test_j1_confirmation_true_when_higher_low_and_bullish():
+def test_validate_d_structure_wrong_types():
+    sp = StructureParser()
+    assert sp._validate_d_structure([("H", 12, 1), ("H", 8, 3), ("H", 14, 5), ("L", 7, 7)]) is None
+
+
+def test_j1_confirmation_true():
+    sp = StructureParser()
+    df = pd.DataFrame({"low": [10.0] * 20 + [8.0, 8.0, 5.0, 8.0, 8.0]})
+    assert sp._check_j1_pullback_confirmation(df, 7.0) is True
+
+
+def test_j1_confirmation_false_no_dip():
+    sp = StructureParser()
+    df = pd.DataFrame({"low": [10.0] * 20 + [8.0, 8.0, 8.0, 8.0, 8.0]})
+    assert sp._check_j1_pullback_confirmation(df, 7.0) is False
+
+
+def test_parse_too_short_invalid():
     df = pd.DataFrame(
-        {
-            "open": [10.0, 8.5, 9.0],
-            "high": [10.5, 9.0, 9.6],
-            "low": [9.5, 8.0, 8.4],
-            "close": [10.2, 8.7, 9.3],
-        }
+        {"open": [1.0] * 10, "high": [2.0] * 10, "low": [0.5] * 10, "close": [1.0] * 10, "atr": [1.0] * 10}
     )
-    sp = StructureParser(j1_tolerance=0.005)
-    # prev(idx1) low=8.0 == d3, 收阳(8.7>8.5) -> 确认
-    assert sp._check_j1_pullback_confirmation(df, 2, 8.0) is True
+    sp = StructureParser()
+    res = sp.parse(df, 9)
+    assert res.structure_valid is False
+    assert res.d3_low is None
 
 
-def test_j1_confirmation_false_when_bearish_close():
+def test_parse_returns_structure_result():
+    low = [8.0] * 30
     df = pd.DataFrame(
-        {
-            "open": [10.0, 8.5, 9.0],
-            "high": [10.5, 9.0, 9.6],
-            "low": [9.5, 8.0, 8.4],
-            "close": [10.2, 8.3, 9.3],  # idx1 收阴
-        }
+        {"open": low, "high": [x + 1 for x in low], "low": low, "close": low, "atr": [1.0] * 30}
     )
-    sp = StructureParser(j1_tolerance=0.005)
-    assert sp._check_j1_pullback_confirmation(df, 2, 8.0) is False
+    sp = StructureParser()
+    # 注入合法 D 结构，隔离 parse 的高层逻辑
+    sp._detect_pivots = lambda d: [("H", 12.0, 1), ("L", 8.0, 3), ("H", 14.0, 5), ("L", 7.0, 7)]
+    res = sp.parse(df, 29)
+    assert isinstance(res, StructureResult)
+    assert res.d3_low == 7.0
+    assert res.structure_valid is True  # low[-1]=8 > d3=7 且 atr>0
+    assert res.j1_confirmed is False    # 近 5 根无更低低点
 
 
-def test_j1_confirmation_false_when_undercut():
+def test_parse_j1_true_when_recent_dip():
+    low = [8.0] * 25 + [8.0, 8.0, 5.0, 8.0, 8.0]
     df = pd.DataFrame(
-        {
-            "open": [10.0, 8.5, 9.0],
-            "high": [10.5, 9.0, 9.6],
-            "low": [9.5, 7.5, 8.4],  # prev 下破 d3=8.0
-            "close": [10.2, 8.7, 9.3],
-        }
+        {"open": low, "high": [x + 1 for x in low], "low": low, "close": low, "atr": [1.0] * 30}
     )
-    sp = StructureParser(j1_tolerance=0.005)
-    assert sp._check_j1_pullback_confirmation(df, 2, 8.0) is False
-
-
-def test_parse_returns_structure_dict():
-    lows = [10, 8, 12, 9, 14, 7, 15]
-    df = _ohlc(lows)
-    sp = StructureParser(lookback=20)
-    out = sp.parse(df, 6)
-    assert set(out.keys()) == {"d3_low", "j1_confirmed", "structure_valid"}
-    assert out["d3_low"] == 7.0
-    assert out["structure_valid"] is True
-
-
-def test_build_market_state_wires_parser_and_scorer():
-    class FakeScorer:
-        def calculate(self, df, idx):
-            return 0.9
-
-    lows = [10, 8, 12, 9, 14, 7, 15]
-    df = _ohlc(lows, highs=[x + 1.0 for x in lows])
-    df["atr"] = [1.0] * len(lows)
-    sp = StructureParser(lookback=20)
-    ms = build_market_state(sp, FakeScorer(), df, 6, {"vix": 30.0})
-    assert ms.d3_low == 7.0
-    assert ms.spacetime_score == 0.9
-    assert ms.macro_vix == 30.0
-    assert ms.current_price == 15.5
+    sp = StructureParser()
+    sp._detect_pivots = lambda d: [("H", 12.0, 1), ("L", 8.0, 3), ("H", 14.0, 5), ("L", 7.0, 7)]
+    res = sp.parse(df, 29)
+    assert res.d3_low == 7.0
+    assert res.j1_confirmed is True
+    assert res.structure_valid is True

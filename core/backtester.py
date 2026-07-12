@@ -1,45 +1,48 @@
-"""Trinity OS v2.2.1 — Phase 2 回测框架 (SimpleBacktester)。
+"""Trinity OS v2.2.1 — Phase 2 回测框架 (SimpleBacktester)，修订版（对齐 Grok 链接规格）。
 
 WHY THIS FILE EXISTS
 --------------------
-风险网关 Phase 1 的 demo 是手搓 `MarketState` 推演。Phase 2 需要一条**可回归**的
-回测链路，把 `StructureParser` + 上游 `SpacetimeEngine` + `RiskGateway` 串起来，
-对历史 OHLC 跑出可量化的绩效指标。链接原型里 `SimpleBacktester` 的 `_build_state`
-是 `pass`、equity 曲线直接等于不变 capital（错误）；这里给出**真实可运行**版本。
+v2.2.1 风险网关需要一条**可回归**的回测链路，把 StructureParser + RiskGateway 串起来。
+本文件是链接给出的**权威修订规格**：加入 ATR 动态滑点、双边手续费、浮动盈亏权益曲线、
+完整绩效指标（含 win_rate / profit_factor）。相对上一轮"理想成交"版本，本版更贴近实盘。
 
-设计决策（原链接未定义，显式记录）：
-  * ATR：若输入 df 无 `atr` 列，用 Wilder 平滑自动派生（period=14），使回测可直接吃
-    原始 OHLC。
-  * 持仓记账：回测器内部维护 `_book`（每笔建仓的 entry/remaining），与 `RiskGateway`
-    内部持仓保持同向（均从最新头寸递减），从而能计算每个 tick 的未实现盈亏。
-  * 盈亏：建仓记录成本；`trailing_exit` 时按 `exit_size` 从最新 lot 递减，已实现
-    盈亏 = Σ(deduct × (exit_price − entry))，计入 capital；每根 bar 的 equity =
-    capital + 未实现盈亏。
-  * 指标：final_equity / total_return / max_drawdown / sharpe / trade_count。
+链接原文已明确标注一处 bug，本实现**直接修复**：
+  * 原 `_generate_report` 用逐笔 trades 判定胜负——但建仓笔只有 cost、平仓笔只有
+    proceeds，没有任何一笔同时具备二者，于是所有 exits 都被误判为胜（win_rate 恒为 1）。
+  * 修复：引入 `round_trips`（每个头寸完整平仓时的净盈亏），win_rate / profit_factor
+    基于 round-trip 已实现盈亏计算，符合"完整回合"语义。
 
-纯增量、零耦合：仅依赖 numpy/pandas + 同目录 `risk_gateway_v2_2_1` 与
-`structure_parser`，不触碰 runtime/main 等主流程。
+设计要点：
+  * 滑点：buy 加、sell 减，幅度 = atr * slippage_atr_mult。
+  * 手续费：建仓成本含 (1+commission_rate)，平仓 proceeds 扣 (1-commission_rate)。
+  * 盈亏记账：每个头寸记录 entry_cost 与累计 realized_proceeds；size 归零时结算一笔
+    round-trip 净盈亏（proceeds - entry_cost）。
+  * spacetime_score 设为可配参数（链接硬编码 0.87，这里参数化以便测试与复用）。
+  * 输入无 atr 列时自动用 Wilder ATR(14) 派生。
+
+纯增量、零耦合：仅依赖 numpy/pandas + 同目录 risk_gateway / structure_parser。
+注意：每次 run 请传入一个**全新** RiskGateway 实例（本类不重置传入的网关状态）。
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
 
 import logging
 import numpy as np
 import pandas as pd
 
 from core.risk_gateway_v2_2_1 import MarketState, RiskGateway
-from core.structure_parser import StructureParser
+from core.structure_parser import StructureParser, StructureResult
 
 logger = logging.getLogger("Trinity.Backtester")
 
 
-@runtime_checkable
-class SpacetimeScorer(Protocol):
-    """上游时空评分引擎协议；calculate(df, idx) -> float ∈ (0, 1]。"""
-
-    def calculate(self, df: pd.DataFrame, idx: int) -> float:  # pragma: no cover - protocol
-        ...
+@dataclass
+class BacktestResult:
+    equity_curve: pd.Series
+    metrics: Dict[str, float]
+    trades: List[Dict[str, Any]]
 
 
 def compute_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
@@ -68,13 +71,22 @@ def compute_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
 class SimpleBacktester:
     """对 `RiskGateway` 做单标的、逐 bar 回测，输出绩效指标。"""
 
-    def __init__(self, initial_capital: float = 1_000_000.0) -> None:
+    def __init__(
+        self,
+        initial_capital: float = 1_000_000.0,
+        commission_rate: float = 0.0003,
+        slippage_atr_mult: float = 0.35,
+        spacetime_score: float = 0.87,
+    ) -> None:
         self.initial_capital = float(initial_capital)
-        self.capital = self.initial_capital
-        self.gateway = RiskGateway()
-        self.trades: List[Dict[str, Any]] = []
+        self.commission_rate = commission_rate
+        self.slippage_atr_mult = slippage_atr_mult
+        self.spacetime_score = spacetime_score
+        self.cash = self.initial_capital
+        self.positions: List[Dict[str, Any]] = []
         self.equity_curve: List[float] = []
-        self._book: List[Dict[str, float]] = []
+        self.trades: List[Dict[str, Any]] = []
+        self.round_trips: List[float] = []
 
     # ------------------------------------------------------------------
     # 内部辅助
@@ -86,30 +98,22 @@ class SimpleBacktester:
         out["atr"] = compute_atr(out, period=14)
         return out
 
-    def _build_state(
-        self,
-        df: pd.DataFrame,
-        i: int,
-        parser: StructureParser,
-        scorer: SpacetimeScorer,
-        macro_series: Optional[List[Dict[str, float]]],
-    ) -> MarketState:
-        struct = parser.parse(df, i)
-        score = float(scorer.calculate(df, i))
-        row = df.iloc[i]
-        macro = macro_series[i] if (macro_series is not None and i < len(macro_series)) else {}
-        d3 = struct["d3_low"]
-        if d3 is None:
-            d3 = float(row["low"])
-        return MarketState(
-            current_price=float(row["close"]),
-            d3_low=d3,
-            atr=float(row["atr"]) if "atr" in df.columns else float(row.get("atr", 0.0)),
-            spacetime_score=score,
-            j1_confirmed=struct["j1_confirmed"],
-            macro_vix=float(macro.get("vix", 20.0)),
-            macro_commodity_shock=float(macro.get("brent_shock", 0.0)),
-        )
+    def _apply_slippage(self, price: float, atr: float, is_buy: bool) -> float:
+        slippage = atr * self.slippage_atr_mult
+        return price + slippage if is_buy else price - slippage
+
+    def _calculate_equity(self, current_price: float) -> float:
+        floating_pnl = 0.0
+        for pos in self.positions:
+            floating_pnl += (current_price - pos["entry_price"]) * pos["size"]
+        return self.cash + floating_pnl
+
+    def _reset(self) -> None:
+        self.cash = self.initial_capital
+        self.positions = []
+        self.equity_curve = []
+        self.trades = []
+        self.round_trips = []
 
     # ------------------------------------------------------------------
     # 主循环
@@ -118,104 +122,124 @@ class SimpleBacktester:
         self,
         df: pd.DataFrame,
         structure_parser: StructureParser,
-        spacetime_engine: SpacetimeScorer,
-        macro_series: Optional[List[Dict[str, float]]] = None,
-    ) -> Dict[str, float]:
-        self.capital = self.initial_capital
-        self.gateway = RiskGateway()
-        self.trades = []
-        self.equity_curve = []
-        self._book = []
-
+        risk_gateway: RiskGateway,
+    ) -> BacktestResult:
+        self._reset()
         df = self._ensure_atr(df)
-        n = len(df)
-        for i in range(n):
-            state = self._build_state(df, i, structure_parser, spacetime_engine, macro_series)
-            log = self.gateway.process_tick(self.capital, state)
-            action = log.get("action")
+        for i in range(30, len(df)):
+            row = df.iloc[i]
+            struct: StructureResult = structure_parser.parse(df, i)
+            state = MarketState(
+                current_price=float(row["close"]),
+                d3_low=struct.d3_low if struct.d3_low is not None else float(row["close"]) * 0.95,
+                atr=float(row["atr"]) if "atr" in df.columns else float(row["close"]) * 0.02,
+                spacetime_score=self.spacetime_score,
+                j1_confirmed=struct.j1_confirmed,
+                macro_vix=float(row.get("vix", 22.0)),
+            )
+            log = risk_gateway.process_tick(self.cash, state)
+            self._execute_action(log, row, state)
+            equity = self._calculate_equity(float(row["close"]))
+            self.equity_curve.append(equity)
+        return self._generate_report()
 
-            if action in ("initial_entry", "pyramid_add"):
-                pos = log.get("position")
-                if pos is not None:
-                    self._book.append(
-                        {"entry": float(pos.entry_price), "remaining": float(pos.size)}
-                    )
-                    self.trades.append(
+    # ------------------------------------------------------------------
+    # 动作执行 + 记账
+    # ------------------------------------------------------------------
+    def _execute_action(self, log: Dict[str, Any], row: pd.Series, state: MarketState) -> None:
+        action = log.get("action")
+        if action in ("initial_entry", "pyramid_add"):
+            intended_price = float(row["close"])
+            exec_price = self._apply_slippage(intended_price, state.atr, is_buy=True)
+            pos_obj = log.get("position")
+            size = pos_obj.size if pos_obj is not None else 0.0
+            if size > 0:
+                cost = size * exec_price * (1 + self.commission_rate)
+                if self.cash >= cost:
+                    self.cash -= cost
+                    self.positions.append(
                         {
-                            "idx": i,
-                            "action": action,
-                            "price": state.current_price,
-                            "size": pos.size,
+                            "entry_price": exec_price,
+                            "size": size,
+                            "entry_cost": cost,
+                            "realized_proceeds": 0.0,
+                            "hard_stop": pos_obj.hard_stop if pos_obj is not None else exec_price * 0.95,
                         }
                     )
-            elif action == "trailing_exit":
-                exit_size = float(log.get("exit_size", 0.0))
-                exit_price = state.current_price
-                remaining = exit_size
-                realized = 0.0
-                while remaining > 1e-9 and self._book:
-                    lot = self._book[-1]
-                    deduct = min(lot["remaining"], remaining)
-                    realized += deduct * (exit_price - lot["entry"])
-                    lot["remaining"] -= deduct
-                    remaining -= deduct
-                    if lot["remaining"] <= 1e-9:
-                        self._book.pop()
-                self.capital += realized
-                self.trades.append(
-                    {
-                        "idx": i,
-                        "action": action,
-                        "price": exit_price,
-                        "size": exit_size,
-                        "realized_pnl": realized,
-                    }
-                )
+                    self.trades.append(
+                        {"type": action, "price": exec_price, "size": size, "cost": cost}
+                    )
+        elif action == "trailing_exit":
+            exit_size = log.get("exit_size", 0.0)
+            if exit_size > 0 and self.positions:
+                intended_price = float(row["close"])
+                exec_price = self._apply_slippage(intended_price, state.atr, is_buy=False)
+                remaining_to_exit = exit_size
+                for pos in self.positions[:]:
+                    if remaining_to_exit <= 0:
+                        break
+                    deduct = min(pos["size"], remaining_to_exit)
+                    proceeds = deduct * exec_price * (1 - self.commission_rate)
+                    self.cash += proceeds
+                    pos["size"] -= deduct
+                    pos["realized_proceeds"] += proceeds
+                    remaining_to_exit -= deduct
+                    self.trades.append(
+                        {"type": "partial_exit", "price": exec_price, "size": deduct, "proceeds": proceeds}
+                    )
+                    if pos["size"] <= 1e-9:
+                        # 完整 round-trip 结算：净盈亏 = 已实现 proceeds - 建仓成本
+                        self.round_trips.append(pos["realized_proceeds"] - pos["entry_cost"])
+                self.positions = [p for p in self.positions if p["size"] > 1e-9]
 
-            unreal = sum(
-                lot["remaining"] * (state.current_price - lot["entry"]) for lot in self._book
+    # ------------------------------------------------------------------
+    # 指标（已修复 win_rate / profit_factor 的逐笔误判 bug）
+    # ------------------------------------------------------------------
+    def _generate_report(self) -> BacktestResult:
+        equity = pd.Series(self.equity_curve, dtype=float)
+        if len(equity):
+            returns = equity.pct_change().dropna()
+            total_return = (equity.iloc[-1] / self.initial_capital - 1.0) * 100.0
+            with np.errstate(divide="ignore", invalid="ignore"):
+                peak = equity.cummax()
+                max_dd = ((equity / peak - 1.0).min()) * 100.0
+            sharpe = (
+                float(returns.mean() / returns.std() * np.sqrt(252))
+                if returns.std() > 0
+                else 0.0
             )
-            self.equity_curve.append(self.capital + unreal)
+            final_equity = float(equity.iloc[-1])
+        else:
+            total_return = 0.0
+            max_dd = 0.0
+            sharpe = 0.0
+            final_equity = self.initial_capital
 
-        return self._calculate_metrics()
+        # FIX: 用完整 round-trip 净盈亏判定胜负，而非逐笔 trades（原实现 exits 全判胜）
+        wins = [p for p in self.round_trips if p > 0]
+        losses = [p for p in self.round_trips if p < 0]
+        win_rate = len(wins) / len(self.round_trips) if self.round_trips else 0.0
+        gross_profit = sum(wins)
+        gross_loss = abs(sum(losses))
+        profit_factor = gross_profit / gross_loss if gross_loss > 0 else float("inf")
 
-    # ------------------------------------------------------------------
-    # 指标
-    # ------------------------------------------------------------------
-    def _calculate_metrics(self) -> Dict[str, float]:
-        if not self.equity_curve:
-            return {
-                "final_equity": self.initial_capital,
-                "total_return": 0.0,
-                "max_drawdown": 0.0,
-                "sharpe": 0.0,
-                "trade_count": 0.0,
-            }
-        eq = pd.Series(self.equity_curve, dtype=float)
-        returns = eq.pct_change().dropna()
-        with np.errstate(divide="ignore", invalid="ignore"):
-            peak = eq.cummax()
-            dd = eq / peak - 1.0
-        max_dd = float(dd.min()) if len(dd) else 0.0
-        sharpe = (
-            float(returns.mean() / returns.std() * np.sqrt(252))
-            if returns.std() > 0
-            else 0.0
-        )
-        return {
-            "final_equity": float(eq.iloc[-1]),
-            "total_return": float(eq.iloc[-1] / eq.iloc[0] - 1.0),
-            "max_drawdown": max_dd,
-            "sharpe": sharpe,
-            "trade_count": float(len(self.trades)),
+        metrics = {
+            "total_return_pct": round(total_return, 2),
+            "max_drawdown_pct": round(max_dd, 2),
+            "sharpe_ratio": round(sharpe, 2),
+            "win_rate": round(win_rate, 4),
+            "profit_factor": round(profit_factor, 2),
+            "total_trades": len(self.trades),
+            "final_equity": round(final_equity, 2),
         }
+        return BacktestResult(equity_curve=equity, metrics=metrics, trades=self.trades)
 
 
 if __name__ == "__main__":  # pragma: no cover - 手动 sanity
     rng = np.random.default_rng(7)
     prices = []
     p = 100.0
-    for _ in range(120):
+    for _ in range(160):
         p += rng.normal(0.2, 1.0)
         prices.append(p)
     demo = pd.DataFrame(
@@ -226,11 +250,6 @@ if __name__ == "__main__":  # pragma: no cover - 手动 sanity
             "close": prices,
         }
     )
-
-    class _Scorer:
-        def calculate(self, df, idx):
-            return 0.9
-
     bt = SimpleBacktester(initial_capital=1_000_000.0)
-    metrics = bt.run(demo, StructureParser(lookback=20), _Scorer())
-    print("Backtest metrics:", metrics)
+    result = bt.run(demo, StructureParser(), RiskGateway())
+    print("Backtest metrics:", result.metrics)

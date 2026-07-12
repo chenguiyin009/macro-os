@@ -1,144 +1,102 @@
-"""Trinity OS v2.2.1 — Phase 2 结构解析器 (StructureParser)。
+"""Trinity OS v2.2.1 — Phase 2 结构解析器 (StructureParser)，修订版（对齐 Grok 链接规格）。
 
 WHY THIS FILE EXISTS
 --------------------
-风险网关 v2.2.1 的 Phase 1 只落地了 `risk_gateway_v2_2_1.py`（接受标准化的
-`MarketState`，输出动作）。Phase 2 需要把"原始行情"翻译成 `MarketState`，
-本模块就是这条链路的输入端：从 OHLC 序列中识别结构低点 (D3 low) 与 J-1 回抽确认。
+v2.2.1 风险网关需要"原始行情 -> MarketState"的翻译层。本文件是链接给出的
+**权威修订规格**：用 D 结构（H-L-H-L + D3 破 D1）识别结构低点，并做 J-1 回抽确认
+与 ATR 有效性过滤。相对上一轮自实现的"最低近期摆动低点"版本，本算法更严格、更接近
+实盘结构定义，故据此对齐（上一轮实现整体替换）。
 
-链接原型里 `StructureParser` 的三个核心方法是 `pass` 占位；这里给出**真实可运行**
-的实现，设计决策（原链接未定义）如下，全部显式记录以便审计与回归：
+设计要点（来自链接规格）：
+  * `_detect_pivots`：2-bar 窗口内的 H/L 分形（high/low 严格大于左右各 2 根）。
+  * `_validate_d_structure`：取最近 4 个 pivot，必须为 H-L-H-L，且 D3 低点严格低于
+    D1 低点，否则结构不成立。
+  * `_check_j1_pullback_confirmation`：当前 low 高于 D3 结构低点（守住），且最近 5 根
+    内出现过更低低点（发生过回抽）。
+  * `parse`：idx<20 或 pivot 不足 4 个时返回 structure_valid=False；并要求 atr>0。
 
-  * `_detect_pivots`：分形摆动低点。bar `i` 在其左右各 `pivot_{left,right}` 根
-    窗口内，低点严格小于所有邻 bar 低点时，判定为摆动低点。
-  * `_find_d3_low`：在最近 `lookback` 根 bar 的摆动低点中，取**最低**者作为结构
-    防御低点（即"守住就不破"的参考位）。这是对"D3 低点"的可操作解释。
-  * `_check_j1_pullback_confirmation`：J-1 回抽确认 = 上一根 bar 的 low 在容忍度
-    `j1_tolerance` 内未下破 D3 结构低点（形成更高低点），且收阳（close > open）。
-
-纯增量、零耦合：仅依赖 pandas + 同目录 `risk_gateway_v2_2_1.MarketState`。
+纯增量、零耦合：仅依赖 pandas（+ dataclasses），不 import 任何 Trinity 其它模块。
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from dataclasses import dataclass
+from typing import List, Optional, Tuple
 
 import pandas as pd
 
-from core.risk_gateway_v2_2_1 import MarketState
+
+@dataclass
+class StructureResult:
+    d3_low: Optional[float]
+    j1_confirmed: bool
+    structure_valid: bool
+    last_pivot_low: Optional[float] = None
 
 
 class StructureParser:
-    """从 OHLC 序列解析结构低点与回抽确认，供 RiskGateway 构造 MarketState。"""
+    """从 OHLC 序列解析 D 结构与 J-1 回抽确认。"""
 
-    def __init__(
-        self,
-        lookback: int = 20,
-        pivot_left: int = 1,
-        pivot_right: int = 1,
-        j1_tolerance: float = 0.005,
-    ) -> None:
-        self.lookback = int(lookback)
-        self.pivot_left = int(pivot_left)
-        self.pivot_right = int(pivot_right)
-        self.j1_tolerance = float(j1_tolerance)
-        self.last_d3_low: Optional[float] = None
-        self.last_structure_valid: bool = False
+    def __init__(self, atr_period: int = 14, atr_filter_mult: float = 0.8) -> None:
+        self.atr_period = int(atr_period)
+        self.atr_filter_mult = float(atr_filter_mult)
 
-    # ------------------------------------------------------------------
-    # 私有解析原语
-    # ------------------------------------------------------------------
-    def _detect_pivots(self, df_slice: pd.DataFrame) -> List[Tuple[int, float]]:
-        """识别分形摆动低点：bar i 的 low 严格小于窗口内所有邻 bar 的 low。"""
-        lows = df_slice["low"].to_numpy(dtype=float)
-        n = len(lows)
-        pivots: List[Tuple[int, float]] = []
-        L, R = self.pivot_left, self.pivot_right
-        for i in range(L, n - R):
-            is_low = True
-            for k in range(1, L + 1):
-                if lows[i] >= lows[i - k]:
-                    is_low = False
-                    break
-            if is_low:
-                for k in range(1, R + 1):
-                    if lows[i] >= lows[i + k]:
-                        is_low = False
-                        break
-            if is_low:
-                pivots.append((i, float(lows[i])))
+    def parse(self, df: pd.DataFrame, current_idx: int) -> StructureResult:
+        if current_idx < 20:
+            return StructureResult(d3_low=None, j1_confirmed=False, structure_valid=False)
+
+        window = df.iloc[: current_idx + 1].copy()
+        pivots = self._detect_pivots(window)
+        if len(pivots) < 4:
+            return StructureResult(d3_low=None, j1_confirmed=False, structure_valid=False)
+
+        d3_low = self._validate_d_structure(pivots)
+        if d3_low is None:
+            return StructureResult(d3_low=None, j1_confirmed=False, structure_valid=False)
+
+        j1_confirmed = self._check_j1_pullback_confirmation(window, d3_low)
+        current_atr = float(window["atr"].iloc[-1])
+        structure_valid = (float(window["low"].iloc[-1]) > d3_low) and (current_atr > 0)
+
+        return StructureResult(
+            d3_low=d3_low,
+            j1_confirmed=j1_confirmed,
+            structure_valid=structure_valid,
+            last_pivot_low=pivots[-1][1] if pivots else None,
+        )
+
+    def _detect_pivots(self, df: pd.DataFrame) -> List[Tuple[str, float, int]]:
+        pivots: List[Tuple[str, float, int]] = []
+        n = len(df)
+        for i in range(2, n - 2):
+            high = float(df["high"].iloc[i])
+            low = float(df["low"].iloc[i])
+            if (
+                high > df["high"].iloc[i - 2 : i].max()
+                and high > df["high"].iloc[i + 1 : i + 3].max()
+            ):
+                pivots.append(("H", high, i))
+            if (
+                low < df["low"].iloc[i - 2 : i].min()
+                and low < df["low"].iloc[i + 1 : i + 3].min()
+            ):
+                pivots.append(("L", low, i))
         return pivots
 
-    def _find_d3_low(
-        self, pivots: List[Tuple[int, float]], current_idx: int
-    ) -> Optional[float]:
-        """最近 lookback 根 bar 内的摆动低点中取最低者作为结构防御低点。"""
-        lo = current_idx - self.lookback
-        recent = [price for (idx, price) in pivots if idx >= lo]
-        if not recent:
+    def _validate_d_structure(self, pivots: List[Tuple[str, float, int]]) -> Optional[float]:
+        if len(pivots) < 4:
             return None
-        return min(recent)
+        recent = pivots[-4:]
+        types = [p[0] for p in recent]
+        if types != ["H", "L", "H", "L"]:
+            return None
+        d1_low = recent[1][1]
+        d3_low = recent[3][1]
+        if d3_low >= d1_low:
+            return None
+        return d3_low
 
-    def _check_j1_pullback_confirmation(
-        self, df: pd.DataFrame, idx: int, d3_low: Optional[float]
-    ) -> bool:
-        """J-1 回抽确认：上一根 bar 未下破结构（更高低点）且收阳。"""
-        if idx < 1 or d3_low is None:
-            return False
-        prev = df.iloc[idx - 1]
-        prev_low = float(prev["low"])
-        prev_open = float(prev["open"])
-        prev_close = float(prev["close"])
-        held = prev_low >= d3_low * (1.0 - self.j1_tolerance)
-        bullish = prev_close > prev_open
-        return held and bullish
-
-    # ------------------------------------------------------------------
-    # 公开接口
-    # ------------------------------------------------------------------
-    def parse(self, df: pd.DataFrame, current_idx: int) -> Dict[str, Any]:
-        """解析截至 current_idx 的结构信息。"""
-        sl = df.iloc[: current_idx + 1]
-        pivots = self._detect_pivots(sl)
-        d3_low = self._find_d3_low(pivots, current_idx)
-        j1_confirmed = (
-            self._check_j1_pullback_confirmation(df, current_idx, d3_low)
-            if d3_low is not None
-            else False
+    def _check_j1_pullback_confirmation(self, df: pd.DataFrame, d3_low: float) -> bool:
+        recent_lows = df["low"].iloc[-5:]
+        return (float(df["low"].iloc[-1]) > d3_low) and (
+            float(recent_lows.min()) < float(df["low"].iloc[-5])
         )
-        self.last_d3_low = d3_low
-        self.last_structure_valid = d3_low is not None
-        return {
-            "d3_low": d3_low,
-            "j1_confirmed": j1_confirmed,
-            "structure_valid": self.last_structure_valid,
-        }
-
-
-def build_market_state(
-    parser: StructureParser,
-    spacetime_engine: Any,
-    df: pd.DataFrame,
-    idx: int,
-    macro_data: Optional[Dict[str, float]] = None,
-) -> MarketState:
-    """把原始行情 + 结构解析 + 时空评分 + 宏观数据，组装成 RiskGateway 的输入契约。
-
-    `spacetime_engine` 需提供 `calculate(df, idx) -> float`（Phase 2 由上游注入；
-    回测测试中以假对象注入）。当结构暂无有效 D3 低点时，回退为当根 bar 的 low。
-    """
-    macro_data = macro_data or {}
-    struct = parser.parse(df, idx)
-    score = float(spacetime_engine.calculate(df, idx))
-    row = df.iloc[idx]
-    d3 = struct["d3_low"]
-    if d3 is None:
-        d3 = float(row["low"])
-    return MarketState(
-        current_price=float(row["close"]),
-        d3_low=d3,
-        atr=float(row["atr"]) if "atr" in df.columns else 0.0,
-        spacetime_score=score,
-        j1_confirmed=struct["j1_confirmed"],
-        macro_vix=float(macro_data.get("vix", 20.0)),
-        macro_commodity_shock=float(macro_data.get("brent_shock", 0.0)),
-    )

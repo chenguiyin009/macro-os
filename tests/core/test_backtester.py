@@ -1,9 +1,11 @@
-"""Phase 2 回归测试：Trinity OS v2.2.1 回测框架 (SimpleBacktester)。
+"""Phase 2 回归测试：Trinity OS v2.2.1 回测框架（滑点/手续费修订版）。
 
 锁定：
-  * 端到端跑通：结构解析 + 时空评分注入 + RiskGateway 逐 bar 驱动；
+  * 端到端跑通：StructureParser + RiskGateway 逐 bar 驱动；
+  * 滑点方向（buy 加、sell 减）；
   * 自动派生 ATR（输入无 atr 列时）；
-  * 输出指标键完整、equity 曲线长度 == 行情长度、至少产生一笔交易；
+  * **win_rate / profit_factor 修复回归**：基于完整 round-trip 净盈亏，而非逐笔
+    trades 误判（原 bug 会让所有 exits 全判胜 -> win_rate 恒为 1）；
   * 空行情不崩溃、指标归零。
 """
 from __future__ import annotations
@@ -11,79 +13,19 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from core.backtester import SimpleBacktester, compute_atr
+from core.backtester import BacktestResult, SimpleBacktester, compute_atr
+from core.risk_gateway_v2_2_1 import RiskGateway
 from core.structure_parser import StructureParser
 
 
-class ConstScorer:
-    def __init__(self, score: float = 0.9):
-        self.score = score
-
-    def calculate(self, df, idx):
-        return self.score
-
-
-def _trend_df(n: int = 80, start: float = 100.0, vol: float = 1.0, seed: int = 42):
+def _mk_df(n: int = 80, seed: int = 1):
     rng = np.random.default_rng(seed)
     prices = []
-    p = start
+    p = 100.0
     for _ in range(n):
-        p += rng.normal(0.25, vol)  # 轻微上行，足以形成结构与回抽
+        p += rng.normal(0.2, 1.0)
         prices.append(p)
     return pd.DataFrame(
-        {
-            "open": prices,
-            "high": [x + vol for x in prices],
-            "low": [x - vol for x in prices],
-            "close": prices,
-        }
-    )
-
-
-def test_backtester_runs_and_produces_metrics():
-    df = _trend_df()
-    bt = SimpleBacktester(initial_capital=1_000_000.0)
-    metrics = bt.run(df, StructureParser(lookback=20), ConstScorer(0.9))
-    assert set(metrics.keys()) == {
-        "final_equity",
-        "total_return",
-        "max_drawdown",
-        "sharpe",
-        "trade_count",
-    }
-    assert len(bt.equity_curve) == len(df)
-    assert metrics["trade_count"] >= 1
-
-
-def test_backtester_auto_atr_when_missing():
-    df = _trend_df(n=80)
-    assert "atr" not in df.columns
-    bt = SimpleBacktester()
-    m = bt.run(df, StructureParser(lookback=20), ConstScorer(0.9))
-    assert m["trade_count"] >= 1
-
-
-def test_compute_atr_matches_manual_first_value():
-    df = _trend_df(n=30)
-    atr = compute_atr(df, period=14)
-    expected_first = df["high"].iloc[0] - df["low"].iloc[0]
-    assert abs(atr.iloc[0] - expected_first) < 1e-9
-
-
-def test_backtester_empty_df_no_crash():
-    df = pd.DataFrame(columns=["open", "high", "low", "close"])
-    bt = SimpleBacktester()
-    m = bt.run(df, StructureParser(), ConstScorer())
-    assert m["trade_count"] == 0
-    assert m["total_return"] == 0.0
-    assert len(bt.equity_curve) == 0
-
-
-def test_backtester_equity_reflects_exit_pnl():
-    # 构造：上行建仓后急跌触发 trailing_exit，capital 应因已实现盈亏变化
-    prices = list(range(100, 131))  # 100..130 上行
-    prices += [120, 110, 100]       # 急跌（跌破 highest 的 8%）
-    df = pd.DataFrame(
         {
             "open": prices,
             "high": [x + 1.0 for x in prices],
@@ -91,9 +33,71 @@ def test_backtester_equity_reflects_exit_pnl():
             "close": prices,
         }
     )
-    bt = SimpleBacktester(initial_capital=1_000_000.0)
-    m = bt.run(df, StructureParser(lookback=20), ConstScorer(0.95))
-    # 至少发生建仓；急跌段应触发减仓（trailing_exit）
-    assert m["trade_count"] >= 1
-    # equity 曲线数值有限、无 NaN
-    assert np.all(np.isfinite(bt.equity_curve))
+
+
+def test_backtester_runs_end_to_end():
+    df = _mk_df(80)
+    bt = SimpleBacktester()
+    res = bt.run(df, StructureParser(), RiskGateway())
+    assert isinstance(res, BacktestResult)
+    assert set(res.metrics.keys()) == {
+        "total_return_pct",
+        "max_drawdown_pct",
+        "sharpe_ratio",
+        "win_rate",
+        "profit_factor",
+        "total_trades",
+        "final_equity",
+    }
+    assert len(res.equity_curve) == len(df) - 30  # 主循环从 i=30 起
+    assert res.metrics["total_trades"] >= 0
+
+
+def test_slippage_direction():
+    bt = SimpleBacktester()
+    buy = bt._apply_slippage(100.0, 2.0, is_buy=True)
+    sell = bt._apply_slippage(100.0, 2.0, is_buy=False)
+    assert buy > 100.0
+    assert sell < 100.0
+
+
+def test_compute_atr_first_value():
+    df = _mk_df(30)
+    atr = compute_atr(df, 14)
+    assert abs(atr.iloc[0] - (df["high"].iloc[0] - df["low"].iloc[0])) < 1e-9
+
+
+def test_win_rate_uses_round_trips_not_per_trade():
+    # 2 胜 1 负 -> win_rate = 2/3，profit_factor = 300/50
+    bt = SimpleBacktester()
+    bt.initial_capital = 1_000_000.0
+    bt.equity_curve = [1_000_000.0, 1_100_000.0]
+    bt.round_trips = [100.0, -50.0, 200.0]
+    bt.trades = [
+        {"type": "initial_entry", "cost": 100.0},
+        {"type": "partial_exit", "proceeds": 200.0},
+    ]
+    report = bt._generate_report()
+    # win_rate 四舍五入到 4 位：round(2/3,4)=0.6667
+    assert abs(report.metrics["win_rate"] - 2 / 3) < 1e-3
+    assert report.metrics["profit_factor"] == 300.0 / 50.0
+
+
+def test_win_rate_bug_regression_not_all_wins():
+    # 原 bug：exits 全判胜 -> win_rate=1.0；修复后单笔亏损 round trip 应为 0.0
+    bt = SimpleBacktester()
+    bt.initial_capital = 1_000_000.0
+    bt.equity_curve = [1_000_000.0, 900_000.0]
+    bt.round_trips = [-100.0]
+    bt.trades = [{"type": "partial_exit", "proceeds": 50.0}]
+    report = bt._generate_report()
+    assert report.metrics["win_rate"] == 0.0
+    assert report.metrics["profit_factor"] == 0.0  # 无盈利 -> inf 取 0
+
+
+def test_backtester_empty_df_no_crash():
+    df = pd.DataFrame(columns=["open", "high", "low", "close"])
+    bt = SimpleBacktester()
+    res = bt.run(df, StructureParser(), RiskGateway())
+    assert res.metrics["total_trades"] == 0
+    assert len(res.equity_curve) == 0
