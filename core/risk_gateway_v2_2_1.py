@@ -210,10 +210,10 @@ class RiskGateway:
             return log
 
         # 1.5 Phase 2 硬止损跳空强制全平（最高优先级，阻断后续加仓/跟踪止盈）
-        # 消除回测“理想止损”幻觉：价格跳空低开/跌破 hard_stop 时，按真实跳空价全平。
-        breach, gap_price = self._detect_hard_stop_breach(state)
+        # 消除回测"理想止损"幻觉：价格跳空低开/跌破 hard_stop 时，按真实跳空价全平。
+        breach, gap_price, breached_pos = self._detect_hard_stop_breach(state)
         if breach:
-            return self._fatal_gap_liquidation(gap_price)
+            return self._fatal_gap_liquidation(gap_price, breached_pos)
 
         current_total_risk = self._calculate_total_risk_pct(account_balance)
 
@@ -258,30 +258,40 @@ class RiskGateway:
     # ------------------------------------------------------------------
     # Phase 2: 硬止损跳空强制全平（Gap Liquidation）
     # ------------------------------------------------------------------
-    def _detect_hard_stop_breach(self, state: MarketState) -> "tuple[bool, Optional[float]]":
-        """检测是否发生硬止损跳空穿透。
+    def _detect_hard_stop_breach(self, state: MarketState) -> "tuple[bool, Optional[float], Optional[Position]]":
+        """检测是否发生硬止损跳空穿透（Phase 2 修订：逐个 pos 检查 + initial_hard_stop 并集）。
 
         判定（任一成立即视为穿透）：
-          * 当根 bar 开盘价直接低于 hard_stop（跳空低开）；
-          * 当根 bar 当前价低于 hard_stop（盘中击穿）。
-        返回 (是否穿透, 触发穿透的参考价)；参考价用于计算真实撮合价。
+          * 当根 bar 开盘价直接低于任一持仓的 hard_stop（跳空低开）；
+          * 当根 bar 当前价低于任一持仓的 hard_stop（盘中击穿）；
+          * 当根 bar 开盘价/当前价低于全局 initial_hard_stop。
+        返回 (是否穿透, 触发穿透的参考价, 首个被穿透的持仓)。
         """
-        if self.initial_hard_stop is None:
-            return False, None
-        if state.open is not None and state.open < self.initial_hard_stop:
-            return True, state.open
-        if state.current_price < self.initial_hard_stop:
-            return True, state.current_price
-        return False, None
+        if not self.active_positions:
+            return False, None, None
+        # 逐个持仓检查（PDF 核心意图：任何单笔穿透都应触发全平）
+        for pos in self.active_positions:
+            if state.open is not None and state.open < pos.hard_stop:
+                return True, state.open, pos
+            if state.current_price < pos.hard_stop:
+                return True, state.current_price, pos
+        # 并集：全局 initial_hard_stop 穿透也触发
+        if self.initial_hard_stop is not None:
+            if state.open is not None and state.open < self.initial_hard_stop:
+                return True, state.open, None
+            if state.current_price < self.initial_hard_stop:
+                return True, state.current_price, None
+        return False, None, None
 
-    def _fatal_gap_liquidation(self, gap_price: Optional[float]) -> Dict[str, Any]:
+    def _fatal_gap_liquidation(self, gap_price: Optional[float], breached_pos: Optional[Position] = None) -> Dict[str, Any]:
         """硬止损跳空强制全平：清空所有持仓，返回强平动作日志。
 
         真实撮合价 = min(hard_stop, gap_price)（跳空越深，成交越差），
-        由回测器在 _execute_action 中再叠加 ATR 滑点 + 手续费，体现真实“流血”。
+        由回测器在 _execute_action 中再叠加 ATR 滑点 + 手续费，体现真实"流血"。
         """
-        ref = gap_price if gap_price is not None else self.initial_hard_stop
-        liq_price = min(self.initial_hard_stop, ref) if self.initial_hard_stop is not None else ref
+        breached_stop = breached_pos.hard_stop if breached_pos is not None else (self.initial_hard_stop or 0.0)
+        ref = gap_price if gap_price is not None else breached_stop
+        liq_price = min(breached_stop, ref) if breached_stop > 0 else ref
         closed = [
             {
                 "entry_price": p.entry_price,
@@ -300,6 +310,9 @@ class RiskGateway:
         )
         return {
             "action": "fatal_gap_liquidation",
+            "reason": "hard_stop_gap_breach",
+            "breached_stop": breached_stop,
+            "gap_price": ref,
             "liquidation_price": liq_price,
             "closed_positions": closed,
             "total_closed_size": total_closed_size,
