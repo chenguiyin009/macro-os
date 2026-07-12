@@ -48,7 +48,7 @@ class TrinityAdapter:
         ledger: Optional[EvidenceLedger] = None,
     ) -> None:
         self.risk_gateway = risk_gateway or RiskGateway()
-        self.ledger = ledger or EvidenceLedger()
+        self.ledger = ledger if ledger is not None else EvidenceLedger()
 
     def to_market_state(
         self,

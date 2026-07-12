@@ -27,6 +27,13 @@ from core.schemas import DataSource, Event, FeatureSchema, KernelDecision
 from core.sector.sector_allocator import SectorAllocator
 from core.shadow_engine import ShadowEngine
 
+# Phase 3: 风控集成层（可通过 ENABLE_RISK_GATEWAY 配置开关控制）
+from core.integration.risk_integration import (
+    initialize_risk_integration,
+    should_execute_risk_action,
+)
+from core.adapters.risk_action import RiskAction, RiskActionType
+
 logger = logging.getLogger(__name__)
 
 
@@ -51,6 +58,13 @@ class Orchestrator:
         self.futu_sensor = self.futu
         self.cio_agent = cio_agent or CioCopilot()
         self.config = config or {}
+        self.enable_risk_gateway = bool(
+            self.config.get("ENABLE_RISK_GATEWAY", True)
+        )
+
+        if self.enable_risk_gateway:
+            initialize_risk_integration()
+            logger.info("[Orchestrator] 风控网关已启用 (v2.2.1 Phase 3)")
 
         self.state = {
             "previous_risk_budget": 0.50,
@@ -114,6 +128,43 @@ class Orchestrator:
 
             self.state["previous_risk_budget"] = approved_decision.risk_budget
 
+            # ===================== Phase 3 风控拦截层 =====================
+            if self.enable_risk_gateway:
+                current_bar = self._extract_bar_dict(features)
+                risk_action = should_execute_risk_action(current_bar)
+
+                # 1. 最高优先级：跳空强平 → 阻断后续所有逻辑
+                if risk_action.action_type == RiskActionType.FATAL_GAP_LIQUIDATION:
+                    logger.warning(
+                        "[FATAL] 跳空击穿硬止损，执行强制平仓 | price=%s",
+                        risk_action.gap_price,
+                    )
+                    self._force_liquidate_all(risk_action)
+                    self.feishu.send_alert(
+                        f"[FATAL_GAP_LIQUIDATION] 跳空强平触发 | "
+                        f"gap_price={risk_action.gap_price} | "
+                        f"breached_stop={risk_action.breached_stop}"
+                    )
+                    return None
+
+                # 2. 跟踪止盈：执行部分减仓后继续（不阻断报告生成）
+                if risk_action.action_type == RiskActionType.TRAILING_EXIT:
+                    logger.info(
+                        "[TrailingExit] 触发跟踪止盈减仓 | size=%s",
+                        risk_action.size,
+                    )
+                    self._execute_partial_exit(risk_action.size)
+
+                # 3. 入场/加仓：与 kernel_decide 做 AND 逻辑
+                #    kernel_decide 已产出 approved_decision，风控准入即放行；
+                #    若风控拒绝（HOLD），此处记录但不阻断报告流。
+                if risk_action.action_type == RiskActionType.HOLD:
+                    logger.info(
+                        "[RiskGateway] 风控拒绝入场 | reason=%s",
+                        risk_action.reason,
+                    )
+            # ===================== 风控拦截层结束 =====================
+
             approved_allocation = {
                 "QQQ": approved_decision.risk_budget,
                 "CASH": approved_decision.defense_budget,
@@ -162,6 +213,40 @@ class Orchestrator:
             logger.exception("Pipeline failed with a fatal error: %s", e)
             return None
 
+    def _extract_bar_dict(self, features: Dict[str, Any]) -> Dict[str, Any]:
+        """从 features 中提取当前 bar 的关键信息，供风控钩子消费。"""
+        return {
+            "close": features.get("close"),
+            "open": features.get("open"),
+            "high": features.get("high"),
+            "low": features.get("low"),
+            "atr": features.get("atr"),
+            "vix": features.get("vix"),
+            "brent_shock": features.get("brent_shock", 0.0),
+            "spacetime_score": features.get("spacetime_score", 0.85),
+            "j1_confirmed": features.get("j1_confirmed", True),
+            "symbol": features.get("symbol", "UNKNOWN"),
+            "index": features.get("bar_index"),
+        }
+
+    def _force_liquidate_all(self, risk_action: RiskAction) -> None:
+        """强制平仓所有持仓（跳空强平触发时调用）。
+
+        TODO: 接入实盘下单接口（Futu / CTP 等）执行市价全平。
+        """
+        logger.critical(
+            "[Orchestrator] 执行跳空强平，目标价格: %s | breached_stop: %s",
+            risk_action.gap_price,
+            risk_action.breached_stop,
+        )
+
+    def _execute_partial_exit(self, size: float) -> None:
+        """执行部分减仓（跟踪止盈触发时调用）。
+
+        TODO: 接入实盘下单接口执行指定数量的减仓。
+        """
+        logger.info("[Orchestrator] 执行部分减仓，数量: %s", size)
+
     def dry_run(self) -> tuple[Optional[KernelDecision], dict]:
         """Execute pipeline without writing events or sending notifications."""
         logger.info("Executing DRY RUN...")
@@ -196,6 +281,7 @@ class Orchestrator:
         """Return orchestrator + adapter health status."""
         return {
             "pipeline": "operational_v5",
+            "risk_gateway_enabled": self.enable_risk_gateway,
             "events_written": self.vault.count_events(),
             "tradingview": self.tv.health(),
             "futu_sensor": "connected" if self.futu else "offline",
