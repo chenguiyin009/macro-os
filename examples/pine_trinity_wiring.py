@@ -41,7 +41,7 @@ def main() -> None:
         decision = run_pine_trinity_loop(
             adapter,
             bar_data=SAMPLE_BAR,
-            script_name="Macro OS v5.0 Global Sentinel",
+            script_name="Global Sentinel",
             symbol="TVC:GOLD",
         )
         logger.info("Pine 信号: %s", decision.pine_signal.name)

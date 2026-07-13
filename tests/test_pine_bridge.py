@@ -24,7 +24,7 @@ from core.pipeline import PipelineContext, PipelineEngine, PineAnalysisNode
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BRIDGE_SCRIPT = REPO_ROOT / "relay" / "pine-bridge.mjs"
-LIVE_SCRIPT = "Macro OS v5.0 Global Sentinel"
+LIVE_SCRIPT = "Global Sentinel"
 
 
 def _cdp_alive() -> bool:
