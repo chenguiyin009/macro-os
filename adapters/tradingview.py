@@ -276,6 +276,11 @@ class TradingViewAdapter:
                 cmd,
                 capture_output=True,
                 text=True,
+                # Bridge emits UTF-8 (may contain non-ASCII study names); on
+                # Windows the default locale is GBK, which raises UnicodeDecodeError
+                # and leaves proc.stderr as None. Force UTF-8 with lossy fallback.
+                encoding="utf-8",
+                errors="replace",
                 timeout=DEFAULT_PINE_TIMEOUT_SECONDS,
             )
         except (subprocess.TimeoutExpired, subprocess.SubprocessError, FileNotFoundError) as exc:
@@ -284,7 +289,7 @@ class TradingViewAdapter:
             return None
 
         if proc.returncode != 0:
-            self._last_error = f"pine bridge exited {proc.returncode}: {proc.stderr.strip()[:200]}"
+            self._last_error = f"pine bridge exited {proc.returncode}: {(proc.stderr or '').strip()[:200]}"
             logger.warning("TradingView pine bridge error: %s", self._last_error)
             return None
 
