@@ -41,7 +41,7 @@ def main() -> None:
         decision = run_pine_trinity_loop(
             adapter,
             bar_data=SAMPLE_BAR,
-            script_name="Global Sentinel",
+            script_name="24H Macro Liquidity Danger Dashboard",
             symbol="TVC:GOLD",
         )
         logger.info("Pine 信号: %s", decision.pine_signal.name)
