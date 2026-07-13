@@ -112,6 +112,68 @@ def translate_pine_signal(
     return PineSignal.UNKNOWN
 
 
+# 用于从 payload 状态标志派生置信度时的语义分组（大小写不敏感，匹配 cell.title）。
+_STATE_RISK_OFF = {"danger", "shock", "caution", "tightening", "avoid",
+                  "reduce", "risk_off", "off", "bearish"}
+_STATE_RISK_ON = {"risk_on", "on", "bullish", "safe", "calm", "add"}
+
+
+def _cell_truthy(value: Any) -> bool:
+    """判断一个状态标志 cell 是否“被置位”（宏观脚本用 0/1 或阈值数表示）。"""
+    s = str(value).strip().lower()
+    if s in {"1", "1.0", "true", "yes", "y"}:
+        return True
+    try:
+        return float(s) > 0
+    except (TypeError, ValueError):
+        return False
+
+
+def derive_pine_confidence(conclusion: Optional[PineConclusionSchema]) -> Optional[float]:
+    """从 Pine 结论派生置信度，使前端熔断门控能信任确定性状态读数。
+
+    宏观光谱类脚本（如 24H Macro Liquidity Danger Dashboard）以**确定性状态读数**
+    呈现（整型状态值 + 各状态布尔标志），而非概率置信度字段。当 `conclusion.confidence`
+    为 null 时，从 payload 的状态标志 / 状态值派生一个高置信度，否则 `combine` 会永远
+    判定 `pine_untrusted` 而忽略明确的风险信号。
+
+    派生优先级：
+      1. conclusion.confidence 非空 → 原样返回（显式置信度优先，兼容既有调用方）；
+      2. payload 中显式风险语义标志被置位（value 为真）→ 确定性风险读数：
+         - 风险规避类标志（danger/shock/caution/...）→ 0.85；
+         - 风险偏好类标志（risk_on/safe/bullish/...）→ 0.80；
+      3. 整型状态值（如 Background Color 0-4）按严重度映射置信度；
+      4. 都无法派生 → None（保持 untrusted，不 override，完全信任网关）。
+    """
+    if conclusion is None:
+        return None
+    if conclusion.confidence is not None:
+        return float(conclusion.confidence)
+
+    values = (conclusion.payload or {}).get("values", [])
+    for cell in values:
+        title = str(cell.get("title", "")).lower()
+        if _cell_truthy(cell.get("value", "")):
+            if any(k in title for k in _STATE_RISK_OFF):
+                return 0.85
+            if any(k in title for k in _STATE_RISK_ON):
+                return 0.80
+
+    v = conclusion.value
+    if isinstance(v, (int, float)):
+        if v >= 4:
+            return 0.95
+        if v >= 3:
+            return 0.80
+        if v >= 2:
+            return 0.65
+        if v >= 1:
+            return 0.70
+        return 0.80  # 0 = 明确 risk-on
+
+    return None
+
+
 def pine_to_macro_shock(
     signal: PineSignal,
     magnitude: float = PINE_SHOCK_MAGNITUDE,
@@ -144,9 +206,7 @@ def enrich_bar_with_pine(
     base_shock = float(enriched.get("brent_shock", 0.0) or 0.0)
     enriched["brent_shock"] = base_shock + pine_to_macro_shock(signal, magnitude)
     enriched["_pine_signal"] = signal.name
-    enriched["_pine_confidence"] = (
-        conclusion.confidence if conclusion is not None else None
-    )
+    enriched["_pine_confidence"] = derive_pine_confidence(conclusion)
     return enriched
 
 
@@ -287,7 +347,7 @@ def run_pine_trinity_loop(
             symbol=symbol, script_name=script_name, cdp_url=cdp_url
         )
         signal = translate_pine_signal(conclusion)
-        confidence = conclusion.confidence if conclusion is not None else None
+        confidence = derive_pine_confidence(conclusion)
 
         enriched = enrich_bar_with_pine(bar_data, conclusion, magnitude=magnitude)
 

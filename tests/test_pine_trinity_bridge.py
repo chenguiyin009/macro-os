@@ -22,6 +22,7 @@ from core.adapters.pine_trinity_bridge import (
     PineSignal,
     PineTrinityDecision,
     combine,
+    derive_pine_confidence,
     enrich_bar_with_pine,
     pine_to_macro_shock,
     run_pine_trinity_loop,
@@ -93,6 +94,52 @@ def test_translate_signal_value_risk_score() -> None:
 def test_translate_signal_unknown() -> None:
     assert translate_pine_signal(None) == PineSignal.UNKNOWN
     assert translate_pine_signal(PineConclusionSchema()) == PineSignal.UNKNOWN
+
+
+# ===================== 置信度派生（确定性状态读数） =====================
+def test_derive_confidence_explicit_passthrough() -> None:
+    # 显式置信度优先，原样返回（兼容既有调用方）。
+    assert derive_pine_confidence(PineConclusionSchema(value=3.0, confidence=0.4)) == 0.4
+
+
+def test_derive_confidence_risk_off_flag() -> None:
+    # 宏观脚本用整型状态值 + 状态布尔标志呈现；Caution=1 是确定性风险读数 → 高置信。
+    conclusion = PineConclusionSchema(
+        value=3,
+        payload={
+            "values": [
+                {"id": "p0", "title": "Background Color", "value": "3", "visible": True},
+                {"id": "p3", "title": "Caution", "value": "1", "visible": True},
+            ]
+        },
+    )
+    assert derive_pine_confidence(conclusion) == 0.85
+
+
+def test_derive_confidence_risk_on_flag() -> None:
+    conclusion = PineConclusionSchema(
+        payload={
+            "values": [
+                {"id": "p4", "title": "Risk-on liquidity", "value": "1", "visible": True},
+            ]
+        },
+    )
+    assert derive_pine_confidence(conclusion) == 0.80
+
+
+def test_derive_confidence_from_state_value() -> None:
+    # 无标志但整型状态值 → 按严重度映射。
+    assert derive_pine_confidence(PineConclusionSchema(value=4.0)) == 0.95
+    assert derive_pine_confidence(PineConclusionSchema(value=0.0)) == 0.80
+
+
+def test_derive_confidence_none_conclusion() -> None:
+    assert derive_pine_confidence(None) is None
+
+
+def test_derive_confidence_empty_leaves_untrusted() -> None:
+    # 完全无信号 → None，combine 应判定 untrusted（不 override）。
+    assert derive_pine_confidence(PineConclusionSchema()) is None
 
 
 def test_pine_to_macro_shock() -> None:
@@ -202,6 +249,34 @@ def test_macro_injection_suppresses_pyramid() -> None:
     assert d2.reason == "pine_risk_off_confirmed"
     # 关键：加仓被宏观熔断挡住，总持仓规模不变
     assert ta.risk_gateway.get_status()["total_remaining_size"] == size_after_entry
+
+
+def test_macro_dashboard_caution_overrides_entry() -> None:
+    """真实宏观脚本形态：value=3 + Caution=1、无 confidence 字段。
+
+    派生置信度应让前端熔断门控信任该确定性风险读数，并否决网关的初始入场 → HOLD。
+    这是 live CDP 拉到 '24H Macro Liquidity Danger Dashboard' 时的真实语义闭环。
+    """
+    macro_conclusion = PineConclusionSchema(
+        source_script="24H Macro Liquidity Danger Dashboard FULL",
+        symbol="TVC:GOLD",
+        value=3,
+        payload={
+            "values": [
+                {"id": "p0", "title": "Background Color", "value": "3", "visible": True},
+                {"id": "p3", "title": "Caution", "value": "1", "visible": True},
+                {"id": "p4", "title": "Risk-on liquidity", "value": "0", "visible": True},
+            ]
+        },
+    )
+    adapter = _FakeTVAdapter(macro_conclusion)
+    d = run_pine_trinity_loop(adapter, _entry_bar())
+    assert d.pine_signal == PineSignal.RISK_OFF
+    assert d.pine_confidence == 0.85
+    assert d.confidence_trusted is True
+    assert d.override is True
+    assert d.final_action_type == RiskActionType.HOLD
+    assert d.reason == "pine_risk_off_override"
 
 
 # ===================== Pipeline 节点 =====================

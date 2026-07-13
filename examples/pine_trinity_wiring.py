@@ -45,6 +45,7 @@ def main() -> None:
             symbol="TVC:GOLD",
         )
         logger.info("Pine 信号: %s", decision.pine_signal.name)
+        logger.info("派生置信度: %.2f (trusted=%s)", decision.pine_confidence, decision.confidence_trusted)
         logger.info("网关基准动作: %s", decision.base_action.action_type.name)
         logger.info("前端是否否决: %s", decision.override)
         logger.info(
