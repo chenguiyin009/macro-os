@@ -107,3 +107,90 @@ class PipelineEngine:
 
         with open(self.state_file, "w", encoding="utf-8") as sf:
             sf.write(content)
+
+
+class PineAnalysisNode(PipelineNode):
+    """Fetch a Pine script conclusion from TradingView and stage it for scoring.
+
+    Bridges macro-os to the live chart via adapters.TradingViewAdapter.fetch_pine_conclusions
+    (which shells out to relay/pine-bridge.mjs over CDP). The resulting PineConclusionSchema
+    is stored on the pipeline context so later nodes (scoring / decision kernel) can consume
+    it as a confirmation / divergence signal.
+    """
+
+    name = "pine_analysis"
+
+    def __init__(self, adapter, symbol: str | None = None, script_name: str | None = None):
+        self.adapter = adapter
+        self.symbol = symbol
+        self.script_name = script_name
+
+    def execute(self, ctx: PipelineContext) -> bool:
+        conclusion = self.adapter.fetch_pine_conclusions(
+            symbol=self.symbol,
+            script_name=self.script_name,
+        )
+        if conclusion is None:
+            ctx.errors.append("[pine_analysis] No Pine conclusion available")
+            return False
+
+        ctx.data["pine_conclusion"] = conclusion.model_dump()
+        signals = ctx.data.setdefault("signals", {})
+        signals["pine"] = conclusion.model_dump()
+        return True
+
+
+class PineTrinityNode(PipelineNode):
+    """End-to-end: TradingView Pine signal -> TrinityAdapter risk gateway -> final action.
+
+    Consumes a live (or mocked) Pine conclusion via adapters.TradingViewAdapter and routes
+    it through core.adapters.pine_trinity_bridge.run_pine_trinity_loop, which translates the
+    front-end signal into a standardized PineSignal, injects it as a macro shock into the
+    MarketState, runs it through the Trinity RiskGateway, and overlays the signal on the
+    gateway decision (with Fail-Safe). The resulting PineTrinityDecision is staged on the
+    pipeline context for downstream scoring / decision kernel nodes.
+    """
+
+    name = "pine_trinity"
+
+    def __init__(
+        self,
+        adapter,
+        bar_data: Dict[str, Any] | None = None,
+        symbol: str | None = None,
+        script_name: str | None = None,
+        confidence_threshold: float = 0.6,
+    ):
+        self.adapter = adapter
+        self.bar_data = bar_data or {}
+        self.symbol = symbol
+        self.script_name = script_name
+        self.confidence_threshold = confidence_threshold
+
+    def execute(self, ctx: PipelineContext) -> bool:
+        from core.adapters.pine_trinity_bridge import run_pine_trinity_loop
+
+        decision = run_pine_trinity_loop(
+            adapter=self.adapter,
+            bar_data=self.bar_data,
+            symbol=self.symbol,
+            script_name=self.script_name,
+            confidence_threshold=self.confidence_threshold,
+            context={"symbol": self.symbol or ctx.data.get("symbol")},
+        )
+        if decision is None:
+            ctx.errors.append("[pine_trinity] No decision produced")
+            return False
+
+        ctx.data["pine_trinity_decision"] = {
+            "final_action": decision.final_action_type.name,
+            "pine_signal": decision.pine_signal.name,
+            "confidence_trusted": decision.confidence_trusted,
+            "override": decision.override,
+            "enriched_macro_shock": decision.enriched_macro_shock,
+            "reason": decision.reason,
+            "base_action": decision.base_action.action_type.name,
+        }
+        signals = ctx.data.setdefault("signals", {})
+        signals["pine_trinity"] = ctx.data["pine_trinity_decision"]
+        return True

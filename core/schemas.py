@@ -135,6 +135,27 @@ class LedgerSummary(BaseModel):
     schema_errors: List[Dict[str, Any]] = Field(default_factory=list)
 
 
+class PineConclusionSchema(BaseModel):
+    """Structured conclusion extracted from a TradingView Pine script.
+
+    Produced by relay/pine-bridge.mjs (CDP bridge) and consumed by the
+    PineAnalysisNode / decision kernel as a confirmation / divergence signal.
+    """
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    source_script: str = ""
+    symbol: str = ""
+    tf: str = ""
+    chart_title: str = ""
+    fetched_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    signal: Optional[str] = None
+    confidence: Optional[float] = Field(None, ge=0.0, le=1.0)
+    value: Optional[float] = None
+    label: Optional[str] = None
+    payload: Dict[str, Any] = Field(default_factory=dict)
+
+
 class FeatureSchema(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
@@ -160,6 +181,7 @@ class FeatureSchema(BaseModel):
     risk_score: float = 0.0
     recovery_signal: bool = False
     tech_rotation_layer: Dict[str, Any] = Field(default_factory=dict)
+    pine: Optional["PineConclusionSchema"] = None
     source: DataSource = DataSource.MCP
     fetched_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
