@@ -29,6 +29,8 @@ def build_features(raw: FeatureSchema) -> Dict[str, Any]:
         features["dxy"] = raw.dxy
     if raw.vix is not None:
         features["vix"] = raw.vix
+    if raw.ovx is not None:
+        features["ovx"] = raw.ovx
     if raw.hy_credit_spread is not None:
         features["hy_credit_spread"] = raw.hy_credit_spread
     if raw.tips_yield is not None:
@@ -43,6 +45,14 @@ def build_features(raw: FeatureSchema) -> Dict[str, Any]:
         features["gold"] = raw.gold
     if raw.equity_tech_rotation is not None:
         features["equity_tech_rotation"] = raw.equity_tech_rotation
+
+    # Already on FeatureSchema; must reach orchestrator/policy consumers.
+    # recovery_signal is read by run_pipeline for days_in_recovery.
+    # danger_score is owned by policy_engine (0-100), not pre-kernel fold.
+    features["danger_score"] = raw.danger_score
+    features["fragility_score"] = raw.fragility_score
+    features["risk_score"] = raw.risk_score
+    features["recovery_signal"] = raw.recovery_signal
 
     features["_source"] = raw.source.value
     features["_fetched_at"] = raw.fetched_at.isoformat()
