@@ -40,7 +40,7 @@ constitution:
   red_lines:
     vix_escape_hatch: 40.0
     core_pce_max: 3.5
-    brent_red_line: 95.0
+    # brent_red_line: 95.0   # 默认禁用：brent_shock 仅由 Pine 桥注入，不在主路径特征中（避免静默死规则）
   execution:
     max_daily_turnover: 0.25
     min_cash_buffer: 0.05

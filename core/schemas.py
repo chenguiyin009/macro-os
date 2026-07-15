@@ -176,6 +176,12 @@ class FeatureSchema(BaseModel):
     equity_tech_rotation: Optional[float] = None
     tips_yield_roc_60d: Optional[float] = None
     dxy_zscore_60d: Optional[float] = None
+    # core_pce 为**百分比**量纲（例如 3.5 表示 3.5%），与
+    # config/thresholds.yaml 的 constitution.red_lines.core_pce_max（3.5）
+    # 以及 policy_engine 的 core_pce 通道保持一致。
+    # 注意：core/glen_red_lines.py 历史使用小数（0.034/0.035），
+    # 属独立子系统，量纲分歧待其 owner 统一，勿在本字段混用小数。
+    core_pce: Optional[float] = None
     danger_score: float = 0.0
     fragility_score: float = 0.0
     risk_score: float = 0.0

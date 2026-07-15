@@ -44,7 +44,14 @@ constitution:
   red_lines:
     vix_escape_hatch: 40.0
     core_pce_max: 3.5
-    brent_red_line: 95.0
+    # HY 信用利差红线（bp 量纲，与 regime.liquidity_squeeze.hy_credit_spread_min 同源）。
+    # 量纲守卫：必须是 bp（数百），绝非 0–6 的小数——防止“尺度 bug”误触。
+    hy_credit_spread_bp: 400.0
+    # brent_red_line 默认**禁用**：brent_shock 仅由 Pine 桥（CDP）注入，不在
+    # TV MCP -> build_features 主路径里，pre-kernel 折叠阶段没有该特征，会出现
+    # “静默死规则”（永远跳过、假保护）。重接方式：为 FeatureSchema 增加 brent_shock
+    # 字段 + build_features 透传 + 提供布伦特数据源（如 TVC:UKOIL），再取消下行注释。
+    # brent_red_line: 95.0
   execution:
     max_daily_turnover: 0.25
     min_cash_buffer: 0.05

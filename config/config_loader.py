@@ -37,3 +37,20 @@ def load_hard_constraints(path: Optional[str] = None) -> Constraints:
 
 # Singleton loaded at import time
 constraints: Constraints = load_hard_constraints()
+
+
+def load_thresholds(path: Optional[str] = None) -> Dict[str, Any]:
+    """Load thresholds.yaml and return the raw dict."""
+    if path is None:
+        path = str(Path(__file__).resolve().parent / "thresholds.yaml")
+    with open(path, "r", encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
+
+
+def load_red_lines() -> Dict[str, Any]:
+    """红线 SSOT：thresholds.yaml -> constitution.red_lines（VIX/HY bp/brent/core_pce）。
+
+    配置加载只发生在编排层（orchestrator），pure kernel 不读 YAML。
+    """
+    thresholds = load_thresholds()
+    return dict(thresholds.get("constitution", {}).get("red_lines", {}))

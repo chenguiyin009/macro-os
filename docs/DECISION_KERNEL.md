@@ -51,6 +51,13 @@ if recovery_active and phase in (LATE, MID):
 - Kernel is the SINGLE entry point for all trading decisions
 - Orchestrator may NOT bypass the kernel
 
+- **Kernel stays pure — red-line fold is orchestrator-level**: Physical red lines
+  (`vix_escape_hatch` / `hy_credit_spread_bp` / `core_pce_max`) are evaluated by
+  `core/macro/physical_red_lines.py` **before** `decide()` is called, and the result is folded
+  into `hard_regime`. The kernel never reads YAML, never calls `eval`, and never touches I/O/DB.
+  This keeps `decide()` the single immutable choke point while recapturing absolute control of the
+  physical red line at L3. See `PIPELINE.md` → “Physical Red-Line Pre-Kernel Fold” for the full contract.
+
 ## v5: Global Velocity Limit
 
 *GLOBAL_VELOCITY_LIMIT* is the final physical clamp applied to any upward change in the approved risk budget. It limits the single-step increase to MAX_DAILY_RISK_LIFT (0.10) above the previous risk budget. When triggered, the kernel emits eason_code = GLOBAL_RAMP_ACTIVE.

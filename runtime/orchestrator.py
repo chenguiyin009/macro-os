@@ -22,8 +22,10 @@ from core.divergence.divergence_engine import DivergencePhaseEngine
 from core.divergence.divergence_phase import map_phase
 from core.features import build_features
 from core.macro.macro_mapper import compute_macro_state
+from core.macro.physical_red_lines import evaluate_physical_red_lines
 from core.portfolio.reconciliation import compute_actionable_diff
 from core.schemas import DataSource, Event, FeatureSchema, KernelDecision
+from config.config_loader import load_red_lines
 from core.sector.sector_allocator import SectorAllocator
 from core.shadow_engine import ShadowEngine
 
@@ -70,9 +72,13 @@ class Orchestrator:
             "previous_risk_budget": 0.50,
             "days_in_recovery": 0,
         }
+        # 物理红线 SSOT（配置加载在编排层，kernel 保持 pure）
+        self.red_lines = load_red_lines()
         self.sector_allocator = sector_allocator or SectorAllocator()
         self.sector_allocator.load_state()
         self.shadow_engine = ShadowEngine()
+        # 最近一次主路径物理红线求值快照（供 health/可观测性，不改四步 audit_trail 契约）。
+        self._last_red_line_meta: Optional[Dict[str, Any]] = None
 
     def _serialize_payload(self, obj: Any) -> Any:
         """Safely serialize Pydantic models or nested containers."""
@@ -98,8 +104,20 @@ class Orchestrator:
 
             features = build_features(raw_macro)
 
+            # v5.0 物理红线：在 kernel 之前求值，命中则折叠进 hard_regime（kernel 保持 pure）。
+            red_verdict = evaluate_physical_red_lines(features, self.red_lines)
+
             macro_state = compute_macro_state(features)
             regime = str(macro_state.quadrant)
+            hard_regime = red_verdict.forced_hard_regime or regime
+
+            # 记录红线快照（主路径可观测性，独立于 kernel 的四步 audit_trail 契约）。
+            self._last_red_line_meta = {
+                "triggered": red_verdict.triggered,
+                "reason_code": red_verdict.reason_code,
+                "forced_hard_regime": red_verdict.forced_hard_regime,
+                "triggered_lines": list(red_verdict.triggered_lines),
+            }
             div_engine = DivergencePhaseEngine(use_pine_data=False)
             div_state = div_engine.compute_state(features, vix=features.get("vix", 20.0))
             divergence_phase = map_phase(div_state.score)
@@ -114,7 +132,7 @@ class Orchestrator:
 
             approved_decision = kernel_decide(
                 features=features,
-                hard_regime=regime,
+                hard_regime=hard_regime,
                 soft_regime_label="RISK_ON",
                 risk_score=features.get("risk_score", 0.5),
                 confidence=0.8,
@@ -183,6 +201,13 @@ class Orchestrator:
                 features_summary=raw_macro,
             )
 
+            # 主路径红线可观测性：飞书消息直接暴露触发原因，避免线上只能从日志猜。
+            if red_verdict.triggered:
+                report_md = (
+                    f"🚨 **物理红线触发** `{red_verdict.reason_code}` "
+                    f"(lines={red_verdict.triggered_lines})\n\n" + report_md
+                )
+
             event = Event(
                 source="MACRO_OS_V5",
                 symbol="MACRO",
@@ -191,6 +216,7 @@ class Orchestrator:
                     {
                         "regime": regime,
                         "divergence_phase": divergence_phase,
+                        "red_line": self._last_red_line_meta,  # 顶层红线快照，vault/event 消费方可直接读取
                         "kernel_decision": approved_decision,
                         "diff_summary": diff_report,
                         "features": features,
@@ -255,15 +281,17 @@ class Orchestrator:
             raw_macro = FeatureSchema(source=DataSource.MOCK, fetched_at=datetime.datetime.now())
 
         features = build_features(raw_macro)
+        red_verdict = evaluate_physical_red_lines(features, self.red_lines)
         macro_state = compute_macro_state(features)
         regime = str(macro_state.quadrant)
+        hard_regime = red_verdict.forced_hard_regime or regime
         div_engine = DivergencePhaseEngine(use_pine_data=False)
         div_state = div_engine.compute_state(features, vix=20.0)
         divergence_phase = map_phase(div_state.score)
 
         approved_decision = kernel_decide(
             features=features,
-            hard_regime=regime,
+            hard_regime=hard_regime,
             soft_regime_label="RISK_ON",
             risk_score=0.5,
             confidence=0.8,
@@ -274,7 +302,6 @@ class Orchestrator:
             days_in_recovery=0,
             previous_risk_budget=0.5,
         )
-
         return approved_decision, self._serialize_payload(features)
 
     def health(self) -> Dict[str, Any]:
@@ -286,5 +313,6 @@ class Orchestrator:
             "tradingview": self.tv.health(),
             "futu_sensor": "connected" if self.futu else "offline",
             "feishu": self.feishu.health(),
+            "last_red_line_meta": self._last_red_line_meta,
             "last_successful_run": datetime.datetime.now().isoformat(),
         }

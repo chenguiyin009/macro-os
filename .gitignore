@@ -2,10 +2,14 @@
 macro_os_ledger.db
 tmp_cdp_output.json
 macro_history_synthetic.csv
+docs/_pine_test_state.md
 
 # --- Python caches ---
 __pycache__/
 *.pyc
+
+# --- Local verification venv (not part of the project) ---
+.venv/
 
 # --- Logs & test caches ---
 *.log

@@ -37,6 +37,8 @@ def build_features(raw: FeatureSchema) -> Dict[str, Any]:
         features["tips_yield_roc_60d"] = raw.tips_yield_roc_60d
     if raw.dxy_zscore_60d is not None:
         features["dxy_zscore_60d"] = raw.dxy_zscore_60d
+    if raw.core_pce is not None:
+        features["core_pce"] = raw.core_pce
     if raw.gold is not None:
         features["gold"] = raw.gold
     if raw.equity_tech_rotation is not None:

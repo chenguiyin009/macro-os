@@ -81,6 +81,7 @@ def test_fetch_pine_mock_fallback() -> None:
     assert conclusion.payload.get("study_name") == "MOCK"
 
 
+@pytest.mark.live
 @pytest.mark.skipif(not _cdp_alive(), reason="TradingView Desktop CDP not reachable on 127.0.0.1:9222")
 def test_fetch_pine_live_bridge() -> None:
     adapter = _make_adapter()
@@ -91,6 +92,7 @@ def test_fetch_pine_live_bridge() -> None:
     assert "values" in conclusion.payload
 
 
+@pytest.mark.live
 @pytest.mark.skipif(not _cdp_alive(), reason="TradingView Desktop CDP not reachable on 127.0.0.1:9222")
 def test_pine_analysis_node_stages_conclusion() -> None:
     adapter = _make_adapter()

@@ -29,6 +29,39 @@ The following boundaries are constitutional and must not be violated:
 - Kernel imports zero advisory modules such as attribution, counterfactual, or probabilistic regime logic.
 - Kernel remains the single decision choke point for all execution budgets.
 
+## 2.1 Pre-Kernel Physical Red-Line Fold (Implementation Status: LIVE in v5.0)
+
+> This section is an **implementation note**, not a constitutional boundary. The constitutional
+> boundaries remain those in §2. It documents how the v5.0 pipeline currently folds physical red lines.
+> Status is **LIVE** in the sandbox: all channels below are implemented. (This corrects a review
+> premise that the observability promises were unfulfilled — that premise reflected a local copy
+> predating the landing work; see P0 #1.)
+
+Physical red lines (`vix_escape_hatch`, `hy_credit_spread_bp`, `core_pce_max`) are evaluated by
+`core/macro/physical_red_lines.py` **before** `decide()` runs, in the orchestrator layer. The verdict
+is folded into the `hard_regime` argument, so the kernel stays pure (no YAML / no `eval` / no I/O) while
+L3 recaptures control of the physical red line. `decide()` remains the single immutable choke point.
+
+- **HY field name:** the HY credit-spread red-line config key is `hy_credit_spread_bp` (bp scale,
+  hundreds), mapped to the feature `hy_credit_spread`. It is **not** `hy_credit_spread_critical`.
+- **`brent_red_line` is disabled by default** (no `brent_shock` source in the pre-kernel feature path);
+  `danger(0–100)` stays owned by `policy_engine`. Both deliberate — avoid silent dead rules.
+- **Observability — 3 orchestrator-level channels only; the kernel `audit_trail` is never touched:**
+  1. Event payload top-level `red_line` (consumed by vault / downstream).
+  2. Feishu report banner (`🚨 物理红线触发 ...`).
+  3. `health()["last_red_line_meta"]`.
+  The kernel's four-step `audit_trail` keys (`step_1_safety_gate`..`step_4_global_velocity_limit`) are
+  never augmented by the fold. (Earlier drafts proposed a `KernelDecision.audit_trail["red_line"]`
+  add-on key; that was dropped because it would violate the four-step contract — review P0 #2.)
+- **HARD_VETO vs SAFETY_GATE interaction (resolved semantics):** The authority order in §3 puts
+  `SAFETY_GATE` first. When a physical red line fires, `hard_regime` becomes `LIQUIDITY_SQUEEZE`, which
+  takes the `HARD_VETO` path **only if no divergence phase is active** — otherwise `SAFETY_GATE` fires
+  first on `CRISIS/LATE/MID/EARLY` and the red-line fold is bypassed. If the project requires the
+  physical red line to be *absolute* (outrank any divergence recovery ramp), the orchestrator must
+  neutralize `divergence_phase` on red-line trigger so `HARD_VETO` governs. **Current v5.0 default:
+  `SAFETY_GATE` outranks the red-line fold per the authority order**; the absolute-red-line override is a
+  pending decision (see §8 note). This is the documented, intentional behavior.
+
 ## 3. Authority Hierarchy
 
 The v5 authority order remains immutable:
@@ -115,7 +148,7 @@ The existing `decide()` entry point remains the public kernel entry point. It is
 ### Normalization rules
 
 - Any budget input must be clamped into `[0.0, 1.0]` before evaluation.
-- Missing `proposed_risk` falls back to the legacy kernel path.
+- `proposed_risk` is reserved in v5.0 (accepted, not consumed); see §8 Step 3. A zero/default value is treated as 'not supplied' for forward compatibility.
 - Missing `previous_risk_budget` falls back to the current branch baseline budget for compatibility.
 - Missing `days_in_recovery` is treated as `0`.
 
@@ -203,9 +236,13 @@ The current policy mapping remains simple:
 
 In v5, the candidate approved risk budget is:
 
-`min(proposed_risk, soft_policy_budget)` when `proposed_risk` is supplied.
-
-If `proposed_risk` is not supplied, legacy behavior remains in force.
+`min(proposed_risk, soft_policy_budget)` is the **intended** clamp for a future revision, where lower
+layers may request *less* risk than the policy ceiling (never more). **In v5.0 `proposed_risk` is a
+reserved, no-op parameter**: `decide()` accepts it for forward compatibility (human-in-loop override
+hook) but does **not** consume it — the SOFT_POLICY branch uses `soft_policy_budget` directly. The
+orchestrator still passes `proposed_risk=0.80`; it does not currently shape the outcome. (Review P1 #4:
+doc and code now agree that `proposed_risk` is reserved in v5.0. Implementing the `min()` clamp is a
+fast-follow pending approval.)
 
 This asymmetry is intentional: lower layers may request less risk than the policy ceiling, but may never expand beyond it.
 
@@ -279,7 +316,11 @@ Kernel rounding policy should remain minimal and deterministic. If rounding is a
 
 ## 11. Reason Codes
 
-The following reason codes should be stable and testable:
+The following reason codes are **frozen** — stable and testable. Any new code requires a doc update
+here **and** a corresponding assertion in `tests/test_reason_code_frozen.py`. (Review P1 #5: the set
+below is the source of truth; earlier drafts listed `SOFT_POLICY_AGGRESSIVE/NEUTRAL/DEFENSIVE`, but the
+kernel emits a single `SOFT_POLICY_NORMAL`. The `PHYSICAL_RED_LINE_*` and `VETO_REGIME_UNDEFINED` codes
+were missing and are added here.)
 
 - `SAFETY_CRISIS`
 - `SAFETY_LATE`
@@ -290,10 +331,13 @@ The following reason codes should be stable and testable:
 - `VETO_REGIME_TRANSITION_ACTIVE`
 - `VETO_REGIME_SQUEEZE_ACTIVE`
 - `VETO_REGIME_TIGHT_ACTIVE`
-- `SOFT_POLICY_AGGRESSIVE`
-- `SOFT_POLICY_NEUTRAL`
-- `SOFT_POLICY_DEFENSIVE`
+- `VETO_REGIME_UNDEFINED`
+- `SOFT_POLICY_NORMAL`
 - `GLOBAL_RAMP_ACTIVE`
+- `PHYSICAL_RED_LINE_VIX_ESCAPE_HATCH`
+- `PHYSICAL_RED_LINE_HY_CREDIT_SPREAD_BP`
+- `PHYSICAL_RED_LINE_CORE_PCE_MAX`
+- `PHYSICAL_RED_LINE_BRENT_RED_LINE`
 
 The human-readable `reason` and `veto_reason` fields may evolve. `reason_code` should not.
 
@@ -524,3 +568,7 @@ The v5 Decision Kernel upgrade is complete when all of the following are true:
 - Simulator output is deterministic JSON and mirrors kernel behavior exactly.
 - Existing call sites continue to function through the compatibility path.
 - Updated docs describe the same behavior the code enforces.
+- `reason_code` values are frozen to the set in §11; `tests/test_reason_code_frozen.py` guards against drift.
+- Pre-kernel red-line fold surfaces only on Event payload (`red_line`), Feishu banner, and `health()`;
+  the kernel `audit_trail` four-step keys are never augmented.
+- `proposed_risk` is reserved (no-op) in v5.0; doc and code agree on this.

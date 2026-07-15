@@ -292,6 +292,7 @@ def test_pine_trinity_node_stages_decision() -> None:
     assert sig["override"] is True
 
 
+@pytest.mark.live
 @pytest.mark.skipif(not _cdp_alive(), reason="TradingView Desktop CDP not reachable on 127.0.0.1:9222")
 def test_run_loop_live_cdp() -> None:
     from adapters.tradingview import TradingViewAdapter
