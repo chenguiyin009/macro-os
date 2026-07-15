@@ -69,7 +69,7 @@ class Orchestrator:
             logger.info("[Orchestrator] 风控网关已启用 (v2.2.1 Phase 3)")
 
         self.state = {
-            "previous_risk_budget": 0.50,
+            "previous_risk_budget": 0.0,  # cold-start conservative (auth map §6 / review Q3)
             "days_in_recovery": 0,
             # ADR-001 same-day sticky absolute red-line lock (UTC day key)
             "red_line_day_lock": None,
@@ -396,7 +396,7 @@ class Orchestrator:
             ),
             proposed_risk=0.8,
             days_in_recovery=0,
-            previous_risk_budget=0.5,
+            previous_risk_budget=0.0,  # cold-start conservative; not session-hydrated
         )
         payload = self._serialize_payload(features)
         if isinstance(payload, dict):

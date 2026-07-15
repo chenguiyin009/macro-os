@@ -170,3 +170,7 @@ docs/superpowers is under tradingview root plans; this package lives in macro-os
 ```
 
 No production code paths were changed in this design drop.
+
+## Amendment log
+
+- 2026-07-15: Authority Map Accepted; Q3 cold-start `previous_risk_budget=0.0`; Q4 PolicyEngine explicit legacy.

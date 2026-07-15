@@ -2,7 +2,7 @@
 
 | ID | Title | Status |
 |----|-------|--------|
-| 000 | [Decision Authority Map v5](./000-decision-authority-map-v5.md) | Draft |
+| 000 | [Decision Authority Map v5](./000-decision-authority-map-v5.md) | **Accepted** |
 | 001 | [Physical Red Line vs SAFETY_GATE](./001-physical-red-line-vs-safety-gate.md) | **Accepted (B)** |
 | — | [P0 Doc+ADR Package Design](./P0-doc-adr-package-design.md) | Design review |
 

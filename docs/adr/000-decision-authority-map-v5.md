@@ -1,9 +1,9 @@
-# Decision Authority Map (v5.0 Design Draft)
+# Decision Authority Map (v5.0)
 
-- **Status:** Draft for P0 architecture review  
-- **Date:** 2026-07-15  
-- **Depends on:** ADR-001 (red line vs SAFETY)  
-- **Code ref:** `main` @ post-#7 (`61d263e` lineage)
+- **Status:** **Accepted** (architecture review 2026-07-15; Q3/Q4 amendments applied)
+- **Date:** 2026-07-15
+- **Depends on:** ADR-001 Option B (absolute physical red line) — Accepted
+- **Code ref:** research path `runtime/orchestrator.py` + `core/decision_kernel.decide()`
 
 ---
 
@@ -18,7 +18,7 @@ Without this map, new features tend to open a third “HARD_VETO-like” channel
 
 ---
 
-## 2. Layered authority (target)
+## 2. Layered authority (target / LIVE research spine)
 
 ```text
                     ┌─────────────────────────────────────┐
@@ -65,16 +65,14 @@ Without this map, new features tend to open a third “HARD_VETO-like” channel
                                       ▼
 ┌───────────────────────────────────────────────────────────────────────────┐
 │  L4 WEIGHTING / PORTFOLIO (optional on research path)                     │
-│  Sizer / damper / sector allocator / Glen multipliers                     │
+│  Sizer / damper / sector allocator                                        │
 │  May: redistribute inside risk_budget + defense_budget                    │
 │  May NOT: increase total risk beyond kernel risk_budget                   │
 └─────────────────────────────────────┬─────────────────────────────────────┘
                                       ▼
 ┌───────────────────────────────────────────────────────────────────────────┐
-│  L4b POLICY ENGINE (allocation constitution — secondary)                  │
-│  danger crisis, turnover, cash buffer                                     │
-│  Status: implement or mark legacy; must not invent parallel kernel budget │
-│  Naming: use ALLOC_* reason codes, not AuthorityLevel.HARD_VETO overload  │
+│  LEGACY — PolicyEngine (explicit badge; not on research critical path)    │
+│  Do not treat as second constitution. Migrate remaining knobs to SSOT/L4. │
 └─────────────────────────────────────┬─────────────────────────────────────┘
                                       ▼
                     Vault Event + Feishu (observability)
@@ -88,12 +86,12 @@ Without this map, new features tend to open a third “HARD_VETO-like” channel
 |-------|----------------------:|-------------------:|-----------------:|-----------------:|-------|
 | Macro mapper | No | No | No | No | regime label only |
 | Divergence | No | No | No | No | phase only |
-| Physical red lines + orch fold | Indirect (via hard_regime [+ phase neutralize]) | No | No | No | ADR-001 |
-| `decide()` | Yes | Yes | No | No | **only budget law** |
+| Physical red lines + orch fold | Indirect (via hard_regime + phase neutralize) | No | No | No | ADR-001 B |
+| `decide()` | Yes | Yes | No | No | **only macro budget law** |
 | RiskGateway | Flatten positions | Reduce size | No* | Yes (exec path) | AND tighten only |
 | FractureAwareSizer / damper | No | Within budget | Yes (weights) | No | optional on path |
-| PolicyEngine | Cap equity (alloc) | Cap equity | No | No | not kernel |
-| GlenRedLines | Multiplier | Multiplier | No | No | legacy units |
+| PolicyEngine (**legacy**) | Historical alloc caps only | Historical | No | No | **not kernel; do not re-wire** |
+| GlenRedLines | Multiplier | Multiplier | No | No | legacy units; not budget law |
 | CIO / Shadow / LLM | No | No | No | No | advisory |
 | Hermes / broker adapters | No | No | No | Yes | execute approved |
 
@@ -108,7 +106,7 @@ Without this map, new features tend to open a third “HARD_VETO-like” channel
 | `AuthorityLevel.HARD_VETO` | Kernel authority enum | Do not log policy danger as the same enum without context |
 | `PHYSICAL_RED_LINE_*` | Side-channel reason from fold | Not a 5th audit step |
 | `SAFETY_*` / `RECOVERY_*` | Kernel phase path | Not red-line meta |
-| `ALLOC_CRISIS_CAP` (proposed) | PolicyEngine danger path | Prefer instead of reusing HARD_VETO string alone |
+| `ALLOC_*` (preferred for legacy policy logs) | Allocation-layer caps | Prefer instead of reusing HARD_VETO alone |
 | `FATAL_GAP_LIQUIDATION` | Micro gateway | Precedence for single-name flatten |
 
 ---
@@ -117,49 +115,81 @@ Without this map, new features tend to open a third “HARD_VETO-like” channel
 
 When multiple alarms fire on the same cycle:
 
-1. **FATAL_GAP / micro force-flatten** ( Survival of account / gap risk )  
-2. **Kernel budget = 0** (SAFETY CRISIS or HARD_VETO after absolute red line)  
-3. **Kernel reduced budget** (LATE/MID SAFETY, soft defensive)  
-4. **Gateway HOLD / partial exit** (tighten only)  
+1. **FATAL_GAP / micro force-flatten** (account survival / gap risk)
+2. **Kernel budget = 0** (SAFETY CRISIS or HARD_VETO after absolute red line)
+3. **Kernel reduced budget** (LATE/MID SAFETY, soft defensive)
+4. **Gateway HOLD / partial exit** (tighten only)
 5. **Advisory warnings** (CIO/shadow text)
 
 Rule: lower layers may only **tighten** residual risk, never expand past kernel.
 
 ---
 
-## 6. State that is allowed outside the event log
+## 6. Session state (ephemeral until Event hydration)
 
-| State | Today | Target design |
-|-------|-------|---------------|
-| `previous_risk_budget` | `orchestrator.state` process memory | Document as **session-ephemeral** OR restore from last Event |
-| `days_in_recovery` | process memory | Same |
-| Sector allocator disk state | `load_state()` | Explicitly non-constitutional |
+| State | Location today | Policy |
+|-------|----------------|--------|
+| `previous_risk_budget` | `orchestrator.state` | **Session-ephemeral** until vault hydration ships |
+| `days_in_recovery` | `orchestrator.state` | Same |
+| `red_line_day_lock` | `orchestrator.state` | Same-day sticky absolute fold (ADR-001 review note C) |
+| Sector allocator disk state | `load_state()` | Non-constitutional |
 | Shadow engine | in-memory / files | Advisory only |
 
-P0 doc package should pick one sentence for session state (proposal below in plan).
+### Cold-start default (review Q3 — **Accepted amendment**)
 
-**Proposal for P0 docs (no code yet):**
+> Velocity/recovery session fields are **ephemeral process state**.
+>
+> On process restart, **`previous_risk_budget` defaults to `0.0`** (not 0.50)
+> and `days_in_recovery` defaults to `0`, unless a future task implements Event
+> replay hydration.
+>
+> Rationale: if the book was fully de-risked (`risk_budget=0`) and the process
+> OOM-restarts into `0.50`, `GLOBAL_VELOCITY_LIMIT` cannot fully prevent a
+> dangerous re-risk jump on the first bar relative to true T-1 reality. Prefer
+> missing a ramp to naked exposure after crash recovery.
+>
+> After the first successful `decide()`, orchestrator continues to store the
+> last approved `risk_budget` in memory for velocity/recovery within the session.
 
-> Velocity/recovery session fields are **ephemeral process state**. On process
-> restart, `previous_risk_budget` defaults to 0.50 and `days_in_recovery` to 0
-> unless a future task implements Event replay hydration.
+**Follow-up (not this PR):** hydrate `previous_risk_budget` / `days_in_recovery`
+from the latest Vault Event on boot.
 
 ---
 
-## 7. Open wiring honesty
+## 7. Module wiring honesty
 
-| Module | Documented role | Research `run_pipeline` today | P0 doc action |
-|--------|-----------------|-------------------------------|---------------|
-| Exposure dampener / FractureAwareSizer | PIPELINE steps | Not clearly on critical path | Mark **optional / offline** until wired |
-| PolicyEngine | Allocation constitution | Not called from orchestrator | Mark **secondary / legacy-or-pending** |
-| Trinity | Bottom stock execution | Optional Phase-3 gateway | Keep separate package boundary |
-| SectorAllocator | Portfolio | Instantiated; usage limited | Clarify in ARCHITECTURE |
+| Module | Documented role | Research `run_pipeline` today | Status |
+|--------|-----------------|-------------------------------|--------|
+| Exposure dampener / FractureAwareSizer | PIPELINE steps | Not on critical path | **Optional / offline** until wired |
+| **PolicyEngine** | Was “allocation constitution” | **Not called** from orchestrator | **Explicit legacy badge** — do not schedule as second choke point; migrate knobs then delete |
+| Trinity | Bottom stock execution | Optional Phase-3 gateway | Separate package; AND-only vs macro budget |
+| SectorAllocator | Portfolio | Instantiated; limited use | Clarify when fully wired |
+
+### PolicyEngine disposition (review Q4 — **Accepted**)
+
+1. Mark `core/policy_engine.py` as **LEGACY** in module docstring (done).
+2. Do **not** wire it into `run_pipeline` as a parallel constitution.
+3. Migrate any still-useful constants (e.g. crisis equity caps) into
+   `thresholds.yaml` / `hard_constraints.yaml` SSOT or L4 sizers in a later PR.
+4. Keep file only for compat tests until removal PR.
 
 ---
 
-## 8. Review questions
+## 8. Architecture review outcomes (2026-07-15)
 
-1. Approve ADR-001 Option B absolute red line?  
-2. Accept sole budget choke point = `decide()` with gateway AND-only?  
-3. Accept ephemeral session state wording until hydration ships?  
-4. PolicyEngine: schedule wire-in vs explicit legacy badge?
+| # | Question | Decision |
+|---|----------|----------|
+| 1 | ADR-001 Option B absolute red line? | **Approved** (Canvas + this map L2.5) |
+| 2 | Sole budget choke point = `decide()` + gateway AND-only? | **Approved** |
+| 3 | Ephemeral session state until hydration? | **Accepted with amendment**: cold-start `previous_risk_budget=0.0` |
+| 4 | PolicyEngine wire-in vs legacy badge? | **Explicit legacy badge**; no wire-in; migrate then deprecate |
+
+---
+
+## 9. Normative rules for new features
+
+1. No new path may set macro `risk_budget` except `decide()` (or tests of `decide()`).
+2. Gateway / Trinity may only tighten.
+3. Advisory modules never write budgets or orders.
+4. New “veto” language must map to the naming table in §4.
+5. Absolute physical red lines only via L2.5 fold + ADR-001, not kernel I/O.
