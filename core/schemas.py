@@ -164,6 +164,23 @@ class FeatureSchema(BaseModel):
     ovx: Optional[float] = Field(None, validation_alias=AliasChoices("ovx", "oil_vix"))
     gold: Optional[float] = Field(None, validation_alias=AliasChoices("gold", "gld"))
     tips_yield: Optional[float] = Field(None, validation_alias=AliasChoices("tips_yield", "tip"))
+    # Nominal UST curve (percent points, e.g. 4.55 == 4.55%) for funding-price research quadrant.
+    nominal_10y: Optional[float] = Field(
+        None, validation_alias=AliasChoices("nominal_10y", "ust_10y", "us10y")
+    )
+    nominal_30y: Optional[float] = Field(
+        None, validation_alias=AliasChoices("nominal_30y", "ust_30y", "us30y")
+    )
+    nominal_2y: Optional[float] = Field(
+        None, validation_alias=AliasChoices("nominal_2y", "ust_2y", "us2y")
+    )
+    bei_10y: Optional[float] = Field(
+        None, validation_alias=AliasChoices("bei_10y", "breakeven_10y", "us_bei_10y")
+    )
+    # Optional short-window changes in basis points (research / weekly snapshots).
+    tips_yield_change_5d_bp: Optional[float] = None
+    nominal_10y_change_5d_bp: Optional[float] = None
+    nominal_30y_change_5d_bp: Optional[float] = None
     hy_credit_spread: Optional[float] = Field(
         None,
         validation_alias=AliasChoices("hy_credit_spread", "hyg", "jnk"),

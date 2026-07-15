@@ -1,0 +1,94 @@
+{
+  "week_start": "2026-07-06",
+  "week_end": "2026-07-10",
+  "title": "本周资金价格与风险资产周报",
+  "funding_price_quadrant": "Q1_STRESS_TEST",
+  "quadrant_label_zh": "压力测试",
+  "status_summary": "压力测试未结束，资金成本高位；美元与信用未同步恶化",
+  "core_conclusion": "久期重新定价，不是美元荒或信用危机",
+  "transmission_layer": "duration_valuation",
+  "not_yet": ["usd_funding_squeeze", "credit_crisis"],
+  "drivers": {
+    "dominant": ["tips_10y_real", "ust_30y_nominal"],
+    "non_dominant": ["fed_repricing", "usd_funding_stress"]
+  },
+  "intensity": {
+    "midweek": "high",
+    "thu_fri": "marginal_stabilize"
+  },
+  "levels": {
+    "tips_10y": 2.32,
+    "tips_10y_approx_peak": 2.30,
+    "nominal_10y": 4.55,
+    "nominal_10y_friday_ust": 4.56,
+    "nominal_30y": 5.06,
+    "nominal_20y_friday_ust": 5.08,
+    "nominal_2y": 4.19,
+    "bei_10y": 2.26,
+    "dxy": 101.12,
+    "hy_proxy_level": 0.68,
+    "vix_ratio_or_level_note": "not_primary_this_week",
+    "move": 70.3,
+    "gold": 374.45
+  },
+  "changes_5d_bp_or_pct": {
+    "tips_10y_bp": 14,
+    "nominal_10y_bp": 17,
+    "nominal_30y_bp": 19,
+    "nominal_2y_bp": 9,
+    "bei_10y_bp": 3
+  },
+  "today_delta_bp": {
+    "tips_10y": 1.6,
+    "nominal_10y": 8.0,
+    "nominal_30y": 7.1,
+    "nominal_2y": 7.5,
+    "bei_10y": 1.4
+  },
+  "z5_notes": {
+    "tips_10y": 1.78,
+    "nominal_10y": 1.75,
+    "nominal_30y": 2.45,
+    "nominal_2y": 0.79
+  },
+  "credit": {
+    "stable": true,
+    "hy_stress_confirmed": false
+  },
+  "usd": {
+    "breakout": false,
+    "funding_squeeze_confirmed": false
+  },
+  "slow_fast_vars": {
+    "growth": "slope_slowing_level_not_confirmed_contraction",
+    "inflation": "slope_slowing_sticky_tail",
+    "policy": "restrictive_hold_bias",
+    "duration_supply": "public_private_compete",
+    "real_rate": "high_but_stopped_one_way_late_week",
+    "dollar": "strong_level_soft_short_slope",
+    "credit": "stable"
+  },
+  "next_week_watch": [
+    "CPI_2026-07-14",
+    "PPI_2026-07-15",
+    "retail_sales_2026-07-16",
+    "UST_settlement_2026-07-14_to_16_net_about_1092bn"
+  ],
+  "scenario_branches": {
+    "Q3_friendly": "weak_data_and_long_end_stays_down_after_settlement",
+    "Q2_fake_ease": "weak_data_but_tips_and_30y_rebound_after_settlement",
+    "Q1_reinforce": "hot_data_plus_settlement_pressure"
+  },
+  "asset_bias_notes": {
+    "equity": "prefer mega-cap cashflow quality over broad high-beta",
+    "rates": "prefer intermediate over ultra-long; curve over outright long TLT",
+    "avoid_if_q1": ["NQ_high_beta_chase", "ultra_long_duration", "gold_as_auto_hedge"]
+  },
+  "macro_os_mapping": {
+    "research_quadrant": "Q1_STRESS_TEST",
+    "hard_regime_hint": "TIGHT_LIQUIDITY",
+    "not_hard_regime": "LIQUIDITY_SQUEEZE",
+    "reason": "real_and_nominal_up_without_credit_or_usd_break"
+  },
+  "source_doc": "docs/research/2026-07-10-funding-price-weekly.md"
+}

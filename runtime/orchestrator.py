@@ -23,6 +23,7 @@ from core.divergence.divergence_phase import map_phase
 from core.features import build_features
 from core.macro.macro_mapper import compute_macro_state
 from core.macro.physical_red_lines import evaluate_physical_red_lines
+from core.research.funding_price_quadrant import classify_funding_price_quadrant
 from core.portfolio.reconciliation import compute_actionable_diff
 from core.schemas import DataSource, Event, FeatureSchema, KernelDecision
 from config.config_loader import load_red_lines
@@ -81,6 +82,7 @@ class Orchestrator:
         self.shadow_engine = ShadowEngine()
         # 最近一次主路径物理红线求值快照（供 health/可观测性，不改四步 audit_trail 契约）。
         self._last_red_line_meta: Optional[Dict[str, Any]] = None
+        self._last_research_assessment = None
 
     def _serialize_payload(self, obj: Any) -> Any:
         """Safely serialize Pydantic models or nested containers."""
@@ -175,6 +177,8 @@ class Orchestrator:
                 return None
 
             features = build_features(raw_macro)
+            research_assessment = classify_funding_price_quadrant(features)
+            self._last_research_assessment = research_assessment
 
             # v5.0 物理红线：在 kernel 之前求值，命中则折叠进 hard_regime（kernel 保持 pure）。
             red_verdict = evaluate_physical_red_lines(features, self.red_lines)
@@ -182,6 +186,10 @@ class Orchestrator:
 
             macro_state = compute_macro_state(features)
             regime = str(macro_state.quadrant)
+            use_hint = bool(self.config.get("USE_RESEARCH_QUADRANT_HINT", True))
+            if use_hint and research_assessment.confidence >= 0.55:
+                if research_assessment.quadrant.value != "UNKNOWN":
+                    regime = research_assessment.hard_regime_hint
             div_engine = DivergencePhaseEngine(use_pine_data=False)
             div_state = div_engine.compute_state(features, vix=features.get("vix", 20.0))
             phase_raw = map_phase(div_state.score)
@@ -281,6 +289,7 @@ class Orchestrator:
                 features_summary=raw_macro,
                 macro_narrative=macro_narrative,
                 red_line_meta=self._last_red_line_meta,
+                funding_price_research=research_assessment.to_payload(),
             )
 
             # 主路径红线可观测性：飞书消息直接暴露触发原因，避免线上只能从日志猜。
@@ -304,6 +313,7 @@ class Orchestrator:
                         "divergence_phase": phase_raw,  # structural truth for CIO/consumers
                         "divergence_phase_for_kernel": divergence_phase,
                         "red_line": self._last_red_line_meta,  # 顶层红线快照，vault/event 消费方可直接读取
+                        "funding_price_research": research_assessment.to_payload(),
                         "kernel_decision": approved_decision,
                         "diff_summary": diff_report,
                         "features": features,
@@ -368,10 +378,16 @@ class Orchestrator:
             raw_macro = FeatureSchema(source=DataSource.MOCK, fetched_at=datetime.datetime.now())
 
         features = build_features(raw_macro)
+        research_assessment = classify_funding_price_quadrant(features)
+        self._last_research_assessment = research_assessment
         red_verdict = evaluate_physical_red_lines(features, self.red_lines)
         red_verdict = self._apply_red_line_day_lock(red_verdict)
         macro_state = compute_macro_state(features)
         regime = str(macro_state.quadrant)
+        use_hint = bool(self.config.get("USE_RESEARCH_QUADRANT_HINT", True))
+        if use_hint and research_assessment.confidence >= 0.55:
+            if research_assessment.quadrant.value != "UNKNOWN":
+                regime = research_assessment.hard_regime_hint
         div_engine = DivergencePhaseEngine(use_pine_data=False)
         div_state = div_engine.compute_state(features, vix=features.get("vix", 20.0))
         phase_raw = map_phase(div_state.score)
@@ -401,6 +417,7 @@ class Orchestrator:
         payload = self._serialize_payload(features)
         if isinstance(payload, dict):
             payload["red_line"] = self._last_red_line_meta
+            payload["funding_price_research"] = research_assessment.to_payload()
             payload["divergence_phase"] = phase_raw
             payload["divergence_phase_for_kernel"] = divergence_phase
         return approved_decision, payload

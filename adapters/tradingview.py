@@ -187,14 +187,28 @@ class TradingViewAdapter:
         return None
 
     def _mock_snapshot(self) -> FeatureSchema:
-        """Return a realistic mock snapshot for local development."""
+        """Return a research-aligned mock snapshot (week of 2026-07-06 funding-price Q1).
+
+        Levels track docs/research/2026-07-10-funding-price-weekly.md so local
+        dry-runs narrate duration stress test rather than a 0.6% TIPS fantasy world.
+        """
         return FeatureSchema(
-            dxy=104.5,
+            dxy=101.12,
             vix=18.2,
             hy_credit_spread=320,
-            tips_yield=0.6,
-            gold=2350.0,
+            tips_yield=2.32,
+            tips_yield_change_5d_bp=14.0,
+            nominal_10y=4.55,
+            nominal_10y_change_5d_bp=17.0,
+            nominal_30y=5.06,
+            nominal_30y_change_5d_bp=19.0,
+            nominal_2y=4.19,
+            bei_10y=2.26,
+            gold=374.45,
             equity_tech_rotation=0.15,
+            danger_score=35.0,
+            risk_score=0.55,
+            recovery_signal=False,
             source=DataSource.MOCK,
             fetched_at=datetime.datetime.now(datetime.timezone.utc),
         )
