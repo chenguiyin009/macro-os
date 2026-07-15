@@ -285,6 +285,13 @@ class Orchestrator:
         macro_state = compute_macro_state(features)
         regime = str(macro_state.quadrant)
         hard_regime = red_verdict.forced_hard_regime or regime
+        # dry_run 与主路径同一套可观测快照（不改 kernel 四步 audit_trail）。
+        self._last_red_line_meta = {
+            "triggered": red_verdict.triggered,
+            "reason_code": red_verdict.reason_code,
+            "forced_hard_regime": red_verdict.forced_hard_regime,
+            "triggered_lines": list(red_verdict.triggered_lines),
+        }
         div_engine = DivergencePhaseEngine(use_pine_data=False)
         div_state = div_engine.compute_state(features, vix=20.0)
         divergence_phase = map_phase(div_state.score)
@@ -293,16 +300,20 @@ class Orchestrator:
             features=features,
             hard_regime=hard_regime,
             soft_regime_label="RISK_ON",
-            risk_score=0.5,
+            risk_score=features.get("risk_score", 0.5),
             confidence=0.8,
             config=self.config,
             divergence_phase=divergence_phase,
-            recovery_active=False,
+            recovery_active=bool(features.get("recovery_signal", False)),
             proposed_risk=0.8,
             days_in_recovery=0,
             previous_risk_budget=0.5,
         )
-        return approved_decision, self._serialize_payload(features)
+        payload = self._serialize_payload(features)
+        if isinstance(payload, dict):
+            payload["red_line"] = self._last_red_line_meta
+        return approved_decision, payload
+
 
     def health(self) -> Dict[str, Any]:
         """Return orchestrator + adapter health status."""

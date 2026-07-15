@@ -1,7 +1,7 @@
 """PR-2 回归：physical_red_lines 纯函数 + 临界矩阵（禁止“偶然 HARD_VETO”）。
 
 证明 dry-run / 主路径触发 HARD_VETO 必须是临界矩阵上的真实越线，而非尺度 bug：
-- VIX 39/41、HY 6/399/401/600(bp)、core_pce 3.4%/3.6%(百分比)、brent 94/96
+- VIX 39/41、HY 6/400/599/600(bp；400=regime入门,600=夺权)、core_pce 3.4%/3.6%、brent 94/96
 - hy=6 bp 是噪声级，绝不可触发（回归防护）
 - core_pce 为百分比：3.5 阈值的上下各一档
 - brent 默认禁用（死规则已移除），但“显式启用时”接线仍验证
@@ -17,7 +17,7 @@ from config.config_loader import load_red_lines
 # 完整配置（含显式启用的 brent），仅用于验证“启用时”的接线是否仍正确。
 FULL_RED_LINES = {
     "vix_escape_hatch": 40.0,
-    "hy_credit_spread_bp": 400.0,
+    "hy_credit_spread_bp": 600.0,
     "brent_red_line": 95.0,
     "core_pce_max": 3.5,
 }
@@ -42,9 +42,11 @@ def test_vix_at_hatch_triggers() -> None:
 def test_hy_bp_critical_matrix() -> None:
     # 6 bp 是噪声级，绝不可触发（回归防护：曾误用 0–6 量纲）
     assert not evaluate_physical_red_lines({"hy_credit_spread": 6.0}, FULL_RED_LINES).triggered
-    # 399 仍在阈值下
-    assert not evaluate_physical_red_lines({"hy_credit_spread": 399.0}, FULL_RED_LINES).triggered
-    # 真实 bp 量级（数百）才触发
+    # 400 = regime 入门，不等于物理夺权
+    assert not evaluate_physical_red_lines({"hy_credit_spread": 400.0}, FULL_RED_LINES).triggered
+    # 599 仍在夺权线下
+    assert not evaluate_physical_red_lines({"hy_credit_spread": 599.0}, FULL_RED_LINES).triggered
+    # 600 bp = 物理红线夺权
     hi = evaluate_physical_red_lines({"hy_credit_spread": 600.0}, FULL_RED_LINES)
     assert hi.triggered
     assert hi.forced_hard_regime == "LIQUIDITY_SQUEEZE"
@@ -72,6 +74,7 @@ def test_default_config_has_no_brent_dead_rule() -> None:
     assert "vix_escape_hatch" in DEFAULT_RED_LINES
     assert "core_pce_max" in DEFAULT_RED_LINES
     assert "hy_credit_spread_bp" in DEFAULT_RED_LINES
+    assert DEFAULT_RED_LINES["hy_credit_spread_bp"] == 600.0
 
 
 def test_default_config_ignores_brent_shock_feature() -> None:
