@@ -53,14 +53,13 @@ L3 recaptures control of the physical red line. `decide()` remains the single im
   The kernel's four-step `audit_trail` keys (`step_1_safety_gate`..`step_4_global_velocity_limit`) are
   never augmented by the fold. (Earlier drafts proposed a `KernelDecision.audit_trail["red_line"]`
   add-on key; that was dropped because it would violate the four-step contract — review P0 #2.)
-- **HARD_VETO vs SAFETY_GATE interaction (resolved semantics):** The authority order in §3 puts
-  `SAFETY_GATE` first. When a physical red line fires, `hard_regime` becomes `LIQUIDITY_SQUEEZE`, which
-  takes the `HARD_VETO` path **only if no divergence phase is active** — otherwise `SAFETY_GATE` fires
-  first on `CRISIS/LATE/MID/EARLY` and the red-line fold is bypassed. If the project requires the
-  physical red line to be *absolute* (outrank any divergence recovery ramp), the orchestrator must
-  neutralize `divergence_phase` on red-line trigger so `HARD_VETO` governs. **Current v5.0 default:
-  `SAFETY_GATE` outranks the red-line fold per the authority order**; the absolute-red-line override is a
-  pending decision (see §8 note). This is the documented, intentional behavior.
+- **HARD_VETO vs SAFETY_GATE interaction (ADR-001 Accepted — Option B):** Kernel internal order in §3
+  is unchanged (`SAFETY_GATE` still evaluates first *inside* `decide()`). Absolute physical red lines are
+  enforced **at the orchestrator boundary**: on red-line trigger the orchestrator sets
+  `phase_for_kernel=""` (and clears confirmation legacy mapping) so `decide()` reaches `HARD_VETO` with
+  `risk_budget=0` / `defense_budget=1` even when `phase_raw` is EARLY/LATE/MID. Event/CIO keep
+  `phase_raw` for honest narrative. Same-UTC-day sticky lock prevents hatch chatter. See
+  `docs/adr/001-physical-red-line-vs-safety-gate.md`.
 
 ## 3. Authority Hierarchy
 

@@ -1,6 +1,12 @@
-﻿"""Macro OS — Constitutional Kernel (v5.0 Expected Risk Upgraded).
+"""Macro OS - Policy Engine (LEGACY / not on research critical path).
 
-Replaces hard truncation with probability-weighted expected risk budget.
+WARNING: Explicit legacy module under Decision Authority Map v5 (section 7/Q4).
+Macro budget choke point is core.decision_kernel.decide only.
+Do not wire this module as a second constitution in runtime.orchestrator.
+Useful allocation knobs should migrate to thresholds SSOT or L4 sizers;
+this file remains for tests/compat until removed.
+
+Original purpose: expected-risk allocation helper (not the L3 decide kernel).
 """
 from __future__ import annotations
 

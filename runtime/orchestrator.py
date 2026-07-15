@@ -69,8 +69,10 @@ class Orchestrator:
             logger.info("[Orchestrator] 风控网关已启用 (v2.2.1 Phase 3)")
 
         self.state = {
-            "previous_risk_budget": 0.50,
+            "previous_risk_budget": 0.0,  # cold-start conservative (auth map §6 / review Q3)
             "days_in_recovery": 0,
+            # ADR-001 same-day sticky absolute red-line lock (UTC day key)
+            "red_line_day_lock": None,
         }
         # 物理红线 SSOT（配置加载在编排层，kernel 保持 pure）
         self.red_lines = load_red_lines()
@@ -90,6 +92,76 @@ class Orchestrator:
             return [self._serialize_payload(i) for i in obj]
         return obj
 
+    def _session_day_key(self) -> str:
+        """UTC calendar day for same-day red-line sticky lock (anti-chatter)."""
+        return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+
+    def _apply_red_line_day_lock(self, red_verdict: Any) -> Any:
+        """Sticky absolute red-line within the same UTC day (review note C).
+
+        Once a physical red line fires, later ticks the same day keep the veto
+        fold even if VIX/HY briefly dip under the hatch — avoids RISK 0.5 <-> 0 chatter.
+        """
+        day = self._session_day_key()
+        lock = self.state.get("red_line_day_lock")
+        if red_verdict.triggered:
+            self.state["red_line_day_lock"] = {
+                "day": day,
+                "reason_code": red_verdict.reason_code,
+                "forced_hard_regime": red_verdict.forced_hard_regime,
+                "triggered_lines": list(red_verdict.triggered_lines),
+            }
+            return red_verdict
+
+        if isinstance(lock, dict) and lock.get("day") == day and lock.get("forced_hard_regime"):
+            # synthesize sticky verdict-like object via SimpleNamespace fields on a thin wrapper
+            from types import SimpleNamespace
+
+            return SimpleNamespace(
+                triggered=True,
+                forced_hard_regime=lock.get("forced_hard_regime"),
+                reason_code=lock.get("reason_code") or "PHYSICAL_RED_LINE_DAY_LOCK",
+                triggered_lines=list(lock.get("triggered_lines") or []),
+                sticky_day_lock=True,
+            )
+        return red_verdict
+
+    def _fold_kernel_inputs(
+        self,
+        features: Dict[str, Any],
+        hard_regime_raw: str,
+        phase_raw: str,
+        red_verdict: Any,
+        confirmation_status: str = "",
+    ) -> tuple[str, str, str, Dict[str, Any]]:
+        """ADR-001 Option B: absolute red line via phase neutralization.
+
+        Returns: hard_regime, phase_for_kernel, confirmation_for_kernel, red_line_meta
+        """
+        hard_regime = getattr(red_verdict, "forced_hard_regime", None) or hard_regime_raw
+        absolute = bool(getattr(red_verdict, "triggered", False))
+        if absolute:
+            phase_for_kernel = ""
+            confirmation_for_kernel = ""
+        else:
+            phase_for_kernel = phase_raw or ""
+            confirmation_for_kernel = confirmation_status or ""
+
+        meta = {
+            "triggered": absolute,
+            "reason_code": getattr(red_verdict, "reason_code", "") or "",
+            "forced_hard_regime": getattr(red_verdict, "forced_hard_regime", None),
+            "triggered_lines": list(getattr(red_verdict, "triggered_lines", []) or []),
+            "phase_raw": phase_raw or "",
+            "phase_for_kernel": phase_for_kernel,
+            "absolute_override": absolute,
+            "sticky_day_lock": bool(getattr(red_verdict, "sticky_day_lock", False)),
+            "hard_regime_raw": hard_regime_raw,
+            "hard_regime_folded": hard_regime,
+        }
+        return hard_regime, phase_for_kernel, confirmation_for_kernel, meta
+
+
     def run_pipeline(self) -> Optional[KernelDecision]:
         """Execute one full v5.0 macro research cycle."""
         logger.info("Starting Macro OS v5.0 pipeline...")
@@ -106,24 +178,22 @@ class Orchestrator:
 
             # v5.0 物理红线：在 kernel 之前求值，命中则折叠进 hard_regime（kernel 保持 pure）。
             red_verdict = evaluate_physical_red_lines(features, self.red_lines)
+            red_verdict = self._apply_red_line_day_lock(red_verdict)
 
             macro_state = compute_macro_state(features)
             regime = str(macro_state.quadrant)
-            hard_regime = red_verdict.forced_hard_regime or regime
-
-            # 记录红线快照（主路径可观测性，独立于 kernel 的四步 audit_trail 契约）。
-            self._last_red_line_meta = {
-                "triggered": red_verdict.triggered,
-                "reason_code": red_verdict.reason_code,
-                "forced_hard_regime": red_verdict.forced_hard_regime,
-                "triggered_lines": list(red_verdict.triggered_lines),
-            }
             div_engine = DivergencePhaseEngine(use_pine_data=False)
             div_state = div_engine.compute_state(features, vix=features.get("vix", 20.0))
-            divergence_phase = map_phase(div_state.score)
+            phase_raw = map_phase(div_state.score)
+            # ADR-001 Option B: absolute red line neutralizes phase for kernel only.
+            hard_regime, divergence_phase, _confirmation, red_meta = self._fold_kernel_inputs(
+                features, regime, phase_raw, red_verdict
+            )
+            self._last_red_line_meta = red_meta
             recovery_active = features.get("recovery_signal", False)
 
-            if recovery_active and divergence_phase in ["LATE", "MID"]:
+            # Recovery day counting uses structural phase_raw, not neutralized kernel phase.
+            if recovery_active and phase_raw in ["LATE", "MID"]:
                 self.state["days_in_recovery"] += 1
             else:
                 self.state["days_in_recovery"] = 0
@@ -138,7 +208,8 @@ class Orchestrator:
                 confidence=0.8,
                 config=self.config,
                 divergence_phase=divergence_phase,
-                recovery_active=recovery_active,
+                confirmation_status="",
+                recovery_active=recovery_active if not red_meta.get("absolute_override") else False,
                 proposed_risk=proposed_risk,
                 days_in_recovery=self.state["days_in_recovery"],
                 previous_risk_budget=self.state["previous_risk_budget"],
@@ -193,19 +264,34 @@ class Orchestrator:
             self.shadow_engine.update_daily(market_data, approved_allocation)
             shadow_report = self.shadow_engine.generate_counterfactual_report()
 
+            macro_narrative = ""
+            if self._last_red_line_meta and self._last_red_line_meta.get("absolute_override"):
+                pr = self._last_red_line_meta.get("phase_raw") or "(none)"
+                rc = self._last_red_line_meta.get("reason_code") or ""
+                macro_narrative = (
+                    f"当前结构相位 phase_raw={pr}，但受绝对物理红线压制"
+                    f"（{rc}），已强制 phase_for_kernel 清空并走 HARD_VETO（risk=0）。"
+                )
+
             report_md = self.cio_agent.generate_daily_plan(
                 regime_probs=approved_decision.regime_probs or {},
                 allocation=approved_allocation,
                 diff_report=diff_report,
                 shadow_report=shadow_report,
                 features_summary=raw_macro,
+                macro_narrative=macro_narrative,
+                red_line_meta=self._last_red_line_meta,
             )
 
             # 主路径红线可观测性：飞书消息直接暴露触发原因，避免线上只能从日志猜。
-            if red_verdict.triggered:
+            if self._last_red_line_meta and self._last_red_line_meta.get("triggered"):
+                sticky = " [day-lock]" if self._last_red_line_meta.get("sticky_day_lock") else ""
                 report_md = (
-                    f"🚨 **物理红线触发** `{red_verdict.reason_code}` "
-                    f"(lines={red_verdict.triggered_lines})\n\n" + report_md
+                    f"🚨 **物理红线触发{sticky}** `{self._last_red_line_meta.get('reason_code')}` "
+                    f"(lines={self._last_red_line_meta.get('triggered_lines')}; "
+                    f"phase_raw={self._last_red_line_meta.get('phase_raw')!r} → "
+                    f"phase_for_kernel={self._last_red_line_meta.get('phase_for_kernel')!r})\n\n"
+                    + report_md
                 )
 
             event = Event(
@@ -215,7 +301,8 @@ class Orchestrator:
                 payload=self._serialize_payload(
                     {
                         "regime": regime,
-                        "divergence_phase": divergence_phase,
+                        "divergence_phase": phase_raw,  # structural truth for CIO/consumers
+                        "divergence_phase_for_kernel": divergence_phase,
                         "red_line": self._last_red_line_meta,  # 顶层红线快照，vault/event 消费方可直接读取
                         "kernel_decision": approved_decision,
                         "diff_summary": diff_report,
@@ -282,19 +369,16 @@ class Orchestrator:
 
         features = build_features(raw_macro)
         red_verdict = evaluate_physical_red_lines(features, self.red_lines)
+        red_verdict = self._apply_red_line_day_lock(red_verdict)
         macro_state = compute_macro_state(features)
         regime = str(macro_state.quadrant)
-        hard_regime = red_verdict.forced_hard_regime or regime
-        # dry_run 与主路径同一套可观测快照（不改 kernel 四步 audit_trail）。
-        self._last_red_line_meta = {
-            "triggered": red_verdict.triggered,
-            "reason_code": red_verdict.reason_code,
-            "forced_hard_regime": red_verdict.forced_hard_regime,
-            "triggered_lines": list(red_verdict.triggered_lines),
-        }
         div_engine = DivergencePhaseEngine(use_pine_data=False)
-        div_state = div_engine.compute_state(features, vix=20.0)
-        divergence_phase = map_phase(div_state.score)
+        div_state = div_engine.compute_state(features, vix=features.get("vix", 20.0))
+        phase_raw = map_phase(div_state.score)
+        hard_regime, divergence_phase, _confirmation, red_meta = self._fold_kernel_inputs(
+            features, regime, phase_raw, red_verdict
+        )
+        self._last_red_line_meta = red_meta
 
         approved_decision = kernel_decide(
             features=features,
@@ -304,14 +388,21 @@ class Orchestrator:
             confidence=0.8,
             config=self.config,
             divergence_phase=divergence_phase,
-            recovery_active=bool(features.get("recovery_signal", False)),
+            confirmation_status="",
+            recovery_active=(
+                bool(features.get("recovery_signal", False))
+                if not red_meta.get("absolute_override")
+                else False
+            ),
             proposed_risk=0.8,
             days_in_recovery=0,
-            previous_risk_budget=0.5,
+            previous_risk_budget=0.0,  # cold-start conservative; not session-hydrated
         )
         payload = self._serialize_payload(features)
         if isinstance(payload, dict):
             payload["red_line"] = self._last_red_line_meta
+            payload["divergence_phase"] = phase_raw
+            payload["divergence_phase_for_kernel"] = divergence_phase
         return approved_decision, payload
 
 

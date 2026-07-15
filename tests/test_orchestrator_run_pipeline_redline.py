@@ -141,12 +141,17 @@ def test_run_pipeline_red_line_in_event_payload_and_feishu(monkeypatch) -> None:
     assert decision is not None
     assert decision.authority == AuthorityLevel.HARD_VETO
 
-    # 1) Event 顶层 payload 挂了红线快照
+    # 1) Event 顶层 payload 挂了红线快照 + ADR-001 phase honesty
     event = orch.vault.appended[0]
     red = event.payload["red_line"]
     assert red["triggered"] is True
     assert red["reason_code"] == "PHYSICAL_RED_LINE_VIX_ESCAPE_HATCH"
     assert red["forced_hard_regime"] == "LIQUIDITY_SQUEEZE"
+    assert red["absolute_override"] is True
+    assert red["phase_raw"] == "EARLY"  # structural (map_phase stub)
+    assert red["phase_for_kernel"] == ""  # neutralized for HARD_VETO
+    assert event.payload["divergence_phase"] == "EARLY"
+    assert event.payload["divergence_phase_for_kernel"] == ""
 
     # 2) 飞书消息含红线横幅
     _title, text = orch.feishu.sent[0]
