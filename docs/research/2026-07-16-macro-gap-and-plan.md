@@ -87,9 +87,9 @@
 | B5 | CIO 可选渲染 funding-price 研究块 | 本 PR |
 | B6 | orchestrator dry-run/main payload 挂 research 块 | 本 PR |
 | B7 | 单测：周报 Q1 样本 → TIGHT hint 且非 squeeze | 本 PR |
-| C1 | 实时 TV/FRED 拉数进 FeatureSchema | **后续** |
-| C2 | Event hydration of previous_risk_budget | 后续 |
-| C3 | 完整周报自动生成流水线 | 后续 |
+| C1 | 实时 TV/FRED 拉数进 FeatureSchema | **本迭代：FRED CSV fallback + TV 链** |
+| C2 | Event hydration of previous_risk_budget | **本迭代：session_hydration + orchestrator** |
+| C3 | 完整周报自动生成流水线 | **本迭代：scripts/generate_funding_price_weekly.py** |
 
 ---
 
@@ -137,3 +137,9 @@ MVP：**research 结果进入 payload/CIO**，`hard_regime` 主路径仍以 `com
 3. mock 快照 dry-run 的 research 块显示 Q1，且 `research_hard_regime_hint=TIGHT_LIQUIDITY`。  
 4. 信用/美元稳定样本 **不会** 仅因 Q1 变成 `LIQUIDITY_SQUEEZE`。  
 5. 相关单元测试绿；kernel 测试零回归。
+
+## 7. Follow-up implemented (2026-07-16)
+
+1. `adapters/fred.py` — FRED public CSV levels/5d bp; TV fetch chain MCP→relay→FRED→mock
+2. `core/session_hydration.py` + orchestrator boot hydrate from vault RESEARCH_REPORT
+3. `scripts/generate_funding_price_weekly.py` + `make weekly-report` / `weekly-report-mock`

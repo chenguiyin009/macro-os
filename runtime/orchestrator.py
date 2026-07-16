@@ -24,6 +24,7 @@ from core.features import build_features
 from core.macro.macro_mapper import compute_macro_state
 from core.macro.physical_red_lines import evaluate_physical_red_lines
 from core.research.funding_price_quadrant import classify_funding_price_quadrant
+from core.session_hydration import hydrate_session_state_from_events
 from core.portfolio.reconciliation import compute_actionable_diff
 from core.schemas import DataSource, Event, FeatureSchema, KernelDecision
 from config.config_loader import load_red_lines
@@ -75,6 +76,26 @@ class Orchestrator:
             # ADR-001 same-day sticky absolute red-line lock (UTC day key)
             "red_line_day_lock": None,
         }
+        # Optional vault hydration (Authority Map follow-up): restore budget continuity.
+        if bool(self.config.get("HYDRATE_SESSION_FROM_VAULT", True)):
+            try:
+                events = []
+                if hasattr(self.vault, "read_all"):
+                    events = self.vault.read_all()
+                hydrated = hydrate_session_state_from_events(events)
+                if hydrated.get("hydrated"):
+                    self.state["previous_risk_budget"] = hydrated["previous_risk_budget"]
+                    self.state["days_in_recovery"] = hydrated.get("days_in_recovery", 0)
+                    if hydrated.get("red_line_day_lock") is not None:
+                        self.state["red_line_day_lock"] = hydrated["red_line_day_lock"]
+                    logger.info(
+                        "Hydrated session from vault: previous_risk_budget=%s days_in_recovery=%s event=%s",
+                        self.state["previous_risk_budget"],
+                        self.state["days_in_recovery"],
+                        hydrated.get("hydrated_from_event_id"),
+                    )
+            except Exception as exc:  # pragma: no cover
+                logger.warning("Session hydration skipped: %s", exc)
         # 物理红线 SSOT（配置加载在编排层，kernel 保持 pure）
         self.red_lines = load_red_lines()
         self.sector_allocator = sector_allocator or SectorAllocator()

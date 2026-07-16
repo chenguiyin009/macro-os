@@ -1,4 +1,4 @@
-﻿"""Macro OS - TradingView MCP client adapter.
+"""Macro OS - TradingView MCP client adapter.
 
 Minimal wrapper around the MCP subprocess bridge.
 Falls back through: live subprocess -> relay log -> mock.
@@ -65,6 +65,10 @@ class TradingViewAdapter:
                 return result
 
         result = self._read_relay_log()
+        if result is not None:
+            return result
+
+        result = self._fetch_fred()
         if result is not None:
             return result
 
@@ -185,6 +189,29 @@ class TradingViewAdapter:
             search_end = idx
 
         return None
+
+
+    def _fetch_fred(self) -> Optional[FeatureSchema]:
+        """Optional FRED live fallback for funding-price features."""
+        enabled = os.getenv("MACRO_OS_FRED_ENABLED", "1").strip() not in {"0", "false", "False"}
+        if not enabled:
+            return None
+        try:
+            from adapters.fred import FredMacroAdapter
+        except Exception as exc:  # pragma: no cover
+            self._last_error = f"fred import failed: {exc}"
+            logger.warning("FRED adapter import failed: %s", exc)
+            return None
+        adapter = FredMacroAdapter(timeout_seconds=min(8.0, float(self.timeout_seconds or 8)))
+        result = adapter.fetch()
+        if result is None:
+            self._last_error = adapter.last_error or "fred fetch failed"
+            logger.warning("FRED live fetch failed: %s", self._last_error)
+            return None
+        self._last_success_time = time.time()
+        self._last_error = adapter.last_error
+        logger.info("TradingView adapter using FRED live macro snapshot")
+        return result
 
     def _mock_snapshot(self) -> FeatureSchema:
         """Return a research-aligned mock snapshot (week of 2026-07-06 funding-price Q1).
@@ -367,5 +394,6 @@ class TradingViewAdapter:
             "last_success_time": self._last_success_time,
             "last_error": self._last_error,
         }
+
 
 

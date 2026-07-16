@@ -25,6 +25,13 @@ dry-run:
 	@echo "Running macro dry run..."
 	@python -m runtime.main --dry-run
 
+weekly-report:
+	@echo "Generating funding-price weekly research artifacts..."
+	@python scripts/generate_funding_price_weekly.py --source fred
+
+weekly-report-mock:
+	@python scripts/generate_funding_price_weekly.py --source mock
+
 # ── Run (trinity, bottom-up subsystem) ─────────────────────────────────────────
 dry-run-trinity:
 	@echo "Running trinity dry run..."
