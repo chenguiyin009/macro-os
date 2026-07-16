@@ -29,7 +29,7 @@ DEFAULT_RELAY_LOG_PATH = (
 )
 DEFAULT_RELAY_MAX_AGE_SECONDS = 300
 DEFAULT_RELAY_SCAN_BYTES = 64 * 1024
-MACRO_SIGNATURE_KEYS = {"vix", "dxy", "danger_score", "qqq_close", "close"}
+MACRO_SIGNATURE_KEYS = {"vix", "dxy", "danger_score", "qqq_close", "close", "modules", "macro"}
 
 class TradingViewAdapter:
     """Adapter for fetching macro data from TradingView MCP."""
@@ -65,6 +65,10 @@ class TradingViewAdapter:
                 return result
 
         result = self._read_relay_log()
+        if result is not None:
+            return result
+
+        result = self._fetch_macro_liquidity_sidecar()
         if result is not None:
             return result
 
@@ -191,6 +195,26 @@ class TradingViewAdapter:
         return None
 
 
+
+
+    def _fetch_macro_liquidity_sidecar(self) -> Optional[FeatureSchema]:
+        """Read macro-liquidity monitor sidecar (FeatureSchema-compatible)."""
+        enabled = os.getenv("MACRO_OS_TV_MACRO_SIDECAR_ENABLED", "1").strip() not in {"0", "false", "False"}
+        if not enabled:
+            return None
+        try:
+            from adapters.tv_macro_liquidity import load_macro_liquidity_features
+        except Exception as exc:  # pragma: no cover
+            self._last_error = f"tv macro sidecar import failed: {exc}"
+            return None
+        max_age = int(os.getenv("MACRO_OS_TV_MACRO_SIDECAR_MAX_AGE", "300"))
+        result = load_macro_liquidity_features(max_age_seconds=max_age)
+        if result is None:
+            return None
+        self._last_success_time = time.time()
+        self._last_error = None
+        logger.info("TradingView adapter using macro-liquidity sidecar")
+        return result
 
     def _fetch_composite_fallback(self) -> Optional[FeatureSchema]:
         """yfinance + FRED + last-good cache (skips recursive TV fetch)."""
