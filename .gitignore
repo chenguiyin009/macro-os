@@ -17,3 +17,6 @@ __pycache__/
 
 # --- Trinity runtime ledger (regenerated at runtime; keep sample as baseline) ---
 data/ledger.json
+
+# macro last-good cache (local runtime)
+data/cache/

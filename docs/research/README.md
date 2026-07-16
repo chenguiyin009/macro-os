@@ -7,19 +7,23 @@
 | `docs/research/2026-07-16-macro-gap-and-plan.md` | Gap analysis vs Macro OS + plan |
 | `data/research/funding_price_week_*.json` | Structured weekly snapshots |
 | `core/research/funding_price_quadrant.py` | Pure Q1-Q4 classifier + hard_regime hint |
-| `adapters/fred.py` | Live FRED CSV macro levels (runtime fallback) |
+| `adapters/fred.py` | Live FRED CSV macro levels (research-quality) |
+| `adapters/yfinance_macro.py` | Fast Yahoo proxies (VIX/DXY/nominal yields) |
+| `adapters/macro_composite.py` | Multi-source merge + last-good cache |
 | `core/session_hydration.py` | Vault -> previous_risk_budget / day-lock restore |
 | `scripts/generate_funding_price_weekly.py` | Auto weekly pipeline |
 
 ## Runtime data chain
 
 ```text
-TV MCP script -> relay log (fresh) -> FRED CSV live -> research-aligned mock
+TV MCP script -> relay log (fresh) -> yfinance + FRED merge -> last-good cache -> research-aligned mock
 ```
 
 Env:
 
 - `MACRO_OS_FRED_ENABLED=0` disables FRED fallback
+- `MACRO_OS_YFINANCE_ENABLED=0` disables yfinance fallback
+- `MACRO_OS_MACRO_CACHE_ENABLED=0` disables last-good cache read/write
 - `HYDRATE_SESSION_FROM_VAULT` via orchestrator config (default true)
 
 ## Weekly generation

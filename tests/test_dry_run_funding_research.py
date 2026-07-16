@@ -7,6 +7,8 @@ from runtime.main import build_orchestrator
 
 def test_mock_dry_run_research_block_is_q1(monkeypatch) -> None:
     monkeypatch.setenv("MACRO_OS_FRED_ENABLED", "0")
+    monkeypatch.setenv("MACRO_OS_YFINANCE_ENABLED", "0")
+    monkeypatch.setenv("MACRO_OS_MACRO_CACHE_ENABLED", "0")
     orch = build_orchestrator()
     orch.config["USE_RESEARCH_QUADRANT_HINT"] = True
     kd, payload = orch.dry_run()
@@ -22,6 +24,8 @@ def test_mock_dry_run_research_block_is_q1(monkeypatch) -> None:
 
 def test_research_hint_can_be_disabled(monkeypatch) -> None:
     monkeypatch.setenv("MACRO_OS_FRED_ENABLED", "0")
+    monkeypatch.setenv("MACRO_OS_YFINANCE_ENABLED", "0")
+    monkeypatch.setenv("MACRO_OS_MACRO_CACHE_ENABLED", "0")
     orch = build_orchestrator()
     orch.config["USE_RESEARCH_QUADRANT_HINT"] = False
     kd, payload = orch.dry_run()

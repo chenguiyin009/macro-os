@@ -177,6 +177,20 @@ def load_features_from_source(source: str, project_root: Path) -> FeatureSchema:
         if fs is None:
             raise RuntimeError("FRED fetch failed")
         return fs
+    if source in {"yfinance", "yf"}:
+        from adapters.yfinance_macro import YFinanceMacroAdapter
+
+        fs = YFinanceMacroAdapter().fetch()
+        if fs is None:
+            raise RuntimeError("yfinance fetch failed")
+        return fs
+    if source in {"composite", "auto"}:
+        from adapters.macro_composite import fetch_merged_macro_snapshot
+
+        fs = fetch_merged_macro_snapshot(include_tv=False)
+        if fs is None:
+            raise RuntimeError("composite fetch failed")
+        return fs
     if source == "tv":
         from adapters.tradingview import TradingViewAdapter
 

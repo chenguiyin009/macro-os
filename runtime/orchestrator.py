@@ -40,6 +40,31 @@ from core.adapters.risk_action import RiskAction, RiskActionType
 
 logger = logging.getLogger(__name__)
 
+def _kernel_hard_regime(label: str) -> str:
+    """Map world-model / research labels onto kernel RegimeType values."""
+    if not label:
+        return "TRANSITION"
+    if label in {
+        "RISK_ON",
+        "TIGHT_LIQUIDITY",
+        "LIQUIDITY_SQUEEZE",
+        "TRANSITION",
+        "BULL",
+        "BEAR",
+        "CHOPPY",
+        "AI_EXPANSION",
+        "NARROW_LEADERSHIP",
+        "FAST_LIQUIDITY_SHOCK",
+        "CASH_LIQUIDATION",
+    }:
+        return label
+    # Macro Quadrant.DIVERGENCE is not a KernelDecision regime.
+    if label == "DIVERGENCE":
+        return "TRANSITION"
+    return "TRANSITION"
+
+
+
 
 class Orchestrator:
     """Coordinates the Macro OS v5.0 Research pipeline."""
@@ -216,7 +241,7 @@ class Orchestrator:
             phase_raw = map_phase(div_state.score)
             # ADR-001 Option B: absolute red line neutralizes phase for kernel only.
             hard_regime, divergence_phase, _confirmation, red_meta = self._fold_kernel_inputs(
-                features, regime, phase_raw, red_verdict
+                features, _kernel_hard_regime(regime), phase_raw, red_verdict
             )
             self._last_red_line_meta = red_meta
             recovery_active = features.get("recovery_signal", False)
@@ -413,7 +438,7 @@ class Orchestrator:
         div_state = div_engine.compute_state(features, vix=features.get("vix", 20.0))
         phase_raw = map_phase(div_state.score)
         hard_regime, divergence_phase, _confirmation, red_meta = self._fold_kernel_inputs(
-            features, regime, phase_raw, red_verdict
+            features, _kernel_hard_regime(regime), phase_raw, red_verdict
         )
         self._last_red_line_meta = red_meta
 

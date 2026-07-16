@@ -60,6 +60,8 @@ class Settings(BaseSettings):
     mcp_script_path: str = ""
     # Prefer FRED CSV live macro when TV MCP/relay unavailable.
     fred_enabled: bool = True
+    yfinance_enabled: bool = True
+    macro_cache_enabled: bool = True
     hydrate_session_from_vault: bool = True
 
     thresholds: ThresholdConfig = Field(default_factory=ThresholdConfig)

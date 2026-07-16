@@ -68,7 +68,7 @@ class TradingViewAdapter:
         if result is not None:
             return result
 
-        result = self._fetch_fred()
+        result = self._fetch_composite_fallback()
         if result is not None:
             return result
 
@@ -190,6 +190,40 @@ class TradingViewAdapter:
 
         return None
 
+
+
+    def _fetch_composite_fallback(self) -> Optional[FeatureSchema]:
+        """yfinance + FRED + last-good cache (skips recursive TV fetch)."""
+        try:
+            from adapters.macro_composite import fetch_merged_macro_snapshot
+        except Exception as exc:  # pragma: no cover
+            self._last_error = f"composite import failed: {exc}"
+            logger.warning(self._last_error)
+            return None
+
+        yf_enabled = os.getenv("MACRO_OS_YFINANCE_ENABLED", "1").strip() not in {"0", "false", "False"}
+        fred_enabled = os.getenv("MACRO_OS_FRED_ENABLED", "1").strip() not in {"0", "false", "False"}
+        cache_enabled = os.getenv("MACRO_OS_MACRO_CACHE_ENABLED", "1").strip() not in {"0", "false", "False"}
+
+        result = fetch_merged_macro_snapshot(
+            include_tv=False,
+            include_yfinance=yf_enabled,
+            include_fred=fred_enabled,
+            use_cache=cache_enabled,
+        )
+        if result is None:
+            self._last_error = "composite fallback empty (yfinance/fred/cache)"
+            logger.warning(self._last_error)
+            return None
+        self._last_success_time = time.time()
+        self._last_error = None
+        logger.info(
+            "TradingView adapter using composite fallback (yfinance=%s fred=%s cache=%s)",
+            yf_enabled,
+            fred_enabled,
+            cache_enabled,
+        )
+        return result
 
     def _fetch_fred(self) -> Optional[FeatureSchema]:
         """Optional FRED live fallback for funding-price features."""
