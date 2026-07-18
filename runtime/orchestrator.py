@@ -10,12 +10,14 @@ from __future__ import annotations
 
 import datetime
 import logging
+import os
 from typing import Any, Dict, Optional
 
 from adapters.feishu import FeishuAdapter
 from adapters.futu import FutuSensor
 from adapters.tradingview import TradingViewAdapter
 from adapters.vault import VaultAdapter
+from adapters.equity_stress import compute_soxx_drawdown, compute_soxx_drawdown_smoothed
 from core.agents.cio_agent import CioCopilot
 from core.decision_kernel import decide as kernel_decide
 from core.divergence.divergence_engine import DivergencePhaseEngine
@@ -174,6 +176,30 @@ class Orchestrator:
             )
         return red_verdict
 
+    def _inject_tech_drawdown(self, features: Dict[str, Any], raw_macro: Any) -> None:
+        """Bridge the daily SOXX reading into features['tech_drawdown'].
+
+        Activates the C-grade microstructural dampener inside core.decision_kernel
+        for live trading. The reading is the HYSTERESIS-BAND SMOOTHED drawdown
+        (adapters.EquityStressSensor: 进档快 / 出档慢), computed at the L1 adapter
+        edge so decision_kernel stays a pure stateless mapping. Skips network in
+        MOCK/dev runs; any failure degrades silently to the dormant 0.0 default so
+        the macro pipeline is never blocked.
+        """
+        source = getattr(raw_macro, "source", None)
+        if source is not None and getattr(source, "value", str(source)) == "MOCK":
+            return
+        # Production-only network fetch; disabled in tests / offline runs.
+        if os.environ.get("MACRO_OS_TECH_DRAWDOWN_ENABLED", "1").strip() in {"0", "false", "False"}:
+            return
+        try:
+            td = compute_soxx_drawdown_smoothed()
+            if td is not None:
+                features["tech_drawdown"] = td
+                logger.info("[Orchestrator] tech_drawdown(SOXX 20d, hysteresis)=%.4f -> dampener armed", td)
+        except Exception as exc:  # pragma: no cover - defensive; never block macro path
+            logger.warning("tech_drawdown fetch failed (dampener dormant): %s", exc)
+
     def _fold_kernel_inputs(
         self,
         features: Dict[str, Any],
@@ -223,6 +249,7 @@ class Orchestrator:
                 return None
 
             features = build_features(raw_macro)
+            self._inject_tech_drawdown(features, raw_macro)
             research_assessment = classify_funding_price_quadrant(features)
             self._last_research_assessment = research_assessment
 
@@ -267,6 +294,7 @@ class Orchestrator:
                 proposed_risk=proposed_risk,
                 days_in_recovery=self.state["days_in_recovery"],
                 previous_risk_budget=self.state["previous_risk_budget"],
+                sticky_day_lock=bool(red_meta.get("sticky_day_lock", False)),
             )
 
             self.state["previous_risk_budget"] = approved_decision.risk_budget
@@ -424,6 +452,7 @@ class Orchestrator:
             raw_macro = FeatureSchema(source=DataSource.MOCK, fetched_at=datetime.datetime.now())
 
         features = build_features(raw_macro)
+        self._inject_tech_drawdown(features, raw_macro)
         research_assessment = classify_funding_price_quadrant(features)
         self._last_research_assessment = research_assessment
         red_verdict = evaluate_physical_red_lines(features, self.red_lines)
@@ -459,6 +488,7 @@ class Orchestrator:
             proposed_risk=0.8,
             days_in_recovery=0,
             previous_risk_budget=0.0,  # cold-start conservative; not session-hydrated
+            sticky_day_lock=bool(red_meta.get("sticky_day_lock", False)),
         )
         payload = self._serialize_payload(features)
         if isinstance(payload, dict):
