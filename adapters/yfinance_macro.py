@@ -86,18 +86,20 @@ class YFinanceMacroAdapter:
         return self._last_error
 
     def fetch(self) -> Optional[FeatureSchema]:
-        try:
-            import yfinance as yf  # local import keeps module import light
-        except Exception as exc:  # pragma: no cover
-            self._last_error = f"yfinance import failed: {exc}"
-            logger.warning(self._last_error)
-            return None
-
+        # yfinance is only imported on the real-download path (no injected
+        # downloader); an injected downloader must work without yfinance
+        # installed (CI has no yfinance).
         symbols = list(dict.fromkeys(self.tickers.values()))
         try:
             if self._downloader is not None:
                 raw = self._downloader(symbols, period=self.period)
             else:
+                try:
+                    import yfinance as yf  # local import keeps module import light
+                except Exception as exc:  # pragma: no cover
+                    self._last_error = f"yfinance import failed: {exc}"
+                    logger.warning(self._last_error)
+                    return None
                 raw = yf.download(
                     symbols,
                     period=self.period,

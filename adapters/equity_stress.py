@@ -124,17 +124,20 @@ def _yf_download(
     ticker: str,
     downloader: Optional[Callable[[Any], Any]] = None,
 ) -> Optional[List[float]]:
-    """Fetch SOXX close series via yfinance (or an injected downloader for tests)."""
-    try:
-        import yfinance as yf  # local import keeps module light
-    except Exception as exc:  # pragma: no cover
-        logger.warning("yfinance import failed: %s", exc)
-        return None
+    """Fetch SOXX close series via yfinance (or an injected downloader for tests).
 
+    yfinance is only imported on the real-download path (``downloader is None``);
+    an injected downloader must work without yfinance installed (CI has no yfinance).
+    """
     try:
         if downloader is not None:
             raw = downloader(ticker)
         else:
+            try:
+                import yfinance as yf  # local import keeps module light
+            except Exception as exc:  # pragma: no cover
+                logger.warning("yfinance import failed: %s", exc)
+                return None
             _ensure_proxy()
             raw = yf.download(
                 ticker,
