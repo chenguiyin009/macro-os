@@ -89,6 +89,9 @@ class TestProductionSmoke:
             pytest.fail(f"生产路径接线崩溃，抛出未捕获异常: {exc}")
 
         # --- iron-law assertions: real side effects fired ---
+        assert orch.cio_agent.generate_daily_plan.call_args.kwargs.get("diff_report") == {}, (
+            "diff_report 未按预期从 orchestrator 传入 CIO 层"
+        )
         assert orch.tv.fetch.called, "tv.fetch 未被调用 — 上游数据源未接线"
         assert orch.futu.fetch_positions.called, "futu.fetch_positions 未被调用"
         assert orch.vault.append.called, "vault.append 未被调用 — 生产路径未接线到事件落库"

@@ -20,3 +20,11 @@ data/ledger.json
 
 # macro last-good cache (local runtime)
 data/cache/
+
+# --- Research artifacts (regenerable; keep only .md reports) ---
+docs/research/*.csv
+docs/research/*.json
+docs/research/*_chart.html
+data/_*.csv
+output/*.json
+output/*.csv
