@@ -6,14 +6,29 @@ docs/_pine_test_state.md
 
 # --- Python caches ---
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
 
-# --- Local verification venv (not part of the project) ---
-.venv/
-
-# --- Logs & test caches ---
-*.log
+# --- Test / type / coverage caches ---
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+
+# --- Logs ---
+*.log
 
 # --- Trinity runtime ledger (regenerated at runtime; keep sample as baseline) ---
 data/ledger.json
@@ -28,3 +43,25 @@ docs/research/*_chart.html
 data/_*.csv
 output/*.json
 output/*.csv
+
+# --- Databases ---
+*.db
+*.sqlite
+*.sqlite3
+
+# --- Temp files ---
+tmp_*
+tmp_*/
+
+# --- Node frontend deps (if introduced) ---
+node_modules/
+
+# --- Editor / OS ---
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# --- WorkBuddy local config (memory / personal settings, not in VCS) ---
+.workbuddy/

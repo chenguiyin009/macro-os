@@ -17,7 +17,8 @@ tags: [macro-os, index]
 6. [[CDP_BRIDGE]] - Pine Script data integration
 7. [[CONFIGURATION]] - thresholds.yaml & watchlist.yaml reference
 8. [[MACRO_DATA_FALLBACK]] - Missing-field fallback and complement fill spec
-9. [[GLOSSARY]] - All terms, enums, state labels
+9. [[WORKBUDDY_HANDOFF]] - Project handoff for WorkBuddy
+10. [[GLOSSARY]] - All terms, enums, state labels
 
 ## Quick Reference
 
@@ -29,3 +30,5 @@ tags: [macro-os, index]
 | Constitution | decision_kernel | **Absolute VETO** |
 | Exposure | exposure_dampener | Shaping |
 | Allocation | fracture_aware_sizer | Targeted |
+
+
