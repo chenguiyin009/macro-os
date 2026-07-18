@@ -36,7 +36,8 @@ class TestKernelV5:
 
 
 class TestVeto:
-    def test_hard_veto_emits_full_defense_budget(self) -> None:
+    def test_tight_liquidity_graduated_budget(self) -> None:
+        """TIGHT_LIQUIDITY gets SAFETY_GATE with 0.30 base budget (v5.0 graduated)."""
         kd = decide(
             {"dxy": 105.0},
             "TIGHT_LIQUIDITY",
@@ -47,47 +48,61 @@ class TestVeto:
             proposed_risk=0.8,
             previous_risk_budget=0.4,
         )
-        assert kd.authority == AuthorityLevel.HARD_VETO
-        assert kd.risk_budget == 0.0
-        assert kd.defense_budget == 1.0
-        assert kd.reason_code == "VETO_REGIME_TIGHT_ACTIVE"
+        assert kd.authority == AuthorityLevel.SAFETY_GATE
+        assert kd.risk_budget > 0.0
+        assert kd.risk_budget <= 0.30
+        assert kd.reason_code == "GRADUATED_TIGHT"
 
     def test_hard_veto_for_squeeze(self) -> None:
-        kd = decide({"vix": 30.0}, "LIQUIDITY_SQUEEZE", "LIQUIDITY_SQUEEZE", 0.5, 0.5, CONFIG)
+        # Core crisis (very high VIX) still gets a hard 0.0 budget.
+        kd = decide({"vix": 45.0}, "LIQUIDITY_SQUEEZE", "LIQUIDITY_SQUEEZE", 0.5, 0.5, CONFIG)
         assert kd.authority == AuthorityLevel.HARD_VETO
         assert kd.decision.action == DecisionAction.REDUCE
         assert kd.risk_budget == 0.0
 
-    def test_hard_veto_for_tight(self) -> None:
-        kd = decide({"dxy": 105.0}, "TIGHT_LIQUIDITY", "TIGHT_LIQUIDITY", 0.4, 0.5, CONFIG)
+    def test_crisis_graduated_release_for_squeeze(self) -> None:
+        # P0-2 (v5.1): an EASING SQUEEZE (VIX/HY falling within the envelope) gets a
+        # graduated, non-zero budget instead of a hard zero. Authority stays HARD_VETO.
+        kd = decide({"vix": 30.0, "hy_credit_spread": 400.0},
+                    "LIQUIDITY_SQUEEZE", "LIQUIDITY_SQUEEZE", 0.5, 0.5, CONFIG)
         assert kd.authority == AuthorityLevel.HARD_VETO
+        assert kd.risk_budget > 0.0
+        # VIX=30, HY=400 satisfies the loosest graduated band (VIX<=35, HY<=420) -> 0.05
+        assert kd.risk_budget == 0.05
+
+    def test_tight_liquidity_action_is_reduce(self) -> None:
+        kd = decide({"dxy": 105.0}, "TIGHT_LIQUIDITY", "TIGHT_LIQUIDITY", 0.4, 0.5, CONFIG)
+        assert kd.authority == AuthorityLevel.SAFETY_GATE
         assert kd.decision.action == DecisionAction.REDUCE
-        assert kd.risk_budget == 0.0
+        assert kd.risk_budget > 0.0
 
     def test_soft_policy_for_risk_on(self) -> None:
         kd = decide({"dxy": 96.0}, "RISK_ON", "RISK_ON", 0.7, 0.75, CONFIG)
         assert kd.authority == AuthorityLevel.SOFT_POLICY
         assert kd.decision.action == DecisionAction.AGGRESSIVE
 
-    def test_hard_veto_for_transition(self) -> None:
+    def test_transition_graduated_budget(self) -> None:
+        """TRANSITION gets SAFETY_GATE with 0.50 base budget (v5.0 graduated)."""
         kd = decide({"dxy": 101.0}, "TRANSITION", "RISK_ON", 0.5, 0.5, CONFIG)
-        assert kd.authority == AuthorityLevel.HARD_VETO
+        assert kd.authority == AuthorityLevel.SAFETY_GATE
         assert kd.decision.action == DecisionAction.RISK_REDUCE
+        assert kd.risk_budget > 0.0
+        assert kd.reason_code == "GRADUATED_TRANSITION"
 
-    def test_veto_override_high_confidence(self) -> None:
+    def test_squeeze_override_high_confidence(self) -> None:
         kd = decide({"vix": 35.0}, "LIQUIDITY_SQUEEZE", "RISK_ON", 0.9, 0.9, CONFIG)
         assert kd.decision.action == DecisionAction.REDUCE
+        assert kd.authority == AuthorityLevel.HARD_VETO
 
-    def test_kernel_never_long_in_tight(self) -> None:
+    def test_kernel_never_aggressive_in_tight(self) -> None:
         kd = decide({"dxy": 105.0}, "TIGHT_LIQUIDITY", "TIGHT_LIQUIDITY", 0.8, 0.8, CONFIG)
         assert kd.decision.action != DecisionAction.AGGRESSIVE
 
     def test_hard_veto_emits_uniform_four_step_audit_trail(self) -> None:
-        """HARD_VETO 必须吐出与 SAFETY_GATE/SOFT_POLICY 完全相同的四步键，
-        未执行步骤标 SKIPPED_DUE_TO_VETO，杜绝下游按 step_1..step_4 取值的 KeyError。"""
+        """HARD_VETO (squeeze) must emit same 4-step audit trail keys."""
         kd = decide(
-            {"dxy": 105.0},
-            "TIGHT_LIQUIDITY",
+            {"vix": 35.0},
+            "LIQUIDITY_SQUEEZE",
             "RISK_ON",
             0.8,
             0.8,
