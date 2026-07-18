@@ -134,31 +134,31 @@ def reconstruct_factors(event: dict) -> List[EvidenceFactor]:
     }
     factors.append(EvidenceFactor(
         module="J+2", factor="STATE",
-        value=state_confidence.get(state_val, 0.3), weight=0.3,
+        value=state_confidence.get(state_val, 0.3), weight=0.20,
     ))
 
     # 结构因子
     struct_score = 0.85 if structure_val in ("A", "B") else 0.5
     factors.append(EvidenceFactor(
         module="J", factor="STRUCTURE",
-        value=struct_score, weight=0.25,
+        value=struct_score, weight=0.20,
     ))
 
-    # MA55 回抽因子
+    # MA55 回抽因子 (Alpha +0.0252, 最高正向贡献 → 权重上调)
     pullback = 1.0 if (boll_mid > 0 and price > 0 and abs(price - boll_mid) / boll_mid < 0.05) else 0.0
     factors.append(EvidenceFactor(
         module="J-1", factor="MA55_PULLBACK",
-        value=pullback, weight=0.2,
+        value=pullback, weight=0.30,
     ))
 
-    # 背离因子
+    # 背离因子 (Alpha +0.0141, 次高正向贡献 → 权重上调)
     has_divergence = macd_hist < 0 or (dif > 0 and dif < dea)
     factors.append(EvidenceFactor(
         module="J-1", factor="DIVERGENCE",
-        value=0.0 if has_divergence else 1.0, weight=0.15,
+        value=0.0 if has_divergence else 1.0, weight=0.25,
     ))
 
-    # 时空因子
+    # 时空因子 (Alpha -0.0089, 负值 + 共线性源头 → 权重下调)
     decision = event.get("decision", {})
     st_score = decision.get("spacetime_overall", 0)
     if st_score == 0:
@@ -167,7 +167,7 @@ def reconstruct_factors(event: dict) -> List[EvidenceFactor]:
             st_score = st.get("total_score", 0)
     factors.append(EvidenceFactor(
         module="SPACETIME", factor="TOTAL_SCORE",
-        value=st_score, weight=0.1,
+        value=st_score, weight=0.05,
     ))
 
     return factors
@@ -280,13 +280,13 @@ def _replay_factors_from_levels(
     factors: list[EvidenceFactor] = [
         EvidenceFactor(
             module="J+2", factor="STATE",
-            value=state_confidence.get(state_val, 0.3), weight=0.3,
+            value=state_confidence.get(state_val, 0.3), weight=0.20,
         ),
     ]
 
     struct_score = 0.85 if structure_val in ("A", "B") else 0.5
     factors.append(EvidenceFactor(
-        module="J", factor="STRUCTURE", value=struct_score, weight=0.25,
+        module="J", factor="STRUCTURE", value=struct_score, weight=0.20,
     ))
 
     pullback = (
@@ -295,18 +295,18 @@ def _replay_factors_from_levels(
         else 0.0
     )
     factors.append(EvidenceFactor(
-        module="J-1", factor="MA55_PULLBACK", value=pullback, weight=0.2,
+        module="J-1", factor="MA55_PULLBACK", value=pullback, weight=0.30,
     ))
 
     has_divergence = macd_hist < 0 or (dif > 0 and dif < dea)
     factors.append(EvidenceFactor(
         module="J-1", factor="DIVERGENCE",
-        value=0.0 if has_divergence else 1.0, weight=0.15,
+        value=0.0 if has_divergence else 1.0, weight=0.25,
     ))
 
     st_score = decision.spacetime.overall if decision.spacetime else 0.0
     factors.append(EvidenceFactor(
-        module="SPACETIME", factor="TOTAL_SCORE", value=st_score, weight=0.1,
+        module="SPACETIME", factor="TOTAL_SCORE", value=st_score, weight=0.05,
     ))
     return factors
 

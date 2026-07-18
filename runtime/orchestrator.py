@@ -10,12 +10,14 @@ from __future__ import annotations
 
 import datetime
 import logging
+import os
 from typing import Any, Dict, Optional
 
 from adapters.feishu import FeishuAdapter
 from adapters.futu import FutuSensor
 from adapters.tradingview import TradingViewAdapter
 from adapters.vault import VaultAdapter
+from adapters.equity_stress import compute_soxx_drawdown, compute_soxx_drawdown_smoothed
 from core.agents.cio_agent import CioCopilot
 from core.decision_kernel import decide as kernel_decide
 from core.divergence.divergence_engine import DivergencePhaseEngine
@@ -23,6 +25,8 @@ from core.divergence.divergence_phase import map_phase
 from core.features import build_features
 from core.macro.macro_mapper import compute_macro_state
 from core.macro.physical_red_lines import evaluate_physical_red_lines
+from core.research.funding_price_quadrant import classify_funding_price_quadrant
+from core.session_hydration import hydrate_session_state_from_events
 from core.portfolio.reconciliation import compute_actionable_diff
 from core.schemas import DataSource, Event, FeatureSchema, KernelDecision
 from config.config_loader import load_red_lines
@@ -37,6 +41,31 @@ from core.integration.risk_integration import (
 from core.adapters.risk_action import RiskAction, RiskActionType
 
 logger = logging.getLogger(__name__)
+
+def _kernel_hard_regime(label: str) -> str:
+    """Map world-model / research labels onto kernel RegimeType values."""
+    if not label:
+        return "TRANSITION"
+    if label in {
+        "RISK_ON",
+        "TIGHT_LIQUIDITY",
+        "LIQUIDITY_SQUEEZE",
+        "TRANSITION",
+        "BULL",
+        "BEAR",
+        "CHOPPY",
+        "AI_EXPANSION",
+        "NARROW_LEADERSHIP",
+        "FAST_LIQUIDITY_SHOCK",
+        "CASH_LIQUIDATION",
+    }:
+        return label
+    # Macro Quadrant.DIVERGENCE is not a KernelDecision regime.
+    if label == "DIVERGENCE":
+        return "TRANSITION"
+    return "TRANSITION"
+
+
 
 
 class Orchestrator:
@@ -74,6 +103,26 @@ class Orchestrator:
             # ADR-001 same-day sticky absolute red-line lock (UTC day key)
             "red_line_day_lock": None,
         }
+        # Optional vault hydration (Authority Map follow-up): restore budget continuity.
+        if bool(self.config.get("HYDRATE_SESSION_FROM_VAULT", True)):
+            try:
+                events = []
+                if hasattr(self.vault, "read_all"):
+                    events = self.vault.read_all()
+                hydrated = hydrate_session_state_from_events(events)
+                if hydrated.get("hydrated"):
+                    self.state["previous_risk_budget"] = hydrated["previous_risk_budget"]
+                    self.state["days_in_recovery"] = hydrated.get("days_in_recovery", 0)
+                    if hydrated.get("red_line_day_lock") is not None:
+                        self.state["red_line_day_lock"] = hydrated["red_line_day_lock"]
+                    logger.info(
+                        "Hydrated session from vault: previous_risk_budget=%s days_in_recovery=%s event=%s",
+                        self.state["previous_risk_budget"],
+                        self.state["days_in_recovery"],
+                        hydrated.get("hydrated_from_event_id"),
+                    )
+            except Exception as exc:  # pragma: no cover
+                logger.warning("Session hydration skipped: %s", exc)
         # 物理红线 SSOT（配置加载在编排层，kernel 保持 pure）
         self.red_lines = load_red_lines()
         self.sector_allocator = sector_allocator or SectorAllocator()
@@ -81,6 +130,7 @@ class Orchestrator:
         self.shadow_engine = ShadowEngine()
         # 最近一次主路径物理红线求值快照（供 health/可观测性，不改四步 audit_trail 契约）。
         self._last_red_line_meta: Optional[Dict[str, Any]] = None
+        self._last_research_assessment = None
 
     def _serialize_payload(self, obj: Any) -> Any:
         """Safely serialize Pydantic models or nested containers."""
@@ -125,6 +175,30 @@ class Orchestrator:
                 sticky_day_lock=True,
             )
         return red_verdict
+
+    def _inject_tech_drawdown(self, features: Dict[str, Any], raw_macro: Any) -> None:
+        """Bridge the daily SOXX reading into features['tech_drawdown'].
+
+        Activates the C-grade microstructural dampener inside core.decision_kernel
+        for live trading. The reading is the HYSTERESIS-BAND SMOOTHED drawdown
+        (adapters.EquityStressSensor: 进档快 / 出档慢), computed at the L1 adapter
+        edge so decision_kernel stays a pure stateless mapping. Skips network in
+        MOCK/dev runs; any failure degrades silently to the dormant 0.0 default so
+        the macro pipeline is never blocked.
+        """
+        source = getattr(raw_macro, "source", None)
+        if source is not None and getattr(source, "value", str(source)) == "MOCK":
+            return
+        # Production-only network fetch; disabled in tests / offline runs.
+        if os.environ.get("MACRO_OS_TECH_DRAWDOWN_ENABLED", "1").strip() in {"0", "false", "False"}:
+            return
+        try:
+            td = compute_soxx_drawdown_smoothed()
+            if td is not None:
+                features["tech_drawdown"] = td
+                logger.info("[Orchestrator] tech_drawdown(SOXX 20d, hysteresis)=%.4f -> dampener armed", td)
+        except Exception as exc:  # pragma: no cover - defensive; never block macro path
+            logger.warning("tech_drawdown fetch failed (dampener dormant): %s", exc)
 
     def _fold_kernel_inputs(
         self,
@@ -175,6 +249,9 @@ class Orchestrator:
                 return None
 
             features = build_features(raw_macro)
+            self._inject_tech_drawdown(features, raw_macro)
+            research_assessment = classify_funding_price_quadrant(features)
+            self._last_research_assessment = research_assessment
 
             # v5.0 物理红线：在 kernel 之前求值，命中则折叠进 hard_regime（kernel 保持 pure）。
             red_verdict = evaluate_physical_red_lines(features, self.red_lines)
@@ -182,12 +259,16 @@ class Orchestrator:
 
             macro_state = compute_macro_state(features)
             regime = str(macro_state.quadrant)
+            use_hint = bool(self.config.get("USE_RESEARCH_QUADRANT_HINT", True))
+            if use_hint and research_assessment.confidence >= 0.55:
+                if research_assessment.quadrant.value != "UNKNOWN":
+                    regime = research_assessment.hard_regime_hint
             div_engine = DivergencePhaseEngine(use_pine_data=False)
             div_state = div_engine.compute_state(features, vix=features.get("vix", 20.0))
             phase_raw = map_phase(div_state.score)
             # ADR-001 Option B: absolute red line neutralizes phase for kernel only.
             hard_regime, divergence_phase, _confirmation, red_meta = self._fold_kernel_inputs(
-                features, regime, phase_raw, red_verdict
+                features, _kernel_hard_regime(regime), phase_raw, red_verdict
             )
             self._last_red_line_meta = red_meta
             recovery_active = features.get("recovery_signal", False)
@@ -213,6 +294,7 @@ class Orchestrator:
                 proposed_risk=proposed_risk,
                 days_in_recovery=self.state["days_in_recovery"],
                 previous_risk_budget=self.state["previous_risk_budget"],
+                sticky_day_lock=bool(red_meta.get("sticky_day_lock", False)),
             )
 
             self.state["previous_risk_budget"] = approved_decision.risk_budget
@@ -281,6 +363,7 @@ class Orchestrator:
                 features_summary=raw_macro,
                 macro_narrative=macro_narrative,
                 red_line_meta=self._last_red_line_meta,
+                funding_price_research=research_assessment.to_payload(),
             )
 
             # 主路径红线可观测性：飞书消息直接暴露触发原因，避免线上只能从日志猜。
@@ -304,6 +387,7 @@ class Orchestrator:
                         "divergence_phase": phase_raw,  # structural truth for CIO/consumers
                         "divergence_phase_for_kernel": divergence_phase,
                         "red_line": self._last_red_line_meta,  # 顶层红线快照，vault/event 消费方可直接读取
+                        "funding_price_research": research_assessment.to_payload(),
                         "kernel_decision": approved_decision,
                         "diff_summary": diff_report,
                         "features": features,
@@ -368,15 +452,22 @@ class Orchestrator:
             raw_macro = FeatureSchema(source=DataSource.MOCK, fetched_at=datetime.datetime.now())
 
         features = build_features(raw_macro)
+        self._inject_tech_drawdown(features, raw_macro)
+        research_assessment = classify_funding_price_quadrant(features)
+        self._last_research_assessment = research_assessment
         red_verdict = evaluate_physical_red_lines(features, self.red_lines)
         red_verdict = self._apply_red_line_day_lock(red_verdict)
         macro_state = compute_macro_state(features)
         regime = str(macro_state.quadrant)
+        use_hint = bool(self.config.get("USE_RESEARCH_QUADRANT_HINT", True))
+        if use_hint and research_assessment.confidence >= 0.55:
+            if research_assessment.quadrant.value != "UNKNOWN":
+                regime = research_assessment.hard_regime_hint
         div_engine = DivergencePhaseEngine(use_pine_data=False)
         div_state = div_engine.compute_state(features, vix=features.get("vix", 20.0))
         phase_raw = map_phase(div_state.score)
         hard_regime, divergence_phase, _confirmation, red_meta = self._fold_kernel_inputs(
-            features, regime, phase_raw, red_verdict
+            features, _kernel_hard_regime(regime), phase_raw, red_verdict
         )
         self._last_red_line_meta = red_meta
 
@@ -397,10 +488,12 @@ class Orchestrator:
             proposed_risk=0.8,
             days_in_recovery=0,
             previous_risk_budget=0.0,  # cold-start conservative; not session-hydrated
+            sticky_day_lock=bool(red_meta.get("sticky_day_lock", False)),
         )
         payload = self._serialize_payload(features)
         if isinstance(payload, dict):
             payload["red_line"] = self._last_red_line_meta
+            payload["funding_price_research"] = research_assessment.to_payload()
             payload["divergence_phase"] = phase_raw
             payload["divergence_phase_for_kernel"] = divergence_phase
         return approved_decision, payload

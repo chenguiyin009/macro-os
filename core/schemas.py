@@ -164,6 +164,23 @@ class FeatureSchema(BaseModel):
     ovx: Optional[float] = Field(None, validation_alias=AliasChoices("ovx", "oil_vix"))
     gold: Optional[float] = Field(None, validation_alias=AliasChoices("gold", "gld"))
     tips_yield: Optional[float] = Field(None, validation_alias=AliasChoices("tips_yield", "tip"))
+    # Nominal UST curve (percent points, e.g. 4.55 == 4.55%) for funding-price research quadrant.
+    nominal_10y: Optional[float] = Field(
+        None, validation_alias=AliasChoices("nominal_10y", "ust_10y", "us10y")
+    )
+    nominal_30y: Optional[float] = Field(
+        None, validation_alias=AliasChoices("nominal_30y", "ust_30y", "us30y")
+    )
+    nominal_2y: Optional[float] = Field(
+        None, validation_alias=AliasChoices("nominal_2y", "ust_2y", "us2y")
+    )
+    bei_10y: Optional[float] = Field(
+        None, validation_alias=AliasChoices("bei_10y", "breakeven_10y", "us_bei_10y")
+    )
+    # Optional short-window changes in basis points (research / weekly snapshots).
+    tips_yield_change_5d_bp: Optional[float] = None
+    nominal_10y_change_5d_bp: Optional[float] = None
+    nominal_30y_change_5d_bp: Optional[float] = None
     hy_credit_spread: Optional[float] = Field(
         None,
         validation_alias=AliasChoices("hy_credit_spread", "hyg", "jnk"),
@@ -174,6 +191,10 @@ class FeatureSchema(BaseModel):
     )
     spy_close: Optional[float] = Field(None, validation_alias=AliasChoices("spy_close", "spy"))
     equity_tech_rotation: Optional[float] = None
+    # C-grade microstructural dampener input (v5.1, 2026-07-18). L1/L2 computes a
+    # tech-sector drawdown (e.g. SOXX 20d peak-to-trough, -0.08 == -8%) and supplies
+    # it here; the decision kernel applies a structural cap subordinate to macro vetoes.
+    tech_drawdown: Optional[float] = None
     tips_yield_roc_60d: Optional[float] = None
     dxy_zscore_60d: Optional[float] = None
     # core_pce 为**百分比**量纲（例如 3.5 表示 3.5%），与

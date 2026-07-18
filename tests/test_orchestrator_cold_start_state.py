@@ -12,7 +12,8 @@ def test_orchestrator_cold_start_previous_risk_budget_is_zero() -> None:
         vault=MagicMock(),
         feishu=MagicMock(),
         futu=MagicMock(),
-        config={"ENABLE_RISK_GATEWAY": False},
+        config={"ENABLE_RISK_GATEWAY": False, "HYDRATE_SESSION_FROM_VAULT": False},
     )
     assert orch.state["previous_risk_budget"] == 0.0
     assert orch.state["days_in_recovery"] == 0
+

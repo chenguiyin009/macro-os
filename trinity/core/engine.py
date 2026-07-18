@@ -425,35 +425,35 @@ class AttributionEngine:
         state_weight = StateMachineEngine.STATE_CONFIDENCE.get(ctx.state_j2, 0.3)
         factors.append(EvidenceFactor(
             module="J+2", factor="STATE",
-            value=state_weight, weight=0.3,
+            value=state_weight, weight=0.20,
         ))
 
         # J 结构因子
         struct_value = structure_score if direction == "UP" else 1.0 - structure_score
         factors.append(EvidenceFactor(
             module="J", factor="STRUCTURE",
-            value=struct_value, weight=0.25,
+            value=struct_value, weight=0.20,
         ))
 
-        # J-1 回抽确认因子
+        # J-1 回抽确认因子 (Alpha +0.0252, 最高正向贡献 → 权重上调)
         pullback_value = 1.0 if ctx.j_has_completed_ma55_pullback else 0.0
         factors.append(EvidenceFactor(
             module="J-1", factor="MA55_PULLBACK",
-            value=pullback_value, weight=0.2,
+            value=pullback_value, weight=0.30,
         ))
 
-        # J-1 背离因子 (有背离 = 负面信号)
+        # J-1 背离因子 (Alpha +0.0141, 次高正向贡献 → 权重上调)
         divergence_value = 0.0 if ctx.j_minus_1_has_divergence else 1.0
         factors.append(EvidenceFactor(
             module="J-1", factor="DIVERGENCE",
-            value=divergence_value, weight=0.15,
+            value=divergence_value, weight=0.25,
         ))
 
-        # 时空综合因子
+        # 时空综合因子 (Alpha -0.0089, 负值 + 共线性源头 → 权重下调)
         st_value = spacetime.total_score if spacetime else 0.0
         factors.append(EvidenceFactor(
             module="SPACETIME", factor="TOTAL_SCORE",
-            value=st_value, weight=0.1,
+            value=st_value, weight=0.05,
         ))
 
         self._factors.append(factors)

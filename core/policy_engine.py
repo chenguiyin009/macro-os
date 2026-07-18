@@ -11,12 +11,20 @@ Original purpose: expected-risk allocation helper (not the L3 decide kernel).
 from __future__ import annotations
 
 import logging
+import warnings
 from typing import Any, Dict
 
 from core.schemas import RegimeName, AuthorityLevel, KernelDecision
 from config.config_loader import constraints
 
 logger = logging.getLogger(__name__)
+
+warnings.warn(
+    "core.policy_engine is deprecated in v5.0 and will be removed. "
+    "Please use core.decision_kernel for all budget authority evaluations.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 
 def compute_expected_risk_budget(

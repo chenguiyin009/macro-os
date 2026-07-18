@@ -3,13 +3,37 @@
 
 regime:
   risk_on:
-    tips_yield_roc_60d_max: -0.10
-    dxy_zscore_60d_max: -1.0
-    tips_yield_max: 0.5
-    dxy_max: 100.0
+    # === ZIRP 陷阱拆除 (2026-07-18) ===
+    # 废弃旧参数 tips_yield_max: 0.5 — 该阈值是 2010-2021 零利率时代的遗留产物，
+    # 在 2026 年真实利率 2.3% 的环境下将导致系统永远无法进入 RISK_ON。
+    # 保留注释供审计追溯，不删除以防向后兼容性需求。
+
+    # 硬天花板：绝对水平过高时一票否决 (防恶性通胀误判)
+    tips_absolute_max: 2.5        # 单位：百分比 (e.g., 2.5 表示 2.5%)
+
+    # 边际变化信号 (满足任一即可触发，需满足 min_signals_required)
+    tips_roc_60d_threshold: -0.15 # 60日变化率低于 -15% (利率快速下行)
+    tips_percentile_2y: 0.25      # 2年滚动分位低于 25% (利率处于相对低位)
+
+    # 确认信号数
+    min_signals_required: 1       # 至少满足 1 个边际信号
+    # 备注：后续若样本 N>100，可考虑收紧至 min_signals_required: 2
+
+    # === 旧参数 (deprecated, 保留用于回测对比) ===
+    # tips_yield_max: 0.5  # ZIRP-era absolute threshold, deprecated 2026-07-18
+    # tips_yield_roc_60d_max: -0.10  # deprecated, superseded by tips_roc_60d_threshold
+
+    # === v5.1 HY 豁免 RISK_ON (2026-07-18) ===
+    # 相对路径 DXY z-score 门：对齐 compute_regime 读取键 (此前因键名错位未生效)
+    dxy_zscore_60d_max: -0.5     # DXY 60日 z-score <= -0.5 (美元走弱) 满足相对路径
+    # HY 豁免 RISK_ON：信用极宽松 + 低波动 = 风险偏好状态，绕过 TIPS/DXY 水平门
+    vix_calm_max: 18.0           # VIX <= 18 (低于长期中位数 20)
+    hy_calm_max: 300.0           # HY <= 300bp (信用市场极度健康)
+    dxy_max: 100.0  # 保留：DXY 绝对水平仍作为绝对回退参考
   tight_liquidity:
     tips_yield_min: 0.8
     dxy_min: 103.0
+    hy_tight_floor: 300.0  # P1(v5.1): 信用宽松降级门 — HY 低于此值(信用宽松)时 TIGHT 降级为 TRANSITION
   liquidity_squeeze:
     vix_min: 25.0
     hy_credit_spread_min: 400

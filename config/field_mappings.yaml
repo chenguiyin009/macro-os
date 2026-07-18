@@ -19,3 +19,20 @@ field_aliases:
   qqq_close:
     - "qqq"
     - "close"
+
+  nominal_10y:
+    - "ust_10y"
+    - "us10y"
+    - "us_10y"
+  nominal_30y:
+    - "ust_30y"
+    - "us30y"
+    - "us_30y"
+  nominal_2y:
+    - "ust_2y"
+    - "us2y"
+  bei_10y:
+    - "breakeven_10y"
+    - "us_bei_10y"
+    - "bei"
+

@@ -35,6 +35,20 @@ def build_features(raw: FeatureSchema) -> Dict[str, Any]:
         features["hy_credit_spread"] = raw.hy_credit_spread
     if raw.tips_yield is not None:
         features["tips_yield"] = raw.tips_yield
+    if getattr(raw, "nominal_10y", None) is not None:
+        features["nominal_10y"] = raw.nominal_10y
+    if getattr(raw, "nominal_30y", None) is not None:
+        features["nominal_30y"] = raw.nominal_30y
+    if getattr(raw, "nominal_2y", None) is not None:
+        features["nominal_2y"] = raw.nominal_2y
+    if getattr(raw, "bei_10y", None) is not None:
+        features["bei_10y"] = raw.bei_10y
+    if getattr(raw, "tips_yield_change_5d_bp", None) is not None:
+        features["tips_yield_change_5d_bp"] = raw.tips_yield_change_5d_bp
+    if getattr(raw, "nominal_10y_change_5d_bp", None) is not None:
+        features["nominal_10y_change_5d_bp"] = raw.nominal_10y_change_5d_bp
+    if getattr(raw, "nominal_30y_change_5d_bp", None) is not None:
+        features["nominal_30y_change_5d_bp"] = raw.nominal_30y_change_5d_bp
     if raw.tips_yield_roc_60d is not None:
         features["tips_yield_roc_60d"] = raw.tips_yield_roc_60d
     if raw.dxy_zscore_60d is not None:
@@ -45,6 +59,8 @@ def build_features(raw: FeatureSchema) -> Dict[str, Any]:
         features["gold"] = raw.gold
     if raw.equity_tech_rotation is not None:
         features["equity_tech_rotation"] = raw.equity_tech_rotation
+    if raw.tech_drawdown is not None:
+        features["tech_drawdown"] = raw.tech_drawdown
 
     # Already on FeatureSchema; must reach orchestrator/policy consumers.
     # recovery_signal is read by run_pipeline for days_in_recovery.

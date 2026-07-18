@@ -1,4 +1,4 @@
-﻿"""Macro OS - TradingView MCP client adapter.
+"""Macro OS - TradingView MCP client adapter.
 
 Minimal wrapper around the MCP subprocess bridge.
 Falls back through: live subprocess -> relay log -> mock.
@@ -29,7 +29,7 @@ DEFAULT_RELAY_LOG_PATH = (
 )
 DEFAULT_RELAY_MAX_AGE_SECONDS = 300
 DEFAULT_RELAY_SCAN_BYTES = 64 * 1024
-MACRO_SIGNATURE_KEYS = {"vix", "dxy", "danger_score", "qqq_close", "close"}
+MACRO_SIGNATURE_KEYS = {"vix", "dxy", "danger_score", "qqq_close", "close", "modules", "macro"}
 
 class TradingViewAdapter:
     """Adapter for fetching macro data from TradingView MCP."""
@@ -65,6 +65,14 @@ class TradingViewAdapter:
                 return result
 
         result = self._read_relay_log()
+        if result is not None:
+            return result
+
+        result = self._fetch_macro_liquidity_sidecar()
+        if result is not None:
+            return result
+
+        result = self._fetch_composite_fallback()
         if result is not None:
             return result
 
@@ -186,15 +194,106 @@ class TradingViewAdapter:
 
         return None
 
+
+
+
+    def _fetch_macro_liquidity_sidecar(self) -> Optional[FeatureSchema]:
+        """Read macro-liquidity monitor sidecar (FeatureSchema-compatible)."""
+        enabled = os.getenv("MACRO_OS_TV_MACRO_SIDECAR_ENABLED", "1").strip() not in {"0", "false", "False"}
+        if not enabled:
+            return None
+        try:
+            from adapters.tv_macro_liquidity import load_macro_liquidity_features
+        except Exception as exc:  # pragma: no cover
+            self._last_error = f"tv macro sidecar import failed: {exc}"
+            return None
+        max_age = int(os.getenv("MACRO_OS_TV_MACRO_SIDECAR_MAX_AGE", "300"))
+        result = load_macro_liquidity_features(max_age_seconds=max_age)
+        if result is None:
+            return None
+        self._last_success_time = time.time()
+        self._last_error = None
+        logger.info("TradingView adapter using macro-liquidity sidecar")
+        return result
+
+    def _fetch_composite_fallback(self) -> Optional[FeatureSchema]:
+        """yfinance + FRED + last-good cache (skips recursive TV fetch)."""
+        try:
+            from adapters.macro_composite import fetch_merged_macro_snapshot
+        except Exception as exc:  # pragma: no cover
+            self._last_error = f"composite import failed: {exc}"
+            logger.warning(self._last_error)
+            return None
+
+        yf_enabled = os.getenv("MACRO_OS_YFINANCE_ENABLED", "1").strip() not in {"0", "false", "False"}
+        fred_enabled = os.getenv("MACRO_OS_FRED_ENABLED", "1").strip() not in {"0", "false", "False"}
+        cache_enabled = os.getenv("MACRO_OS_MACRO_CACHE_ENABLED", "1").strip() not in {"0", "false", "False"}
+
+        result = fetch_merged_macro_snapshot(
+            include_tv=False,
+            include_yfinance=yf_enabled,
+            include_fred=fred_enabled,
+            use_cache=cache_enabled,
+        )
+        if result is None:
+            self._last_error = "composite fallback empty (yfinance/fred/cache)"
+            logger.warning(self._last_error)
+            return None
+        self._last_success_time = time.time()
+        self._last_error = None
+        logger.info(
+            "TradingView adapter using composite fallback (yfinance=%s fred=%s cache=%s)",
+            yf_enabled,
+            fred_enabled,
+            cache_enabled,
+        )
+        return result
+
+    def _fetch_fred(self) -> Optional[FeatureSchema]:
+        """Optional FRED live fallback for funding-price features."""
+        enabled = os.getenv("MACRO_OS_FRED_ENABLED", "1").strip() not in {"0", "false", "False"}
+        if not enabled:
+            return None
+        try:
+            from adapters.fred import FredMacroAdapter
+        except Exception as exc:  # pragma: no cover
+            self._last_error = f"fred import failed: {exc}"
+            logger.warning("FRED adapter import failed: %s", exc)
+            return None
+        adapter = FredMacroAdapter(timeout_seconds=min(8.0, float(self.timeout_seconds or 8)))
+        result = adapter.fetch()
+        if result is None:
+            self._last_error = adapter.last_error or "fred fetch failed"
+            logger.warning("FRED live fetch failed: %s", self._last_error)
+            return None
+        self._last_success_time = time.time()
+        self._last_error = adapter.last_error
+        logger.info("TradingView adapter using FRED live macro snapshot")
+        return result
+
     def _mock_snapshot(self) -> FeatureSchema:
-        """Return a realistic mock snapshot for local development."""
+        """Return a research-aligned mock snapshot (week of 2026-07-06 funding-price Q1).
+
+        Levels track docs/research/2026-07-10-funding-price-weekly.md so local
+        dry-runs narrate duration stress test rather than a 0.6% TIPS fantasy world.
+        """
         return FeatureSchema(
-            dxy=104.5,
+            dxy=101.12,
             vix=18.2,
             hy_credit_spread=320,
-            tips_yield=0.6,
-            gold=2350.0,
+            tips_yield=2.32,
+            tips_yield_change_5d_bp=14.0,
+            nominal_10y=4.55,
+            nominal_10y_change_5d_bp=17.0,
+            nominal_30y=5.06,
+            nominal_30y_change_5d_bp=19.0,
+            nominal_2y=4.19,
+            bei_10y=2.26,
+            gold=374.45,
             equity_tech_rotation=0.15,
+            danger_score=35.0,
+            risk_score=0.55,
+            recovery_signal=False,
             source=DataSource.MOCK,
             fetched_at=datetime.datetime.now(datetime.timezone.utc),
         )
@@ -353,5 +452,6 @@ class TradingViewAdapter:
             "last_success_time": self._last_success_time,
             "last_error": self._last_error,
         }
+
 
 

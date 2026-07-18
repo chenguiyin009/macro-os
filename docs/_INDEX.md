@@ -1,4 +1,4 @@
-﻿---
+---
 tags: [macro-os, index]
 ---
 
@@ -16,7 +16,8 @@ tags: [macro-os, index]
 5. [[DIVERGENCE_ENGINE]] - Phase mapping, hysteresis, resonance
 6. [[CDP_BRIDGE]] - Pine Script data integration
 7. [[CONFIGURATION]] - thresholds.yaml & watchlist.yaml reference
-8. [[GLOSSARY]] - All terms, enums, state labels
+8. [[MACRO_DATA_FALLBACK]] - Missing-field fallback and complement fill spec
+9. [[GLOSSARY]] - All terms, enums, state labels
 
 ## Quick Reference
 

@@ -39,16 +39,36 @@ def validate_thresholds_config(thresholds: Mapping[str, Any]) -> list[str]:
 
     regime = thresholds.get("regime", {})
     risk_on = regime.get("risk_on", {})
-    for key in ("tips_yield_roc_60d_max", "dxy_zscore_60d_max"):
-        if key not in risk_on:
-            errors.append(f"thresholds.regime.risk_on.{key} is required")
-        else:
-            try:
-                float(risk_on[key])
-            except (TypeError, ValueError):
-                errors.append(
-                    f"thresholds.regime.risk_on.{key} must be a numeric threshold"
-                )
+
+    # ZIRP trap removal (2026-07-18): new required keys replace old ones
+    new_required = ("tips_absolute_max", "tips_roc_60d_threshold",
+                    "tips_percentile_2y", "min_signals_required")
+    has_new_schema = any(key in risk_on for key in new_required)
+
+    if has_new_schema:
+        # v2.0 schema: validate new ZIRP-removal keys
+        for key in new_required:
+            if key not in risk_on:
+                errors.append(f"thresholds.regime.risk_on.{key} is required")
+            else:
+                try:
+                    float(risk_on[key])
+                except (TypeError, ValueError):
+                    errors.append(
+                        f"thresholds.regime.risk_on.{key} must be a numeric threshold"
+                    )
+    else:
+        # Legacy v1.0 schema: validate old keys (backward compat)
+        for key in ("tips_yield_roc_60d_max", "dxy_zscore_60d_max"):
+            if key not in risk_on:
+                errors.append(f"thresholds.regime.risk_on.{key} is required")
+            else:
+                try:
+                    float(risk_on[key])
+                except (TypeError, ValueError):
+                    errors.append(
+                        f"thresholds.regime.risk_on.{key} must be a numeric threshold"
+                    )
 
     constitution = thresholds.get("constitution", {})
     if not constitution:

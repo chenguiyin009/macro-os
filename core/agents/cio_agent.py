@@ -30,6 +30,7 @@ class CIOAgent:
         features_summary: FeatureSchema,
         macro_narrative: str = "",
         red_line_meta: Optional[Dict[str, Any]] = None,
+        funding_price_research: Optional[Dict[str, Any]] = None,
     ) -> str:
         """Build the final Markdown report for Feishu/Telegram notifications."""
         if regime_probs:
@@ -79,6 +80,22 @@ class CIOAgent:
                 f"已强制 **phase_for_kernel={phase_k}** 并走 HARD_VETO（risk=0）{sticky}。\n"
             )
 
+        research_block = ""
+        if funding_price_research:
+            q = funding_price_research.get("quadrant", "UNKNOWN")
+            zh = funding_price_research.get("label_zh", "")
+            hint = funding_price_research.get("hard_regime_hint", "")
+            notes = funding_price_research.get("notes", "")
+            real_d = funding_price_research.get("real_rate_direction", "?")
+            nom_d = funding_price_research.get("nominal_rate_direction", "?")
+            layer = funding_price_research.get("transmission_layer", "")
+            research_block = (
+                f"\n## 📐 资金价格四象限 (Research)\n"
+                f"> **{q}** {zh}｜真实利率方向 `{real_d}` × 名义利率方向 `{nom_d}`\n"
+                f"> hard_regime_hint=`{hint}`｜传导层=`{layer}`\n"
+                f"> {notes}\n"
+            )
+
         if macro_narrative.strip():
             # Prefer explicit narrative even when llm_enabled is False if orchestrator passed one.
             narrative_block = f"\n## 🧠 CIO 宏观叙事\n> {macro_narrative.strip()}\n"
@@ -86,7 +103,7 @@ class CIOAgent:
         date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
         report = f"""# 🏛️ Macro OS v5.0 | 每日执行计划 (Daily Action Plan)
-*Generated at: {date_str}*{red_block}{narrative_block}
+*Generated at: {date_str}*{red_block}{research_block}{narrative_block}
 
 ## 📊 宏观概率矩阵 (Probabilistic Matrix)
 当前主导环境: **{dominant_regime.value}** ({prob_val:.1%})
@@ -122,6 +139,7 @@ class CIOAgent:
                 kwargs.get("features_summary") or FeatureSchema(),
                 macro_narrative=kwargs.get("macro_narrative", ""),
                 red_line_meta=kwargs.get("red_line_meta"),
+                funding_price_research=kwargs.get("funding_price_research"),
             )
 
         if len(args) == 2 and not kwargs:

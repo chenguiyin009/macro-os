@@ -30,10 +30,10 @@ def make_ohlcv(n: int, start: float = 10.0, slope: float = 0.5) -> list[OHLCV]:
 def make_factors(space=0.8, ma55=1.0, divergence=0.0, state=0.9):
     """构造测试用因子列表"""
     return [
-        EvidenceFactor(module="J", factor="STRUCTURE", value=space, weight=0.25),
-        EvidenceFactor(module="J-1", factor="MA55_PULLBACK", value=ma55, weight=0.2),
-        EvidenceFactor(module="J-1", factor="DIVERGENCE", value=divergence, weight=0.15),
-        EvidenceFactor(module="J+2", factor="STATE", value=state, weight=0.3),
+        EvidenceFactor(module="J", factor="STRUCTURE", value=space, weight=0.20),
+        EvidenceFactor(module="J-1", factor="MA55_PULLBACK", value=ma55, weight=0.30),
+        EvidenceFactor(module="J-1", factor="DIVERGENCE", value=divergence, weight=0.25),
+        EvidenceFactor(module="J+2", factor="STATE", value=state, weight=0.20),
     ]
 
 
