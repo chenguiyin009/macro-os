@@ -110,14 +110,16 @@ def build_feature_schema_from_series(
     series_map: Dict[str, List[SeriesPoint]],
     *,
     source: DataSource = DataSource.MCP,
+    series: Optional[Dict[str, str]] = None,
 ) -> FeatureSchema:
     """Map fetched series into FeatureSchema + 5d bp changes where possible."""
     kwargs: Dict[str, Any] = {
         "source": source,
         "fetched_at": datetime.now(timezone.utc),
     }
+    series_map_def = dict(series or DEFAULT_SERIES)
     # levels
-    for sid, field in DEFAULT_SERIES.items():
+    for sid, field in series_map_def.items():
         pts = series_map.get(sid) or []
         if not pts:
             continue
@@ -205,7 +207,7 @@ class FredMacroAdapter:
         try:
             # Prefer MANUAL when env forces, else MCP-like external
             source = DataSource.MCP
-            fs = build_feature_schema_from_series(series_map, source=source)
+            fs = build_feature_schema_from_series(series_map, source=source, series=self.series)
             self._last_error = None if not errors else ("partial: " + "; ".join(errors[:6]))
             return fs
         except Exception as exc:  # validation

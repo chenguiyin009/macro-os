@@ -12,9 +12,14 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from core.features import build_features
 from core.research.funding_price_quadrant import (
@@ -32,6 +37,37 @@ def _week_bounds(as_of: datetime) -> tuple[str, str]:
     start = d - timedelta(days=d.weekday())
     end = start + timedelta(days=4)  # Fri
     return start.isoformat(), end.isoformat()
+
+
+def _attach_source_label(features: FeatureSchema, label: str) -> FeatureSchema:
+    features.__dict__["_source_label"] = label
+    return features
+
+
+def _fill_derived_fields(features: FeatureSchema) -> FeatureSchema:
+    merged = features.model_dump()
+    if merged.get("bei_10y") is None:
+        tips = merged.get("tips_yield")
+        nominal_10y = merged.get("nominal_10y")
+        if tips is not None and nominal_10y is not None:
+            merged["bei_10y"] = round(float(nominal_10y) - float(tips), 4)
+    result = FeatureSchema.model_validate(merged)
+    if "_source_label" in features.__dict__:
+        result.__dict__["_source_label"] = features.__dict__["_source_label"]
+    return result
+
+
+def _merge_missing_fields(primary: FeatureSchema, fallback: FeatureSchema, *, label: str) -> FeatureSchema:
+    merged = primary.model_dump()
+    fallback_data = fallback.model_dump()
+    for key, value in fallback_data.items():
+        if key in {"source", "fetched_at"}:
+            continue
+        if merged.get(key) is None and value is not None:
+            merged[key] = value
+    result = FeatureSchema.model_validate(merged)
+    result = _fill_derived_fields(result)
+    return _attach_source_label(result, label)
 
 
 def snapshot_from_features(
@@ -172,25 +208,37 @@ def load_features_from_source(source: str, project_root: Path) -> FeatureSchema:
     source = source.lower()
     if source == "fred":
         from adapters.fred import EXTENDED_SERIES, FredMacroAdapter
-
-        fs = FredMacroAdapter(series=EXTENDED_SERIES, timeout_seconds=15).fetch()
-        if fs is None:
-            raise RuntimeError("FRED fetch failed")
-        return fs
-    if source in {"yfinance", "yf"}:
         from adapters.yfinance_macro import YFinanceMacroAdapter
 
-        fs = YFinanceMacroAdapter().fetch()
-        if fs is None:
-            raise RuntimeError("yfinance fetch failed")
-        return fs
+        fred_fs = FredMacroAdapter(series=EXTENDED_SERIES, timeout_seconds=15).fetch()
+        yf_fs = YFinanceMacroAdapter().fetch()
+        if fred_fs is None and yf_fs is None:
+            raise RuntimeError("FRED/yfinance fetch failed")
+        if fred_fs is None:
+            return _fill_derived_fields(_attach_source_label(yf_fs, "yfinance"))  # type: ignore[arg-type]
+        if yf_fs is None:
+            return _fill_derived_fields(_attach_source_label(fred_fs, "fred"))
+        return _merge_missing_fields(fred_fs, yf_fs, label="fred+yfinance")
+    if source in {"yfinance", "yf"}:
+        from adapters.fred import EXTENDED_SERIES, FredMacroAdapter
+        from adapters.yfinance_macro import YFinanceMacroAdapter
+
+        yf_fs = YFinanceMacroAdapter().fetch()
+        fred_fs = FredMacroAdapter(series=EXTENDED_SERIES, timeout_seconds=15).fetch()
+        if yf_fs is None and fred_fs is None:
+            raise RuntimeError("yfinance/FRED fetch failed")
+        if yf_fs is None:
+            return _attach_source_label(fred_fs, "fred")  # type: ignore[arg-type]
+        if fred_fs is None:
+            return _fill_derived_fields(_attach_source_label(yf_fs, "yfinance"))
+        return _merge_missing_fields(yf_fs, fred_fs, label="yfinance+fred")
     if source in {"composite", "auto"}:
         from adapters.macro_composite import fetch_merged_macro_snapshot
 
         fs = fetch_merged_macro_snapshot(include_tv=False)
         if fs is None:
             raise RuntimeError("composite fetch failed")
-        return fs
+        return _fill_derived_fields(_attach_source_label(fs, "composite"))
     if source == "tv":
         from adapters.tradingview import TradingViewAdapter
 
@@ -225,7 +273,7 @@ def load_features_from_source(source: str, project_root: Path) -> FeatureSchema:
                 nominal_10y_change_5d_bp=chg.get("nominal_10y_bp"),
                 nominal_30y_change_5d_bp=chg.get("nominal_30y_bp"),
             )
-        return FeatureSchema.model_validate(data)
+        return _fill_derived_fields(FeatureSchema.model_validate(data))
     raise ValueError(f"unknown source: {source}")
 
 
@@ -249,7 +297,7 @@ def main(argv: Optional[list] = None) -> int:
 
     fs = load_features_from_source(args.source, root)
     features = build_features(fs)
-    features["_source"] = getattr(getattr(fs, "source", None), "value", str(getattr(fs, "source", "")))
+    features["_source"] = getattr(fs, "_source_label", getattr(getattr(fs, "source", None), "value", str(getattr(fs, "source", ""))))
     snap = snapshot_from_features(features, week_start=week_start, week_end=week_end)
     data_path, doc_path = write_weekly_artifacts(snap, project_root=root)
     logger.info("wrote %s", data_path)

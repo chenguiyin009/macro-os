@@ -2,7 +2,7 @@
   "week_start": "2026-07-13",
   "week_end": "2026-07-17",
   "title": "资金价格与风险资产周报（自动生成）",
-  "generated_at": "2026-07-16T10:27:12.473578Z",
+  "generated_at": "2026-07-16T15:11:21.493967Z",
   "funding_price_quadrant": "Q1_STRESS_TEST",
   "quadrant_label_zh": "压力测试",
   "status_summary": "Q1 stress test: duration re-pricing; credit/usd not confirming systemic squeeze",
@@ -16,20 +16,20 @@
     "non_dominant": []
   },
   "levels": {
-    "tips_10y": 2.32,
-    "nominal_10y": 4.55,
-    "nominal_30y": 5.06,
-    "nominal_2y": 4.19,
-    "bei_10y": 2.26,
-    "dxy": 101.12,
-    "gold": 374.45,
-    "vix": 18.2,
-    "hy_credit_spread_bp": 320.0
+    "tips_10y": 2.33,
+    "nominal_10y": 4.58,
+    "nominal_30y": 5.08,
+    "nominal_2y": 4.18,
+    "bei_10y": 2.23,
+    "dxy": 120.5046,
+    "gold": 366.4100036621094,
+    "vix": 15.67,
+    "hy_credit_spread_bp": 271.0
   },
   "changes_5d_bp_or_pct": {
-    "tips_10y_bp": 14.0,
-    "nominal_10y_bp": 17.0,
-    "nominal_30y_bp": 19.0
+    "tips_10y_bp": 3.0,
+    "nominal_10y_bp": 3.0,
+    "nominal_30y_bp": 3.0
   },
   "credit": {
     "stable": true,
@@ -45,7 +45,7 @@
     "not_hard_regime": "LIQUIDITY_SQUEEZE",
     "reason": "Q1 stress test: duration re-pricing; credit/usd not confirming systemic squeeze"
   },
-  "source": "MOCK",
+  "source": "fred+yfinance",
   "assessment": {
     "quadrant": "Q1_STRESS_TEST",
     "label_zh": "压力测试",
@@ -62,8 +62,8 @@
     "usd_breakout": false,
     "notes": "Q1 stress test: duration re-pricing; credit/usd not confirming systemic squeeze",
     "inputs_used": {
-      "real_delta_bp": 14.0,
-      "nominal_delta_bp": 19.0
+      "real_delta_bp": 3.0,
+      "nominal_delta_bp": 3.0
     }
   }
 }

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 from adapters.fred import (
+    EXTENDED_SERIES,
     FredMacroAdapter,
     SeriesPoint,
     _bp_change,
@@ -63,6 +64,23 @@ def test_build_feature_schema_converts_hy_oas_to_bp() -> None:
     assert fs.hy_credit_spread is not None
     assert abs(fs.hy_credit_spread - 272.0) < 1e-6
     assert fs.vix == 16.5
+
+
+def test_build_feature_schema_includes_extended_series_fields() -> None:
+    series = {
+        "DFII10": [SeriesPoint(f"2026-07-{i:02d}", 2.0 + i * 0.01) for i in range(1, 8)],
+        "DGS10": [SeriesPoint(f"2026-07-{i:02d}", 4.0 + i * 0.01) for i in range(1, 8)],
+        "DGS30": [SeriesPoint(f"2026-07-{i:02d}", 4.8 + i * 0.01) for i in range(1, 8)],
+        "DGS2": [SeriesPoint(f"2026-07-{i:02d}", 3.6 + i * 0.01) for i in range(1, 8)],
+        "T10YIE": [SeriesPoint("2026-07-14", 2.25)],
+        "DTWEXBGS": [SeriesPoint("2026-07-14", 100.7)],
+        "BAMLH0A0HYM2": [SeriesPoint("2026-07-14", 2.72)],
+        "VIXCLS": [SeriesPoint("2026-07-14", 16.5)],
+    }
+    fs = build_feature_schema_from_series(series, series=EXTENDED_SERIES)
+    assert fs.nominal_2y == 3.67
+    assert fs.bei_10y == 2.25
+    assert fs.dxy == 100.7
 
 
 def test_fetch_fred_series_uses_opener() -> None:

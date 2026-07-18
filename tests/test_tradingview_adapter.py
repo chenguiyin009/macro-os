@@ -8,6 +8,13 @@ from adapters.tradingview import TradingViewAdapter
 from core.schemas import DataSource
 
 
+# Disable all network/cache fallbacks so tests are deterministic.
+os.environ.setdefault("MACRO_OS_TV_MACRO_SIDECAR_ENABLED", "0")
+os.environ.setdefault("MACRO_OS_YFINANCE_ENABLED", "0")
+os.environ.setdefault("MACRO_OS_FRED_ENABLED", "0")
+os.environ.setdefault("MACRO_OS_MACRO_CACHE_ENABLED", "0")
+
+
 def test_fetch_reads_latest_feature_snapshot_from_relay_log(tmp_path) -> None:
     log_path = tmp_path / "tv-desktop-monitor.out.log"
     log_path.write_text(

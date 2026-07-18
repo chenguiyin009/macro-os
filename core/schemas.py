@@ -191,6 +191,10 @@ class FeatureSchema(BaseModel):
     )
     spy_close: Optional[float] = Field(None, validation_alias=AliasChoices("spy_close", "spy"))
     equity_tech_rotation: Optional[float] = None
+    # C-grade microstructural dampener input (v5.1, 2026-07-18). L1/L2 computes a
+    # tech-sector drawdown (e.g. SOXX 20d peak-to-trough, -0.08 == -8%) and supplies
+    # it here; the decision kernel applies a structural cap subordinate to macro vetoes.
+    tech_drawdown: Optional[float] = None
     tips_yield_roc_60d: Optional[float] = None
     dxy_zscore_60d: Optional[float] = None
     # core_pce 为**百分比**量纲（例如 3.5 表示 3.5%），与

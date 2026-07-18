@@ -59,6 +59,8 @@ def build_features(raw: FeatureSchema) -> Dict[str, Any]:
         features["gold"] = raw.gold
     if raw.equity_tech_rotation is not None:
         features["equity_tech_rotation"] = raw.equity_tech_rotation
+    if raw.tech_drawdown is not None:
+        features["tech_drawdown"] = raw.tech_drawdown
 
     # Already on FeatureSchema; must reach orchestrator/policy consumers.
     # recovery_signal is read by run_pipeline for days_in_recovery.

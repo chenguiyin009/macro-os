@@ -163,8 +163,8 @@ def fetch_merged_macro_snapshot(
     if include_fred:
         try:
             if fred_adapter is None:
-                from adapters.fred import FredMacroAdapter
-                fred_adapter = FredMacroAdapter(timeout_seconds=8)
+                from adapters.fred import EXTENDED_SERIES, FredMacroAdapter
+                fred_adapter = FredMacroAdapter(series=EXTENDED_SERIES, timeout_seconds=8)
             fred_fs = fred_adapter.fetch() if hasattr(fred_adapter, "fetch") else fred_adapter()
             if fred_fs is not None:
                 snapshots.append(("fred", fred_fs))
