@@ -1,0 +1,53 @@
+# config/sentiment_shadow.yaml
+# A-share CN tech sentiment shadow layer (V2.0) — observation only
+
+version: "2.0"
+enabled: true
+market_scope: CN
+
+sse_anchor_px: 3750
+sse_anchor_buffer_pct: 0.008
+
+cycle:
+  t0_event: META_HARDWARE_SHOCK
+  t0_date: null
+
+margin_top100_path: data/a_share_margin_top100.csv
+margin_list_max_age_days_stress: 1
+margin_list_max_age_days_normal: 7
+
+transmission:
+  enable: true
+
+rescue_ladder_labels: true
+emit_feishu: true
+attach_to_cio: true
+persist_jsonl: true
+jsonl_path: vault/shadow/sentiment_shadow.jsonl
+
+default_ttl_seconds_intrasession: 1800
+default_ttl_seconds_close: 86400
+
+playbook_hints:
+  hs300_offset: -0.005
+  chinext_offset: -0.01
+  csi1000_offset: -0.02
+
+# ARS (Aggregate Regime Score) 5-dimension weights: G/L/B/S/M -> 0~100.
+# Missing dims are dropped and coverage is reported (see engine.compute_ars).
+ars_weights:
+  global: 0.20      # G: global tech cycle (SOXX drawdown + mega-tech path)
+  liquidity: 0.25   # L: deleveraging release / stress / ETF & GJD bid
+  breadth: 0.25     # B: advance-decline + transmission + limit stress
+  sentiment: 0.15   # S: sentiment_temperature
+  momentum: 0.15    # M: bounce_quality + sector-index resonance
+
+# Soft thresholds for mock/deterministic phase0 (recalibrate in phase3)
+thresholds:
+  margin_stress_limit_down: 10
+  # board substitute stress probe (consecutive limit-down universe, broader than margin Top100)
+  board_stress_consecutive: 30
+  margin_release_rate_high: 0.7
+  resonance_s4_min: 0.65
+  volume_thrust_thin: -0.2
+  corr_crowded: 0.7

@@ -80,6 +80,63 @@ def _apply_tech_dampener(
     return capped, note
 
 
+# Phase 2 (v5.1, 2026-07-21): cross-asset theme AND-gate soft cap.
+# Mirrors the C-grade tech dampener but is driven by the *theme* pressure level
+# rather than a single-asset drawdown. The gate only lowers the budget when BOTH:
+#   (a) theme_pressure_level >= 2 (risk_off or pressure_override), AND
+#   (b) structural weakness (SOXX or QQQ 20d peak-to-trough break <= -0.07) OR
+#       macro suboptimality (hard_regime in {TRANSITION, TIGHT_LIQUIDITY}).
+# It is fully subordinate to HARD_VETO (never raises, never overrides a veto),
+# and is applied on every non-veto return path via min(). When L1/L2 does not
+# supply `theme_pressure_level` (defaults 0), the gate is inactive (1.0).
+# Calibrated as AND_s07_L2c65_L3c50 (scripts/backtest_theme_andgate.py):
+#   2022 trigger 6.3%, 468d trigger 7.9%, stress-window SOXX maxDD improvement
+#   34.7-44.8%; complements (does not overlap) the tech dampener (no maxDD change,
+#   +1.4pp incremental return over the live tech dampener).
+THEME_PRESSURE_STRUCT_THR = -0.07   # structural-weak threshold for SOXX/QQQ 20d dd
+THEME_PRESSURE_CAP_L2 = 0.65        # level == 2 (risk_off)
+THEME_PRESSURE_CAP_L3 = 0.50        # level >= 3 (pressure_override)
+
+
+def _apply_theme_pressure(
+    risk_budget: float,
+    authority: "AuthorityLevel",
+    level: int,
+    soxx_dd: float,
+    qqq_dd: float,
+    hard_regime: str,
+    struct_thr: float = THEME_PRESSURE_STRUCT_THR,
+    cap_l2: float = THEME_PRESSURE_CAP_L2,
+    cap_l3: float = THEME_PRESSURE_CAP_L3,
+) -> Tuple[float, Dict[str, Any]]:
+    """Cross-asset theme AND-gate soft cap (Phase 2, 2026-07-21).
+
+    Returns ``(capped_budget, audit_note)``. The gate fires ONLY when
+    ``level >= 2 AND (structural_weak OR macro_subopt)``; otherwise it is dormant
+    (cap 1.0). Subordinate to HARD_VETO by construction — like the tech dampener.
+    """
+    macro_subopt = hard_regime in (
+        RegimeType.TRANSITION.value,
+        RegimeType.TIGHT_LIQUIDITY.value,
+    )
+    struct_weak = (soxx_dd <= struct_thr) or (qqq_dd <= struct_thr)
+    gate_open = (level >= 2) and (struct_weak or macro_subopt)
+    cap = cap_l3 if level >= 3 else cap_l2
+    active = gate_open and (authority != AuthorityLevel.HARD_VETO) and (cap < risk_budget)
+    capped = min(risk_budget, cap) if gate_open else risk_budget
+    note: Dict[str, Any] = {
+        "active": active,
+        "gate_open": gate_open,
+        "level": int(level),
+        "struct_weak": bool(struct_weak),
+        "macro_subopt": bool(macro_subopt),
+        "cap": cap if gate_open else 1.0,
+        "pre_cap_budget": round(risk_budget, 4),
+        "post_cap_budget": round(capped, 4),
+    }
+    return capped, note
+
+
 def decide(
     features: Dict[str, Any],
     hard_regime: str,
@@ -103,6 +160,11 @@ def decide(
     # unless L1/L2 supplies `tech_drawdown`). Subordinate to HARD_VETO by construction.
     tech_dd = features.get("tech_drawdown", 0.0) if isinstance(features, dict) else 0.0
     dd_cap = _tech_dampener_cap(tech_dd)
+    # Phase 2 (v5.1): cross-asset theme pressure level (0..3). Dormant unless L1/L2
+    # supplies `theme_pressure_level`; SOXX proxy = tech_drawdown, QQQ = qqq_drawdown.
+    theme_level = int(features.get("theme_pressure_level", 0) or 0)
+    soxx_dd = tech_dd
+    qqq_dd = features.get("qqq_drawdown", 0.0) if isinstance(features, dict) else 0.0
     effective_phase = divergence_phase
     if not effective_phase and confirmation_status == "DIVERGED":
         effective_phase = "MID"
@@ -180,6 +242,9 @@ def decide(
         candidate_budget, _dd_note = _apply_tech_dampener(candidate_budget, AuthorityLevel.SAFETY_GATE, tech_dd, dd_cap)
         if _dd_note["active"]:
             audit_trail["step_2c_tech_dampener"] = _dd_note
+        candidate_budget, _tp_note = _apply_theme_pressure(candidate_budget, AuthorityLevel.SAFETY_GATE, theme_level, soxx_dd, qqq_dd, hard_regime)
+        if _tp_note["active"]:
+            audit_trail["step_2d_theme_pressure"] = _tp_note
         return KernelDecision(authority=AuthorityLevel.SAFETY_GATE,
             decision=Decision(regime=RegimeType.TRANSITION, risk_score=risk_score, confidence=0.5, action=DecisionAction.REDUCE, reason="SAFETY GATE: LATE divergence - de-risk"),
             hard_regime=hard_regime, soft_regime_label=soft_regime_label, risk_budget=candidate_budget, defense_budget=final_defense_budget, veto_reason=veto_msg, reason_code=rec_reason, audit_trail=audit_trail)
@@ -219,6 +284,9 @@ def decide(
         candidate_budget, _dd_note = _apply_tech_dampener(candidate_budget, AuthorityLevel.SAFETY_GATE, tech_dd, dd_cap)
         if _dd_note["active"]:
             audit_trail["step_2c_tech_dampener"] = _dd_note
+        candidate_budget, _tp_note = _apply_theme_pressure(candidate_budget, AuthorityLevel.SAFETY_GATE, theme_level, soxx_dd, qqq_dd, hard_regime)
+        if _tp_note["active"]:
+            audit_trail["step_2d_theme_pressure"] = _tp_note
         return KernelDecision(authority=AuthorityLevel.SAFETY_GATE,
             decision=Decision(regime=RegimeType.TRANSITION, risk_score=risk_score, confidence=0.75, action=DecisionAction.REDUCE, reason="SAFETY GATE: MID divergence - controlled exposure"),
             hard_regime=hard_regime, soft_regime_label=soft_regime_label, risk_budget=candidate_budget, defense_budget=final_defense_budget, veto_reason=veto_msg, reason_code=rec_reason, audit_trail=audit_trail)
@@ -260,6 +328,9 @@ def decide(
         final_risk_budget, _dd_note = _apply_tech_dampener(final_risk_budget, AuthorityLevel.SAFETY_GATE, tech_dd, dd_cap)
         if _dd_note["active"]:
             audit_trail["step_2c_tech_dampener"] = _dd_note
+        final_risk_budget, _tp_note = _apply_theme_pressure(final_risk_budget, AuthorityLevel.SAFETY_GATE, theme_level, soxx_dd, qqq_dd, hard_regime)
+        if _tp_note["active"]:
+            audit_trail["step_2d_theme_pressure"] = _tp_note
         return KernelDecision(authority=AuthorityLevel.SAFETY_GATE,
             decision=Decision(regime=RegimeType.TRANSITION, risk_score=risk_score, confidence=1.0, action=DecisionAction.NEUTRAL, reason="SAFETY GATE: EARLY divergence - watch mode"),
             hard_regime=hard_regime, soft_regime_label=soft_regime_label, risk_budget=final_risk_budget, defense_budget=final_defense_budget, veto_reason="EARLY divergence phase - watch mode", reason_code=final_reason_code, audit_trail=audit_trail)
@@ -395,6 +466,9 @@ def decide(
         final_budget, _dd_note = _apply_tech_dampener(final_budget, authority, tech_dd, dd_cap)
         if _dd_note["active"]:
             audit_trail["step_2c_tech_dampener"] = _dd_note
+        final_budget, _tp_note = _apply_theme_pressure(final_budget, authority, theme_level, soxx_dd, qqq_dd, hard_regime)
+        if _tp_note["active"]:
+            audit_trail["step_2d_theme_pressure"] = _tp_note
         return KernelDecision(
             authority=authority,
             decision=Decision(
@@ -448,6 +522,9 @@ def decide(
     final_budget_soft, _dd_note = _apply_tech_dampener(final_budget_soft, AuthorityLevel.SOFT_POLICY, tech_dd, dd_cap)
     if _dd_note["active"]:
         audit_trail_soft["step_2c_tech_dampener"] = _dd_note
+    final_budget_soft, _tp_note = _apply_theme_pressure(final_budget_soft, AuthorityLevel.SOFT_POLICY, theme_level, soxx_dd, qqq_dd, hard_regime)
+    if _tp_note["active"]:
+        audit_trail_soft["step_2d_theme_pressure"] = _tp_note
     return KernelDecision(
         authority=AuthorityLevel.SOFT_POLICY,
         decision=Decision(

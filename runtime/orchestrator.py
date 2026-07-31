@@ -17,7 +17,11 @@ from adapters.feishu import FeishuAdapter
 from adapters.futu import FutuSensor
 from adapters.tradingview import TradingViewAdapter
 from adapters.vault import VaultAdapter
-from adapters.equity_stress import compute_soxx_drawdown, compute_soxx_drawdown_smoothed
+from adapters.equity_stress import (
+    compute_soxx_drawdown,
+    compute_soxx_drawdown_smoothed,
+    compute_qqq_drawdown_smoothed,
+)
 from core.agents.cio_agent import CioCopilot
 from core.decision_kernel import decide as kernel_decide
 from core.divergence.divergence_engine import DivergencePhaseEngine
@@ -200,6 +204,61 @@ class Orchestrator:
         except Exception as exc:  # pragma: no cover - defensive; never block macro path
             logger.warning("tech_drawdown fetch failed (dampener dormant): %s", exc)
 
+    def _inject_qqq_drawdown(self, features: Dict[str, Any], raw_macro: Any) -> None:
+        """Bridge the daily QQQ reading into features['qqq_drawdown'] (Phase 2 AND-gate).
+
+        Mirrors _inject_tech_drawdown: the QQQ 20d peak-to-trough drawdown (hysteresis
+        smoothed) feeds the QQQ leg of the cross-asset AND-gate structural-weakness test
+        inside decision_kernel. Production-only network fetch; any failure degrades
+        silently to the dormant 0.0 default so the macro pipeline is never blocked.
+        """
+        source = getattr(raw_macro, "source", None)
+        if source is not None and getattr(source, "value", str(source)) == "MOCK":
+            return
+        if os.environ.get("MACRO_OS_QQQ_DRAWDOWN_ENABLED", "1").strip() in {"0", "false", "False"}:
+            return
+        try:
+            qd = compute_qqq_drawdown_smoothed()
+            if qd is not None:
+                features["qqq_drawdown"] = qd
+                logger.info("[Orchestrator] qqq_drawdown(QQQ 20d, hysteresis)=%.4f -> AND-gate armed", qd)
+        except Exception as exc:  # pragma: no cover - defensive; never block macro path
+            logger.warning("qqq_drawdown fetch failed (AND-gate SOXX-only): %s", exc)
+
+    def _inject_theme_pressure(self, features: Dict[str, Any]) -> None:
+        """Bridge the daily theme state-machine read into features['theme_pressure_level'].
+
+        Phase 2 (v5.1, 2026-07-21): the cross-asset AND-gate inside decision_kernel only
+        bites when theme_pressure_level>=2 AND (structural weak OR macro subopt). We read
+        the latest theme_state_machine_<date>.json (produced by the daily automation /
+        scripts/theme_state_machine_daily.py, which now emits theme_pressure_level); if
+        missing, default 0 leaves the gate dormant so the macro pipeline is never blocked.
+        """
+        if os.environ.get("MACRO_OS_THEME_PRESSURE_ENABLED", "1").strip() in {"0", "false", "False"}:
+            return
+        try:
+            import json as _json
+            import re as _re
+            from pathlib import Path as _Path
+
+            repo_root = _Path(__file__).resolve().parents[1]
+            candidate_dirs = [repo_root / "output", repo_root.parent / "output"]
+            best: Optional[_Path] = None
+            for d in candidate_dirs:
+                if not d.exists():
+                    continue
+                hits = sorted(d.glob("theme_state_machine_*.json"), reverse=True)
+                if hits and (best is None or hits[0].stat().st_mtime > best.stat().st_mtime):
+                    best = hits[0]
+            if best is None:
+                return
+            payload = _json.loads(best.read_text(encoding="utf-8"))
+            lvl = int(payload.get("theme_pressure_level", 0) or 0)
+            features["theme_pressure_level"] = lvl
+            logger.info("[Orchestrator] theme_pressure_level=%d (from %s) -> AND-gate armed", lvl, best.name)
+        except Exception as exc:  # pragma: no cover - defensive; never block macro path
+            logger.warning("theme_pressure_level read failed (gate dormant): %s", exc)
+
     def _fold_kernel_inputs(
         self,
         features: Dict[str, Any],
@@ -250,6 +309,8 @@ class Orchestrator:
 
             features = build_features(raw_macro)
             self._inject_tech_drawdown(features, raw_macro)
+            self._inject_qqq_drawdown(features, raw_macro)
+            self._inject_theme_pressure(features)
             research_assessment = classify_funding_price_quadrant(features)
             self._last_research_assessment = research_assessment
 
@@ -453,6 +514,8 @@ class Orchestrator:
 
         features = build_features(raw_macro)
         self._inject_tech_drawdown(features, raw_macro)
+        self._inject_qqq_drawdown(features, raw_macro)
+        self._inject_theme_pressure(features)
         research_assessment = classify_funding_price_quadrant(features)
         self._last_research_assessment = research_assessment
         red_verdict = evaluate_physical_red_lines(features, self.red_lines)

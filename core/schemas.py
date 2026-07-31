@@ -195,6 +195,20 @@ class FeatureSchema(BaseModel):
     # tech-sector drawdown (e.g. SOXX 20d peak-to-trough, -0.08 == -8%) and supplies
     # it here; the decision kernel applies a structural cap subordinate to macro vetoes.
     tech_drawdown: Optional[float] = None
+    # Phase 2 (v5.1, 2026-07-21): cross-asset theme pressure level. Produced by the
+    # theme state machine (scripts/theme_state_machine_daily.py): 0=None/risk_on,
+    # 1=Mixed, 2=RiskOff, 3=PressureOverride (themes 9/10). The decision kernel's
+    # AND-gate only lowers the budget when level>=2 AND (structural weak OR macro
+    # subopt); dormant (0) leaves kernel behavior unchanged. Default 0 keeps the
+    # kernel pure and backward-compatible with callers that don't supply it.
+    theme_pressure_level: int = Field(
+        0,
+        description="跨资产主题压力层级: 0=None, 1=Mixed, 2=RiskOff, 3=PressureOverride",
+    )
+    # Phase 2 AND-gate QQQ leg of structural weakness (mirrors tech_drawdown / SOXX).
+    # 20d peak-to-trough drawdown for QQQ; -0.07 == -7%. Supplied by the L1 adapter
+    # edge; defaults None (gate falls back to SOXX-only structural weakness).
+    qqq_drawdown: Optional[float] = None
     tips_yield_roc_60d: Optional[float] = None
     dxy_zscore_60d: Optional[float] = None
     # core_pce 为**百分比**量纲（例如 3.5 表示 3.5%），与

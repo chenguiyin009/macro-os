@@ -171,3 +171,10 @@ Macro OS 是一个围绕宏观信号、决策打分、风险控制、仓位管�
 ## 可直接复制的交接话术
 
 “这是 Macro OS 仓库。先读 `docs/WORKBUDDY_HANDOFF.md` 和 `docs/_INDEX.md`，确认当前分支、PR、主要入口和配置位置，再决定要改哪里。现在最重要的是保持文档同步，避免每次从头解释项目背景。”
+
+## A股情绪影子层（2026-07-21）
+
+- 设计 SSOT：`docs/design/a_share_sentiment_factor_design.md`
+- Phase0 引擎：`core/sentiment/` + `python -m scripts.run_sentiment_shadow --scenario 2026-07-21`
+- **回测交接（MCP 取数）：** `docs/design/workbuddy_sentiment_backtest_handoff.md`
+- 约束：观测 only，不改 decision kernel

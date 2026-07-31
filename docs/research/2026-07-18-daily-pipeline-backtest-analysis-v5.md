@@ -38,7 +38,7 @@ TIGHT_LIQUIDITY / TRANSITION 交易日均获得 0.10-0.40 的阶梯弹性预算�
 | TIGHT_LIQUIDITY | 221 | 40 | -181 |
 | TRANSITION | 211 | 140 | -71 |
 
-- **DXY 日变动波动率 (std of ΔDXY)**: 0.0918 → 0.3195
+- **DXY 日变动波动率 (std of ΔDXY)**: 0.0918 → 0.3196
   （真实日频 DXY 的日间跳变显著大于线性插值，验证平滑偏差已消除）
 
 > 注：DXY 量纲经月度 ICE 锚点重定基，水平阈值不变；尾部拦截由 VIX/HY 红线主导，

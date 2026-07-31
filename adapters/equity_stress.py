@@ -38,6 +38,10 @@ DEFAULT_SOX_TICKER = "SOXX"
 DEFAULT_CACHE_PATH = (
     Path(__file__).resolve().parents[1] / "data" / "_tech_drawdown_sox.csv"
 )
+DEFAULT_QQQ_TICKER = "QQQ"
+DEFAULT_QQQ_CACHE_PATH = (
+    Path(__file__).resolve().parents[1] / "data" / "_tech_drawdown_qqq.csv"
+)
 # Local proxy default documented for this machine; only applied when actually
 # downloading and not already present in the environment.
 DEFAULT_PROXY = "http://127.0.0.1:7890"
@@ -235,6 +239,41 @@ def compute_soxx_drawdown_smoothed(
     Reuses the same cached SOXX close series as ``compute_soxx_drawdown``.
     """
     cache_path = Path(cache_path or DEFAULT_CACHE_PATH)
+
+    closes: Optional[List[float]] = None
+    if not force_refresh:
+        closes = _read_cache(cache_path, max_age_seconds)
+
+    if closes is None:
+        closes = _yf_download(ticker, downloader=downloader)
+        if closes is not None:
+            _write_cache(cache_path, closes)
+
+    if closes is None:
+        return None
+
+    sensor = EquityStressSensor(lookback_window=days, smoothing_lag_days=lag)
+    return sensor.compute_smoothed_drawdown(pd.Series(closes))
+
+
+def compute_qqq_drawdown_smoothed(
+    days: int = 20,
+    *,
+    lag: int = 2,
+    ticker: str = DEFAULT_QQQ_TICKER,
+    cache_path: Optional[Path] = None,
+    max_age_seconds: int = 2 * 86400,
+    force_refresh: bool = False,
+    downloader: Optional[Callable[[Any], Any]] = None,
+) -> Optional[float]:
+    """QQQ trailing drawdown (hysteresis-smoothed) -> features['qqq_drawdown'].
+
+    Mirrors ``compute_soxx_drawdown_smoothed``. Feeds the QQQ leg of the Phase-2
+    cross-asset AND-gate structural-weakness test inside core.decision_kernel
+    (struct_weak = SOXX OR QQQ 20d peak-to-trough <= -0.07). Uses a separate cache
+    so the SOXX and QQQ close series never collide.
+    """
+    cache_path = Path(cache_path or DEFAULT_QQQ_CACHE_PATH)
 
     closes: Optional[List[float]] = None
     if not force_refresh:
