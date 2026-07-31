@@ -74,8 +74,33 @@ def _extract_soxx_thermometer(md_path: Path) -> Optional[str]:
 
 def run_decision(tech_dd: float, hard_regime: str = "RISK_ON") -> Dict[str, Any]:
     from core.decision_kernel import decide
+    from adapters.equity_stress import compute_qqq_drawdown_smoothed
 
     features: Dict[str, Any] = {"tech_drawdown": tech_dd}
+    # Phase 2 (2026-07-21): feed the AND-gate legs (QQQ drawdown + theme pressure
+    # level) so the combined cap shows in the daily decision, mirroring the live
+    # orchestrator. Both are best-effort; on failure the gate stays dormant.
+    try:
+        qd = compute_qqq_drawdown_smoothed()
+        if qd is not None:
+            features["qqq_drawdown"] = qd
+    except Exception:
+        pass
+    try:
+        import json as _json
+        from pathlib import Path as _Path
+
+        repo_root = _Path(__file__).resolve().parents[1]
+        for d in (repo_root / "output", repo_root.parent / "output"):
+            if not d.exists():
+                continue
+            hits = sorted(d.glob("theme_state_machine_*.json"), reverse=True)
+            if hits:
+                payload = _json.loads(hits[0].read_text(encoding="utf-8"))
+                features["theme_pressure_level"] = int(payload.get("theme_pressure_level", 0) or 0)
+                break
+    except Exception:
+        pass
     decision = decide(
         features=features,
         hard_regime=hard_regime,
@@ -88,6 +113,7 @@ def run_decision(tech_dd: float, hard_regime: str = "RISK_ON") -> Dict[str, Any]
         days_in_recovery=0,
     )
     note = decision.audit_trail.get("step_2c_tech_dampener")
+    tp_note = decision.audit_trail.get("step_2d_theme_pressure")
     return {
         "tech_drawdown": tech_dd,
         "hard_regime": hard_regime,
@@ -95,8 +121,9 @@ def run_decision(tech_dd: float, hard_regime: str = "RISK_ON") -> Dict[str, Any]
         "defense_budget": decision.defense_budget,
         "authority": decision.authority.value,
         "reason_code": decision.reason_code,
-        "dampener_active": bool(note and note.get("active")),
+        "dampener_active": bool((note and note.get("active")) or (tp_note and tp_note.get("active"))),
         "dampener_note": note,
+        "theme_pressure_note": tp_note,
     }
 
 
@@ -139,6 +166,22 @@ def build_report(date_str: str, tech_dd: Optional[float], thermometer: Optional[
                 f"- 当前预算: **{decision['risk_budget']}** （SOXX 回撤未达 -7% 门槛，减震器放行）",
                 f"- 权限层级: `{decision['authority']}` | reason: `{decision['reason_code']}`",
             ]
+    # Phase 2 (2026-07-21): surface the cross-asset AND-gate outcome.
+    tp = (decision or {}).get("theme_pressure_note") or {}
+    if tp.get("active"):
+        lines += [
+            "## 🌐 跨资产主题 AND-gate 激活",
+            "",
+            f"- 主题压力层级: **{tp.get('level')}** ｜ 结构破位(SOX/QQQ): {tp.get('struct_weak')} ｜ 宏观次优: {tp.get('macro_subopt')}",
+            f"- 联合封顶后预算: **{tp.get('post_cap_budget')}** （cap={tp.get('cap')}）",
+            f"> 主题(层级≥2) 且 (科技破位 或 宏观次优) 同时满足才封顶 —— 跨资产双杀确认器。",
+        ]
+    elif decision is not None:
+        lines += [
+            "## 🌐 跨资产主题 AND-gate 未触发",
+            "",
+            f"- 主题压力层级: {tp.get('level', 0)} ｜ 门未开（需 level≥2 且 结构破位/宏观次优）",
+        ]
     lines += [
         "",
         "---",
@@ -149,7 +192,7 @@ def build_report(date_str: str, tech_dd: Optional[float], thermometer: Optional[
     return "\n".join(lines)
 
 
-def main(argv: Optional[list] = None) -> int:
+def main(argv=None):
     sys.path.insert(0, str(REPO_ROOT))
     parser = argparse.ArgumentParser(description="Daily SOXX drawdown -> kernel dampener bridge")
     parser.add_argument("--date", default=dt.date.today().isoformat(), help="YYYY-MM-DD")

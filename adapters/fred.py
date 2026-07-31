@@ -89,9 +89,13 @@ def fetch_fred_series(
             "Accept": "text/csv,text/plain,*/*",
         },
     )
-    open_fn = opener or urllib.request.urlopen
-    with open_fn(req, timeout=timeout_seconds) as resp:
-        text = resp.read().decode("utf-8", errors="replace")
+    if opener is not None:
+        # OpenerDirector is opened via .open(), NOT called directly.
+        with opener.open(req, timeout=timeout_seconds) as resp:
+            text = resp.read().decode("utf-8", errors="replace")
+    else:
+        with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
+            text = resp.read().decode("utf-8", errors="replace")
     points = _parse_fred_csv(text)
     points.sort(key=lambda p: p.date)
     return points

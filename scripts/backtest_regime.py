@@ -91,6 +91,18 @@ DXY_MONTHLY = {
     "2025-10": 103.4, "2025-11": 106.2, "2025-12": 108.1,
     "2026-01": 107.3, "2026-02": 106.0, "2026-03": 104.2,
     "2026-04": 103.1, "2026-05": 101.4,
+    # --- LOW-RISK EXTENSION (2026-07-21): eliminate bfill breakpoint past 2026-05 ---
+    # Original anchors 2024-10~2026-05 are FROZEN/validated ICE monthly closes.
+    # yfinance DX-Y.NYB is currently returning off-scale / delisted-broken data
+    # (~10 pts below true ICE DXY), so it CANNOT be used to extend the scale.
+    # Instead, 2026-06/07 are extended ON the validated ICE scale by applying the
+    # RELATIVE DTWEXBGS (FRED) move from the last valid anchor (2026-05=101.4):
+    #   jun = 101.4 * DTWEXBGS(2026-06-30)/DTWEXBGS(2026-05-29) = 103.1
+    #   jul = 101.4 * DTWEXBGS(2026-07-10)/DTWEXBGS(2026-05-29) = 102.8
+    # This preserves the 100-108 ICE scale (no discontinuity), uses only the
+    # validated daily series, and does NOT alter any existing entry / backtest
+    # semantics. Future months (2026-08+) still bfill from 2026-07 as expected.
+    "2026-06": 103.1, "2026-07": 102.8,
 }
 
 # HY Credit Spread: FRED BAMLH0A0HYM2 (basis points)

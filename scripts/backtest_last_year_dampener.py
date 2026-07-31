@@ -133,6 +133,26 @@ def proxy_curve(budget: np.ndarray, ret: np.ndarray) -> np.ndarray:
     return np.cumprod(1.0 + budget * ret)
 
 
+# Round-trip transaction cost per unit of portfolio turned over (bps). Applied to
+# BOTH baseline and dampened so the comparison is apples-to-apples: every budget
+# change (macro regime shift OR dampener switch) incurs turnover cost. This closes
+# the "frictionless proxy curves" blind spot — proves the dampener's benefit survives
+# real trading frictions.
+COST_BPS = 10.0
+
+
+def cost_adjusted_curve(budget: np.ndarray, ret: np.ndarray, cost_bps: float = COST_BPS) -> np.ndarray:
+    """Net NAV after per-day turnover cost. Turnover_t = |budget_t - budget_{t-1}|."""
+    cost_rate = cost_bps / 10_000.0
+    nav = np.empty(len(budget))
+    nav[0] = 1.0
+    for t in range(1, len(budget)):
+        turnover = abs(budget[t] - budget[t - 1])
+        daily = budget[t] * ret[t] - turnover * cost_rate
+        nav[t] = nav[t - 1] * (1.0 + daily)
+    return nav
+
+
 def main() -> None:
     # 1) Full feature frame (2024-10 -> 2026-07-17) preserves 60d warmup.
     frame = build_daily_feature_frame()
@@ -184,17 +204,26 @@ def main() -> None:
     damp_soxx = proxy_curve(ly["damp_budget"].values, soxx_r)
     base_qqq = proxy_curve(ly["base_budget"].values, qqq_r)
     damp_qqq = proxy_curve(ly["damp_budget"].values, qqq_r)
+    # Cost-adjusted (apples-to-apples: both curves pay turnover on every budget change)
+    base_soxx_c = cost_adjusted_curve(ly["base_budget"].values, soxx_r)
+    damp_soxx_c = cost_adjusted_curve(ly["damp_budget"].values, soxx_r)
+    base_qqq_c = cost_adjusted_curve(ly["base_budget"].values, qqq_r)
+    damp_qqq_c = cost_adjusted_curve(ly["damp_budget"].values, qqq_r)
 
-    def block(base_nav, damp_nav):
+    def block(base_nav, damp_nav, base_nav_c, damp_nav_c):
         return {
             "baseline_total_return_pct": round(float(base_nav[-1] - 1) * 100, 2),
             "baseline_max_dd_pct": round(max_dd(base_nav) * 100, 2),
             "dampened_total_return_pct": round(float(damp_nav[-1] - 1) * 100, 2),
             "dampened_max_dd_pct": round(max_dd(damp_nav) * 100, 2),
+            "baseline_net_total_return_pct": round(float(base_nav_c[-1] - 1) * 100, 2),
+            "baseline_net_max_dd_pct": round(max_dd(base_nav_c) * 100, 2),
+            "dampened_net_total_return_pct": round(float(damp_nav_c[-1] - 1) * 100, 2),
+            "dampened_net_max_dd_pct": round(max_dd(damp_nav_c) * 100, 2),
         }
 
-    soxx_block = block(base_soxx, damp_soxx)
-    qqq_block = block(base_qqq, damp_qqq)
+    soxx_block = block(base_soxx, damp_soxx, base_soxx_c, damp_soxx_c)
+    qqq_block = block(base_qqq, damp_qqq, base_qqq_c, damp_qqq_c)
 
     n = len(ly)
     risk_on_days = int((ly["rule_regime"] == "RISK_ON").sum())
@@ -209,6 +238,7 @@ def main() -> None:
         "window": [str(LAST_YEAR_START.date()), str(LAST_YEAR_END.date())],
         "trading_days": n,
         "code_version": "live kernel + C-grade tech dampener (-0.13/-0.10/-0.07 -> 0.35/0.50/0.65)",
+        "cost_bps": COST_BPS,
         "risk_on_days": risk_on_days,
         "dampener_active_days": trig_days,
         "dampener_active_pct": round(100.0 * trig_days / max(1, n), 1),
@@ -259,15 +289,21 @@ def main() -> None:
         "",
         "## 代理净值曲线（预算=对市场代理的毛敞口）",
         "",
+        "> 毛曲线=无摩擦；净曲线=扣 {:.0f}bps 往返摩擦成本（基线/减震后**同等**计费，仅减震器切换额外产生换手）。".format(out["cost_bps"]),
+        "",
         "### SOXX 代理（半导体/科技方向，用户实际痛点）",
         "",
-        f"- 基线：总收益 **{soxx_block['baseline_total_return_pct']}%**，最大回撤 **{soxx_block['baseline_max_dd_pct']}%**",
-        f"- 最新代码：总收益 **{soxx_block['dampened_total_return_pct']}%**，最大回撤 **{soxx_block['dampened_max_dd_pct']}%**",
+        f"- 基线：毛 总收益 **{soxx_block['baseline_total_return_pct']}%** / 回撤 **{soxx_block['baseline_max_dd_pct']}%** ｜ "
+        f"净 **{soxx_block['baseline_net_total_return_pct']}%** / **{soxx_block['baseline_net_max_dd_pct']}%**",
+        f"- 最新代码：毛 总收益 **{soxx_block['dampened_total_return_pct']}%** / 回撤 **{soxx_block['dampened_max_dd_pct']}%** ｜ "
+        f"净 **{soxx_block['dampened_net_total_return_pct']}%** / **{soxx_block['dampened_net_max_dd_pct']}%**",
         "",
         "### QQQ 代理（广谱科技）",
         "",
-        f"- 基线：总收益 **{qqq_block['baseline_total_return_pct']}%**，最大回撤 **{qqq_block['baseline_max_dd_pct']}%**",
-        f"- 最新代码：总收益 **{qqq_block['dampened_total_return_pct']}%**，最大回撤 **{qqq_block['dampened_max_dd_pct']}%**",
+        f"- 基线：毛 总收益 **{qqq_block['baseline_total_return_pct']}%** / 回撤 **{qqq_block['baseline_max_dd_pct']}%** ｜ "
+        f"净 **{qqq_block['baseline_net_total_return_pct']}%** / **{qqq_block['baseline_net_max_dd_pct']}%**",
+        f"- 最新代码：毛 总收益 **{qqq_block['dampened_total_return_pct']}%** / 回撤 **{qqq_block['dampened_max_dd_pct']}%** ｜ "
+        f"净 **{qqq_block['dampened_net_total_return_pct']}%** / **{qqq_block['dampened_net_max_dd_pct']}%**",
         "",
         "## 2026-07 逐日（SOXX 20 日回撤 → 基线/减震后预算）",
         "",

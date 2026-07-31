@@ -65,3 +65,17 @@ node_modules/
 
 # --- WorkBuddy local config (memory / personal settings, not in VCS) ---
 .workbuddy/
+
+# --- Local backups (never commit) ---
+*.bak_*
+
+# --- Generated reports / analysis outputs (regenerable) ---
+output/*.md
+output/*.jsonl
+docs/research/*-daily-live-review.md
+docs/research/backtest_1y_review*.md
+docs/research/theme_*_calibration.md
+
+# --- Local data files (not in VCS) ---
+data/a_share_margin_top100.csv
+vault/shadow/
