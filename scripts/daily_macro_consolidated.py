@@ -76,10 +76,23 @@ _DEFAULT_CFG: Dict[str, Any] = {
         "default": 0.60,
     },
     "tech_default_ceiling": 0.80,
+    # Frozen C-tier bands (authoritative SOXX path is tech dampener/kernel)
     "tech_stress_bands": {"strong": 0.35, "medium": 0.50, "light": 0.65},
-    # Fifth leg: long-end rates stress (observation ceiling; orthogonal to tech DD caps)
+    "tech_policy": {
+        "mode": "frozen_c_tier",
+        "note": "SOXX -13/-10/-7 -> 0.35/0.50/0.65; do not retune here",
+    },
+    # D-enhancement: denom bind + ceiling exit hysteresis
+    "denom_policy": {
+        "bind": True,
+        "confirm_enter": 1,
+        "confirm_exit": 3,
+        "persist_hysteresis": True,
+    },
+    # Rates soft/diagnostic by default
     "rates_stress": {
         "enabled": True,
+        "bind_mode": "shadow",
         "w_trade": 5,
         "w_vol": 60,
         "w_lvl": 756,
@@ -92,6 +105,7 @@ _DEFAULT_CFG: Dict[str, Any] = {
         "cap_extreme": 0.45,
         "z_extreme": 1.75,
         "tlt_z_confirm": 0.0,
+        "b_zone_cap": 0.65,
     },
 }
 
@@ -108,7 +122,7 @@ def load_config(path: Optional[Path] = None) -> Dict[str, Any]:
         if not isinstance(loaded, dict):
             return cfg
         for k, v in loaded.items():
-            if k in ("denominator_ceilings", "theme_ceilings", "tech_stress_bands", "rates_stress") and isinstance(v, dict):
+            if k in ("denominator_ceilings", "theme_ceilings", "tech_stress_bands", "rates_stress", "denom_policy", "tech_policy") and isinstance(v, dict):
                 base = cfg.get(k) or {}
                 if isinstance(base, dict):
                     base.update(v)
@@ -991,23 +1005,104 @@ def synthesize(
 
 
 def _denom_ceiling(state: Optional[str], cfg: Optional[Dict[str, Any]] = None) -> float:
+    """Raw denom ceiling from state labels (no hysteresis)."""
     cfg = cfg or _DEFAULT_CFG
     block = cfg.get("denominator_ceilings") or _DEFAULT_CFG["denominator_ceilings"]
-    s = (state or "").replace(" ", "")
-    s_upper = s.upper()
-    for tier in ("crisis", "unconfirmed", "tight", "risk_on"):
-        spec = block.get(tier) or {}
-        for kw in spec.get("keywords") or []:
-            if not kw:
-                continue
-            if kw.isascii():
-                if kw.upper() in s_upper:
+    try:
+        from core.denom_ceiling import classify_denom_tier, tier_to_ceiling
+
+        policy = cfg.get("denom_policy") or {}
+        tier = classify_denom_tier(state, block, policy.get("state_tier_map"))
+        return float(tier_to_ceiling(tier, block))
+    except Exception:
+        s = (state or "").replace(" ", "")
+        s_upper = s.upper()
+        for tier in ("crisis", "unconfirmed", "tight", "risk_on"):
+            spec = block.get(tier) or {}
+            for kw in spec.get("keywords") or []:
+                if not kw:
+                    continue
+                if kw.isascii():
+                    if kw.upper() in s_upper:
+                        return float(spec.get("ceiling", block.get("default", 0.55)))
+                elif kw in s:
                     return float(spec.get("ceiling", block.get("default", 0.55)))
-            elif kw in s:
-                return float(spec.get("ceiling", block.get("default", 0.55)))
-    if "确认" in s and "未确认" not in s:
-        return float((block.get("risk_on") or {}).get("ceiling", 0.80))
-    return float(block.get("default", 0.55))
+        if "确认" in s and "未确认" not in s:
+            return float((block.get("risk_on") or {}).get("ceiling", 0.80))
+        return float(block.get("default", 0.55))
+
+
+def _load_prev_combined(report_dir: Path, date_str: str) -> Optional[Dict[str, Any]]:
+    """Prior combined_risk_budget for denom ceiling exit hysteresis."""
+    try:
+        d0 = dt.date.fromisoformat(date_str)
+    except Exception:
+        return None
+    for i in range(1, 10):
+        d = (d0 - dt.timedelta(days=i)).isoformat()
+        fp = report_dir / f"daily_macro_{d}.json"
+        if not fp.exists():
+            continue
+        try:
+            payload = json.loads(fp.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        comb = payload.get("combined_risk_budget")
+        if isinstance(comb, dict) and (
+            comb.get("denominator_ceiling") is not None
+            or comb.get("denominator_ceiling_held") is not None
+        ):
+            return comb
+    return None
+
+
+def bind_denom_ceiling_day(
+    denom: Optional[Dict],
+    *,
+    cfg: Optional[Dict[str, Any]] = None,
+    prev_combined: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """D-enhancement: state -> ceiling with enter/exit hysteresis."""
+    cfg = cfg or _DEFAULT_CFG
+    block = cfg.get("denominator_ceilings") or _DEFAULT_CFG["denominator_ceilings"]
+    policy = dict(cfg.get("denom_policy") or _DEFAULT_CFG.get("denom_policy") or {})
+    state = None
+    if denom:
+        state = denom.get("main_state") or denom.get("state")
+    try:
+        from core.denom_ceiling import bind_denom_ceiling
+    except Exception as exc:  # noqa: BLE001
+        raw = _denom_ceiling(state, cfg)
+        return {
+            "tier": "legacy",
+            "raw_ceiling": raw,
+            "ceiling": raw,
+            "hysteresis": f"import_failed:{exc}",
+            "bound": bool(policy.get("bind", True)),
+            "state": state,
+            "tight_streak": 0,
+            "loose_streak": 0,
+        }
+    prev_c = None
+    ts = 0
+    ls = 0
+    if policy.get("persist_hysteresis", True) and isinstance(prev_combined, dict):
+        prev_c = prev_combined.get("denominator_ceiling_held")
+        if prev_c is None:
+            prev_c = prev_combined.get("denominator_ceiling")
+        ts = int(prev_combined.get("denom_tight_streak") or 0)
+        ls = int(prev_combined.get("denom_loose_streak") or 0)
+    out = bind_denom_ceiling(
+        state,
+        cfg_block=block,
+        hyst_cfg=policy,
+        prev_ceiling=float(prev_c) if prev_c is not None else None,
+        loose_streak=ls,
+        tight_streak=ts,
+    )
+    out["bound"] = bool(policy.get("bind", True))
+    out["state"] = state
+    return out
 
 
 def _theme_ceiling(theme: Optional[Dict], cfg: Optional[Dict[str, Any]] = None) -> Optional[float]:
@@ -1062,41 +1157,32 @@ def build_rates_stress_from_denom(
     cfg: Optional[Dict[str, Any]] = None,
     warnings: Optional[List[str]] = None,
 ) -> Optional[Dict[str, Any]]:
-    """Build rates-stress snapshot for the consolidator fifth leg.
-
-    Prefer full history via core.rates_stress when FRED caches exist; fall back
-    to denominator artifact z5 fields (no percentile) which can only engage
-    slope-side if pct is absent — in that case remain non-binding unless
-    history loads successfully.
-    """
+    """Rates snapshot. Default bind_mode=shadow (diagnostic only)."""
     cfg = cfg or _DEFAULT_CFG
     rs_cfg = dict(cfg.get("rates_stress") or {})
-    if rs_cfg.get("enabled", True) is False:
+    mode = str(rs_cfg.get("bind_mode", "shadow")).lower()
+    if rs_cfg.get("enabled", True) is False or mode == "off":
         return None
     warnings = warnings if warnings is not None else []
     try:
-        from core.rates_stress import (  # type: ignore
-            compute_rates_stress_series,
-            params_from_mapping,
-        )
+        from core.rates_stress import compute_rates_stress_series, params_from_mapping
     except Exception as exc:  # noqa: BLE001
         warnings.append(f"rates_stress import failed: {exc}")
         return None
 
     params = params_from_mapping(rs_cfg)
-    # Try FRED daily caches under macro-os/data
     data_dir = REPO_ROOT / "data"
     try:
+        import pandas as pd
+
         def _load(name: str, col: str):
             fp = data_dir / name
             if not fp.exists():
                 return None
-            df = __import__("pandas").read_csv(fp)
-            df["observation_date"] = __import__("pandas").to_datetime(df["observation_date"])
+            df = pd.read_csv(fp)
+            df["observation_date"] = pd.to_datetime(df["observation_date"])
             s = df.set_index("observation_date")[col]
-            return __import__("pandas").to_numeric(s, errors="coerce").sort_index()
-
-        import pandas as pd  # local
+            return pd.to_numeric(s, errors="coerce").sort_index()
 
         n30 = _load("_nom30y_daily.csv", "DGS30")
         tips = _load("_tips_daily.csv", "DFII10")
@@ -1109,10 +1195,21 @@ def build_rates_stress_from_denom(
         frame = frame.dropna(subset=["nominal_30y"])
         series = compute_rates_stress_series(frame, params)
         last = series.iloc[-1]
-        # If denom carries a more recent as-of, still use full-series last row
+        try:
+            from core.denom_ceiling import classify_denom_tier
+
+            block = cfg.get("denominator_ceilings") or {}
+            policy = cfg.get("denom_policy") or {}
+            st = (denom or {}).get("main_state") or (denom or {}).get("state")
+            tier = classify_denom_tier(st, block, policy.get("state_tier_map"))
+        except Exception:
+            tier = "unknown"
+        engaged = bool(last["engaged"])
+        denom_tight = tier in ("crisis", "tight")
+        b_zone = bool(engaged and not denom_tight)
         return {
             "rates_cap": float(last["rates_cap"]),
-            "engaged": bool(last["engaged"]),
+            "engaged": engaged,
             "reason": str(last["raw_reason"]),
             "nominal_30y_z5": None
             if pd.isna(last["nominal_30y_z5"])
@@ -1124,45 +1221,63 @@ def build_rates_stress_from_denom(
             if hasattr(series.index[-1], "date")
             else str(series.index[-1]),
             "source": "fred_cache",
+            "bind_mode": mode,
+            "denom_tier": tier,
+            "b_zone": b_zone,
+            "diagnostic_only": mode == "shadow",
         }
     except Exception as exc:  # noqa: BLE001
         warnings.append(f"rates_stress history failed: {exc}")
-        # Fallback: denom z5 only cannot compute percentile; stay non-binding
         z5 = (denom or {}).get("z5") or {}
-        n30z = z5.get("n30")
         return {
             "rates_cap": 1.0,
             "engaged": False,
             "reason": "fallback_no_history",
-            "nominal_30y_z5": n30z,
+            "nominal_30y_z5": z5.get("n30"),
             "nominal_30y_pct": None,
             "source": "denom_z5_fallback",
+            "bind_mode": mode,
+            "b_zone": False,
+            "diagnostic_only": mode == "shadow",
         }
+
+
+def _rates_should_bind(rates: Optional[Dict], cfg: Optional[Dict[str, Any]] = None) -> bool:
+    cfg = cfg or _DEFAULT_CFG
+    rs = cfg.get("rates_stress") or {}
+    mode = str(rs.get("bind_mode", "shadow")).lower()
+    if not rates or mode in ("shadow", "off", ""):
+        return False
+    if not rates.get("engaged"):
+        return False
+    if mode == "hard":
+        return True
+    if mode == "b_zone_only":
+        return bool(rates.get("b_zone"))
+    return False
 
 
 def _rates_ceiling(
     rates: Optional[Dict],
     cfg: Optional[Dict[str, Any]] = None,
 ) -> Optional[float]:
-    """Fifth leg: long-end rates stress cap. None=absent; values in (0,1]."""
+    """Hard-bind cap only when bind_mode allows; shadow returns None."""
     cfg = cfg or _DEFAULT_CFG
     rs_cfg = cfg.get("rates_stress") or {}
-    if rs_cfg.get("enabled", True) is False:
+    if rs_cfg.get("enabled", True) is False or not rates:
         return None
-    if not rates:
+    if not _rates_should_bind(rates, cfg):
         return None
-    cap = rates.get("rates_cap")
-    if cap is None:
-        # engaged False without cap => non-binding present leg
-        if rates.get("engaged") is False:
-            return 1.0
-        return None
+    mode = str(rs_cfg.get("bind_mode", "shadow")).lower()
     try:
-        c = float(cap)
+        c = float(rates.get("rates_cap"))
     except (TypeError, ValueError):
         return None
     if c <= 0:
         return None
+    if mode == "b_zone_only":
+        bcap = float(rs_cfg.get("b_zone_cap", rs_cfg.get("cap_level_only", 0.65)))
+        c = min(c, bcap)
     return min(1.0, c)
 
 
@@ -1176,7 +1291,9 @@ def compute_combined_budget(
     data_quality: str = "ok",
     nq_quality: str = "ok",
     cfg: Optional[Dict[str, Any]] = None,
+    prev_combined: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
+    """D + frozen C + rates soft/diagnostic combined ceiling."""
     cfg = cfg or _DEFAULT_CFG
     tech_default = float(cfg.get("tech_default_ceiling", 0.80))
     denom_present = denom is not None
@@ -1185,36 +1302,36 @@ def compute_combined_budget(
     nq_present = nq is not None
     rates_present = rates is not None
     theme_usable = theme_present and data_quality not in (
-        "stale",
-        "degraded",
-        "stale_degraded",
-        "missing",
+        "stale", "degraded", "stale_degraded", "missing",
     )
     nq_usable = nq_present and nq_quality not in (
-        "stale",
-        "degraded",
-        "stale_degraded",
-        "missing",
-        "bad",
+        "stale", "degraded", "stale_degraded", "missing", "bad",
     )
 
-    denom_c = _denom_ceiling((denom or {}).get("main_state"), cfg) if denom_present else None
+    denom_bind = (
+        bind_denom_ceiling_day(denom, cfg=cfg, prev_combined=prev_combined)
+        if denom_present
+        else None
+    )
+    policy = cfg.get("denom_policy") or {}
+    denom_c = float(denom_bind["ceiling"]) if denom_bind and policy.get("bind", True) else None
     tech_c = float((tech.get("decision") or {}).get("risk_budget")) if tech_present else None
     theme_c = _theme_ceiling(theme, cfg) if theme_usable else None
     nq_c = _nq_ceiling(nq, cfg) if nq_usable else None
     rates_c = _rates_ceiling(rates, cfg) if rates_present else None
+
     theme_status = (
-        "excluded_quality"
-        if theme_present and not theme_usable
+        "excluded_quality" if theme_present and not theme_usable
         else ("missing" if not theme_present else "ok")
     )
     nq_status = (
-        "excluded_quality"
-        if nq_present and not nq_usable
+        "excluded_quality" if nq_present and not nq_usable
         else ("missing" if not nq_present else "ok")
     )
+    rs_mode = str((cfg.get("rates_stress") or {}).get("bind_mode", "shadow")).lower()
     rates_status = (
-        "missing" if not rates_present else ("ok" if rates_c is not None else "disabled")
+        "missing" if not rates_present
+        else ("shadow" if rs_mode == "shadow" else ("bound" if rates_c is not None else "not_binding"))
     )
 
     labels: List[Tuple[str, float]] = []
@@ -1230,9 +1347,28 @@ def compute_combined_budget(
         labels.append(("利率", rates_c))
 
     complete = denom_present and tech_present and theme_usable
+    base_meta = {
+        "denominator_ceiling_raw": None if not denom_bind else round(float(denom_bind["raw_ceiling"]), 2),
+        "denominator_ceiling_held": None if not denom_bind else round(float(denom_bind["ceiling"]), 2),
+        "denom_tier": None if not denom_bind else denom_bind.get("tier"),
+        "denom_hysteresis": None if not denom_bind else denom_bind.get("hysteresis"),
+        "denom_tight_streak": None if not denom_bind else denom_bind.get("tight_streak"),
+        "denom_loose_streak": None if not denom_bind else denom_bind.get("loose_streak"),
+        "rates_bind_mode": rs_mode,
+        "rates_shadow": None if not rates else {
+            "engaged": rates.get("engaged"),
+            "rates_cap": rates.get("rates_cap"),
+            "reason": rates.get("reason"),
+            "b_zone": rates.get("b_zone"),
+            "denom_tier": rates.get("denom_tier"),
+            "as_of": rates.get("as_of"),
+        },
+        "tech_policy": (cfg.get("tech_policy") or {}).get("mode", "frozen_c_tier"),
+    }
+
     if not labels:
         return {
-            "denominator_ceiling": denom_c,
+            "denominator_ceiling": None if not denom_bind else round(float(denom_bind["ceiling"]), 2),
             "tech_ceiling": tech_c if tech_c is not None else tech_default,
             "theme_ceiling": theme_c,
             "nq_ceiling": nq_c,
@@ -1245,15 +1381,13 @@ def compute_combined_budget(
             "nq_status": nq_status,
             "rates_status": rates_status,
             "reason": "no_ceilings_available",
+            **base_meta,
         }
 
     combined = min(v for _, v in labels)
     binders = [lab for lab, val in labels if abs(val - combined) < 1e-9]
     degraded = (not complete) or data_quality in (
-        "stale",
-        "degraded",
-        "stale_degraded",
-        "missing",
+        "stale", "degraded", "stale_degraded", "missing",
     ) or (nq_present and not nq_usable)
     return {
         "denominator_ceiling": None if denom_c is None else round(denom_c, 2),
@@ -1269,6 +1403,7 @@ def compute_combined_budget(
         "nq_status": nq_status,
         "rates_status": rates_status,
         "reason": "ok" if complete and not degraded else "partial_or_degraded",
+        **base_meta,
     }
 
 
@@ -1872,8 +2007,23 @@ def build_report(
             f"**减震器上限**: {combined.get('tech_ceiling')} ｜ "
             f"**主题上限**: {combined.get('theme_ceiling')} ｜ "
             f"**NQ上限**: {combined.get('nq_ceiling')} ｜ "
-            f"**利率上限**: {combined.get('rates_ceiling')}"
+            f"**利率硬上限**: {combined.get('rates_ceiling')} "
+            f"(mode={combined.get('rates_bind_mode')})"
         )
+        if combined.get("denominator_ceiling_raw") is not None:
+            L.append(
+                f"- **分母绑定**: tier={combined.get('denom_tier')} ｜ "
+                f"raw={combined.get('denominator_ceiling_raw')} → "
+                f"held={combined.get('denominator_ceiling_held')} ｜ "
+                f"hyst={combined.get('denom_hysteresis')}"
+            )
+        rs = combined.get("rates_shadow") or {}
+        if rs:
+            L.append(
+                f"- **利率软/诊断**: engaged={rs.get('engaged')} "
+                f"cap={rs.get('rates_cap')} reason={rs.get('reason')} "
+                f"b_zone={rs.get('b_zone')} (shadow 默认不进 min)"
+            )
         cb = combined.get("combined_budget")
         if cb is None:
             L.append("- **合成上限**: `null`（可用工具不足，拒绝给出完整合成）")
@@ -2104,6 +2254,7 @@ def main(argv: Optional[list] = None) -> int:
         shock=shock,
     )
     rates = build_rates_stress_from_denom(denom, cfg=cfg, warnings=warnings)
+    prev_combined = _load_prev_combined(report_dir, date_str)
     combined = compute_combined_budget(
         denom,
         tech,
@@ -2113,6 +2264,7 @@ def main(argv: Optional[list] = None) -> int:
         data_quality=str(synth.get("data_quality") or "ok"),
         nq_quality=str(synth.get("nq_quality") or "ok"),
         cfg=cfg,
+        prev_combined=prev_combined,
     )
     sentiment = (
         try_load_sentiment_shadow(report_dir, date_str, warnings)

@@ -24,7 +24,6 @@ def test_hysteresis_confirm_and_exit():
 def test_level_only_trigger_on_high_percentile():
     n = 900
     idx = pd.bdate_range("2020-01-01", periods=n)
-    # Monotone climb so latest prints are always strict max -> pct ~100
     lvl = np.linspace(2.0, 6.0, n)
     frame = pd.DataFrame({"nominal_30y": lvl, "tips_yield": lvl - 1.0}, index=idx)
     p = RatesStressParams(
@@ -68,7 +67,8 @@ def test_overlap_counts():
     assert ov["rates_engaged_not_any_tight"] == 2
 
 
-def test_combined_budget_rates_leg():
+def test_combined_budget_rates_leg_hard_mode():
+    """Hard mode still available; production default is shadow."""
     import importlib.util
     from pathlib import Path
 
@@ -77,11 +77,13 @@ def test_combined_budget_rates_leg():
     dmc = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(dmc)
 
+    cfg = dmc.load_config()
+    cfg["rates_stress"]["bind_mode"] = "hard"
     denom = {"main_state": "分母端宽松"}
     tech = {"decision": {"risk_budget": 0.80}}
     theme = {"risk_bias": "risk_on", "dominant_theme": {"risk_bias": "risk_on"}}
     rates = {"rates_cap": 0.55, "engaged": True}
-    out = dmc.compute_combined_budget(denom, tech, theme, rates=rates)
+    out = dmc.compute_combined_budget(denom, tech, theme, rates=rates, cfg=cfg)
     assert out["rates_ceiling"] == 0.55
     assert out["combined_budget"] == 0.55
     assert "利率" in out["binding"]
