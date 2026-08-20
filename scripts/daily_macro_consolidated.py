@@ -1,23 +1,25 @@
-# -*- coding: utf-8 -*-
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """Daily Macro Consolidated Report -- unify three daily observers.
 
 Merges artifacts under output/:
 
   1) denominator state  -> denominator_state_<date>.{md,json}
-     (denominator_state_daily.py headless port, or TV/MCP md fallback)
-  2) tech dampener      -> tech_drawdown_<date>.json + tech_dampener_decision_<date>.md
+  2) tech dampener      -> tech_drawdown_<date>.json
   3) theme state machine-> theme_state_machine_<date>.{md,json}
+  4) NQ driver daily   -> nq_driver_<date>.{md,json}
 
-Writes:
-  output/daily_macro_<date>.md + .json
+Writes output/daily_macro_<date>.md + .json
 
-Includes alignment/bias/quality contract: never claim "一致/共振" when theme
-data is stale/degraded. Observation only — not trade signals.
+Date contract (P0): prefer exact --date files; fallback only with --allow-stale
+within configured lag; always surface as_of + warnings.
+
+Observation only — not trade signals. Kernel decide() remains source of truth.
 
 Usage:
     python scripts/daily_macro_consolidated.py --date 2026-07-20
     python scripts/daily_macro_consolidated.py --date 2026-07-20 --force-refresh
+    python scripts/daily_macro_consolidated.py --date 2026-07-20 --allow-stale
     python scripts/daily_macro_consolidated.py --date 2026-07-20 --no-run-theme
 """
 from __future__ import annotations
@@ -30,22 +32,102 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger("daily-macro-consolidated")
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_REPORT_DIR = REPO_ROOT.parent / "output"
+DEFAULT_CONFIG = REPO_ROOT / "config" / "daily_macro_consolidated.yaml"
 
 THEME_SCRIPT = REPO_ROOT / "scripts" / "theme_state_machine_daily.py"
 TECH_SCRIPT = REPO_ROOT / "scripts" / "daily_tech_dampener.py"
 DENOM_SCRIPT = REPO_ROOT / "scripts" / "denominator_state_daily.py"
+NQ_SCRIPT = REPO_ROOT / "scripts" / "nq_driver_daily.py"
+SECTOR_SCRIPT = REPO_ROOT / "scripts" / "sector_rotation_daily.py"
+SHOCK_SCRIPT = REPO_ROOT / "scripts" / "shock_absorption_daily.py"
+
+_DATE_RE = re.compile(r"(20\d{2}-\d{2}-\d{2})")
+
+_DEFAULT_CFG: Dict[str, Any] = {
+    "stale_fallback_max_trading_days": 1,
+    "denominator_ceilings": {
+        "crisis": {
+            "keywords": ["HARD_VETO", "CRISIS", "LIQUIDITY_SQUEEZE", "危机"],
+            "ceiling": 0.10,
+        },
+        "tight": {
+            "keywords": ["RISK_OFF", "TIGHT", "TRANSITION", "紧缩", "压力", "偏紧", "过渡"],
+            "ceiling": 0.35,
+        },
+        "unconfirmed": {
+            "keywords": ["UNCONFIRMED", "未确认", "分裂", "横盘", "混合"],
+            "ceiling": 0.55,
+        },
+        "risk_on": {"keywords": ["RISK_ON", "宽松"], "ceiling": 0.80},
+        "default": 0.55,
+    },
+    "theme_ceilings": {
+        "missing": None,
+        "pressure_override": 0.25,
+        "risk_off": 0.45,
+        "risk_on": 0.80,
+        "default": 0.60,
+    },
+    "tech_default_ceiling": 0.80,
+    "tech_stress_bands": {"strong": 0.35, "medium": 0.50, "light": 0.65},
+    # Fifth leg: long-end rates stress (observation ceiling; orthogonal to tech DD caps)
+    "rates_stress": {
+        "enabled": True,
+        "w_trade": 5,
+        "w_vol": 60,
+        "w_lvl": 756,
+        "z_enter": 1.0,
+        "pct_enter": 97.0,
+        "confirm_days": 2,
+        "exit_days": 3,
+        "cap_level_only": 0.65,
+        "cap_slope_level": 0.55,
+        "cap_extreme": 0.45,
+        "z_extreme": 1.75,
+        "tlt_z_confirm": 0.0,
+    },
+}
 
 
-def _run_script(script: Path, args: list) -> bool:
+def load_config(path: Optional[Path] = None) -> Dict[str, Any]:
+    cfg: Dict[str, Any] = json.loads(json.dumps(_DEFAULT_CFG))
+    p = path or DEFAULT_CONFIG
+    if not p.exists():
+        return cfg
+    try:
+        import yaml  # type: ignore
+
+        loaded = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+        if not isinstance(loaded, dict):
+            return cfg
+        for k, v in loaded.items():
+            if k in ("denominator_ceilings", "theme_ceilings", "tech_stress_bands", "rates_stress") and isinstance(v, dict):
+                base = cfg.get(k) or {}
+                if isinstance(base, dict):
+                    base.update(v)
+                    cfg[k] = base
+                else:
+                    cfg[k] = v
+            else:
+                cfg[k] = v
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("config load failed (%s): %s; using defaults", p, exc)
+    return cfg
+
+
+def _run_script(script: Path, args: list, errors: Optional[List[str]] = None) -> bool:
     cmd = [sys.executable, str(script)] + args
     logger.info("subprocess: %s", " ".join(cmd))
+    env = dict(**__import__("os").environ)
+    env.setdefault("PYTHONIOENCODING", "utf-8")
+    env.setdefault("PYTHONUTF8", "1")
     try:
         proc = subprocess.run(
             cmd,
@@ -55,74 +137,103 @@ def _run_script(script: Path, args: list) -> bool:
             encoding="utf-8",
             errors="replace",
             timeout=300,
+            env=env,
         )
     except subprocess.TimeoutExpired:
-        logger.warning("subprocess timed out: %s", script.name)
+        msg = f"subprocess timed out: {script.name}"
+        logger.warning(msg)
+        if errors is not None:
+            errors.append(msg)
         return False
     except Exception as exc:  # noqa: BLE001
-        logger.warning("subprocess failed: %s -> %s", script.name, exc)
+        msg = f"subprocess failed: {script.name} -> {exc}"
+        logger.warning(msg)
+        if errors is not None:
+            errors.append(msg)
         return False
     if proc.returncode != 0:
-        logger.warning(
-            "%s exited %d: %s",
-            script.name,
-            proc.returncode,
-            (proc.stderr or "").strip().splitlines()[-1] if proc.stderr else "",
-        )
+        tail = (proc.stderr or "").strip().splitlines()[-1] if proc.stderr else ""
+        msg = f"{script.name} exited {proc.returncode}: {tail}"
+        logger.warning(msg)
+        if errors is not None:
+            errors.append(msg)
         return False
     return True
 
 
-def _newest(report_dir: Path, pattern: str) -> Optional[Path]:
-    """Prefer highest YYYY-MM-DD in filename; mtime only as tie-breaker."""
-    hits = list(report_dir.glob(pattern))
+def _date_from_name(path: Path) -> Optional[str]:
+    m = _DATE_RE.search(path.name)
+    return m.group(1) if m else None
+
+
+def _newest_dated(report_dir: Path, pattern: str) -> Optional[Path]:
+    hits = [p for p in report_dir.glob(pattern) if _date_from_name(p)]
     if not hits:
         return None
 
     def _key(p: Path):
-        m = re.search(r"(20\d{2}-\d{2}-\d{2})", p.name)
-        day = m.group(1) if m else ""
-        return (day, p.stat().st_mtime)
+        return (_date_from_name(p) or "", p.stat().st_mtime)
 
     return sorted(hits, key=_key, reverse=True)[0]
 
 
-def ensure_theme(
+def _newest(report_dir: Path, pattern: str) -> Optional[Path]:
+    """Backward-compatible alias for _newest_dated.
+
+    旧版脚本与测试依赖 dmc._newest；重构后内部统一用 _newest_dated
+    （按文件名日期排序、mtime 仅作 tie-breaker，二者语义一致）。
+    保留此别名避免 AttributeError，且不重复实现。
+    """
+    return _newest_dated(report_dir, pattern)
+
+
+def resolve_artifact(
     report_dir: Path,
-    no_run: bool,
-    expected_as_of: Optional[str] = None,
-) -> Optional[Dict[str, Any]]:
-    if no_run:
-        existing = _newest(report_dir, "theme_state_machine_*.json")
-        if existing:
-            logger.info("reuse existing theme json (--no-run-theme): %s", existing.name)
-            return json.loads(existing.read_text(encoding="utf-8"))
-        logger.warning("theme json missing and --no-run-theme set; skipping")
-        return None
-    args = ["--report-dir", str(report_dir)]
-    if expected_as_of:
-        args += ["--expected-as-of", expected_as_of]
-    if _run_script(THEME_SCRIPT, args):
-        produced = _newest(report_dir, "theme_state_machine_*.json")
-        if produced:
-            return json.loads(produced.read_text(encoding="utf-8"))
-    logger.warning("theme state machine unavailable")
-    return None
+    exact_name: str,
+    glob_pattern: str,
+    expected_date: str,
+    *,
+    allow_stale: bool,
+    max_lag_days: int,
+    kind: str,
+    warnings: List[str],
+) -> Tuple[Optional[Path], bool]:
+    exact = report_dir / exact_name
+    if exact.exists():
+        return exact, False
 
+    newest = _newest_dated(report_dir, glob_pattern)
+    if newest is None:
+        return None, False
 
-def ensure_tech(report_dir: Path, date_str: str, no_run: bool) -> Optional[Dict[str, Any]]:
-    target = report_dir / f"tech_drawdown_{date_str}.json"
-    if no_run:
-        if target.exists():
-            logger.info("reuse existing tech json (--no-run-tech): %s", target.name)
-            return json.loads(target.read_text(encoding="utf-8"))
-        logger.warning("tech json missing and --no-run-tech set; skipping")
-        return None
-    if _run_script(TECH_SCRIPT, ["--date", date_str, "--report-dir", str(report_dir)]):
-        if target.exists():
-            return json.loads(target.read_text(encoding="utf-8"))
-    logger.warning("tech dampener unavailable")
-    return None
+    file_date = _date_from_name(newest) or ""
+    lag = _busday_lag(file_date, expected_date)
+    if not allow_stale:
+        msg = (
+            f"{kind}: missing {exact_name}; newest is {newest.name} "
+            f"(as_of={file_date}). Pass --allow-stale to use fallback "
+            f"(max_lag={max_lag_days} trading days)."
+        )
+        logger.warning(msg)
+        warnings.append(msg)
+        return None, False
+
+    if lag is None or lag > max_lag_days:
+        msg = (
+            f"{kind}: fallback {newest.name} lag={lag} trading days exceeds "
+            f"max_lag={max_lag_days} trading days vs expected {expected_date}; refusing."
+        )
+        logger.warning(msg)
+        warnings.append(msg)
+        return None, False
+
+    msg = (
+        f"{kind}: using stale fallback {newest.name} (as_of={file_date}, "
+        f"expected={expected_date}, lag_td={lag})"
+    )
+    logger.warning(msg)
+    warnings.append(msg)
+    return newest, True
 
 
 def _normalize_denom(d: Dict[str, Any], date_str: str) -> Dict[str, Any]:
@@ -137,7 +248,7 @@ def _normalize_denom(d: Dict[str, Any], date_str: str) -> Dict[str, Any]:
         "dont_do": d.get("dont_do", ""),
         "trigger_hint": d.get("trigger_hint", ""),
         "z5": d.get("z5", {}),
-        "source": "json",
+        "source": d.get("source") or "json",
     }
 
 
@@ -145,16 +256,20 @@ def _parse_denom_md(md: Path, date_str: str) -> Dict[str, Any]:
     text = md.read_text(encoding="utf-8")
 
     def _field(label: str) -> str:
+        # table format: | label | value |
         m = re.search(rf"\|\s*{re.escape(label)}\s*\|\s*(.+?)\s*\|", text)
-        if not m:
-            return ""
-        val = m.group(1).strip()
+        if m:
+            val = m.group(1).strip()
+        else:
+            # bullet format: - **label**：value  (TV CDP 盘前自动化产出)
+            m2 = re.search(rf"-\s*\*{{1,2}}{re.escape(label)}\*{{1,2}}\s*[：:]\s*(.+?)(?:\n|$)", text)
+            if not m2:
+                return ""
+            val = m2.group(1).strip()
         val = re.sub(r"\*\*(.+?)\*\*", r"\1", val)
-        val = val.replace("［", "[").replace("］", "]")
-        return val
+        return val.replace("［", "[").replace("］", "]")
 
-    # Prefer filename date when present
-    mdate = re.search(r"(20\d{2}-\d{2}-\d{2})", md.name)
+    mdate = _DATE_RE.search(md.name)
     asof = mdate.group(1) if mdate else date_str
     ms = _field("主状态").replace(" ", "")
     return {
@@ -171,67 +286,485 @@ def _parse_denom_md(md: Path, date_str: str) -> Dict[str, Any]:
     }
 
 
-def load_denominator(report_dir: Path, date_str: str) -> Optional[Dict[str, Any]]:
-    jp = report_dir / f"denominator_state_{date_str}.json"
-    cand = jp if jp.exists() else _newest(report_dir, "denominator_state_*.json")
-    if cand and cand.exists():
+def load_denominator(
+    report_dir: Path,
+    date_str: str,
+    *,
+    allow_stale: bool,
+    max_lag_days: int,
+    warnings: List[str],
+    errors: List[str],
+) -> Optional[Dict[str, Any]]:
+    path, _fb = resolve_artifact(
+        report_dir,
+        f"denominator_state_{date_str}.json",
+        "denominator_state_*.json",
+        date_str,
+        allow_stale=allow_stale,
+        max_lag_days=max_lag_days,
+        kind="denominator",
+        warnings=warnings,
+    )
+    if path is not None:
         try:
-            d = json.loads(cand.read_text(encoding="utf-8"))
-            return _normalize_denom(d, cand.stem.split("_")[-1])
+            d = json.loads(path.read_text(encoding="utf-8"))
+            return _normalize_denom(d, _date_from_name(path) or date_str)
         except Exception as exc:  # noqa: BLE001
-            logger.warning("denominator json parse failed (%s): %s", cand.name, exc)
-    md = report_dir / f"denominator_state_{date_str}.md"
-    if not md.exists():
-        md_hit = _newest(report_dir, "denominator_state_*.md")
-        md = md_hit if md_hit else md
-    if md and md.exists() and "analysis" not in md.name:
-        return _parse_denom_md(md, date_str)
+            msg = f"denominator json parse failed ({path.name}): {exc}"
+            logger.warning(msg)
+            errors.append(msg)
+
+    path_md, _fb2 = resolve_artifact(
+        report_dir,
+        f"denominator_state_{date_str}.md",
+        "denominator_state_*.md",
+        date_str,
+        allow_stale=allow_stale,
+        max_lag_days=max_lag_days,
+        kind="denominator-md",
+        warnings=warnings,
+    )
+    if path_md is not None and "analysis" not in path_md.name:
+        try:
+            return _parse_denom_md(path_md, date_str)
+        except Exception as exc:  # noqa: BLE001
+            msg = f"denominator md parse failed ({path_md.name}): {exc}"
+            logger.warning(msg)
+            errors.append(msg)
     return None
 
 
-def ensure_denominator(report_dir: Path, date_str: str, no_run: bool) -> Optional[Dict[str, Any]]:
+def ensure_denominator(
+    report_dir: Path,
+    date_str: str,
+    no_run: bool,
+    *,
+    allow_stale: bool,
+    max_lag_days: int,
+    warnings: List[str],
+    errors: List[str],
+) -> Optional[Dict[str, Any]]:
+    if not no_run and DENOM_SCRIPT.exists():
+        _run_script(
+            DENOM_SCRIPT,
+            ["--date", date_str, "--report-dir", str(report_dir)],
+            errors,
+        )
+    elif not no_run:
+        warnings.append("denominator script missing; load existing artifact only")
+    # FRED/headless port writes as_of last available market date (often T-1).
+    # Prefer exact; if missing after run, allow configured lag without requiring CLI --allow-stale.
+    loaded = load_denominator(
+        report_dir,
+        date_str,
+        allow_stale=allow_stale,
+        max_lag_days=max_lag_days,
+        warnings=warnings,
+        errors=errors,
+    )
+    if loaded is None and not allow_stale:
+        soft_warnings: List[str] = []
+        loaded = load_denominator(
+            report_dir,
+            date_str,
+            allow_stale=True,
+            max_lag_days=max_lag_days,
+            warnings=soft_warnings,
+            errors=errors,
+        )
+        if loaded is not None:
+            msg = (
+                f"denominator: exact {date_str} missing; using last-available "
+                f"{loaded.get('date')} within lag={max_lag_days}d (FRED last-print semantics)"
+            )
+            logger.warning(msg)
+            warnings.append(msg)
+            warnings.extend(soft_warnings)
+    return loaded
+
+
+def ensure_tech(
+    report_dir: Path,
+    date_str: str,
+    no_run: bool,
+    *,
+    warnings: List[str],
+    errors: List[str],
+) -> Optional[Dict[str, Any]]:
+    target = report_dir / f"tech_drawdown_{date_str}.json"
     if no_run:
-        return load_denominator(report_dir, date_str)
-    if DENOM_SCRIPT.exists() and _run_script(DENOM_SCRIPT, ["--report-dir", str(report_dir)]):
-        return load_denominator(report_dir, date_str)
-    logger.warning("denominator daily run failed/skipped; fall back to existing artifact")
-    return load_denominator(report_dir, date_str)
+        if not target.exists():
+            msg = "tech json missing and --no-run-tech set; skipping"
+            logger.warning(msg)
+            warnings.append(msg)
+            return None
+        try:
+            return json.loads(target.read_text(encoding="utf-8"))
+        except Exception as exc:  # noqa: BLE001
+            msg = f"tech json parse failed: {exc}"
+            logger.warning(msg)
+            errors.append(msg)
+            return None
+    ok = _run_script(TECH_SCRIPT, ["--date", date_str, "--report-dir", str(report_dir)], errors)
+    if target.exists():
+        try:
+            payload = json.loads(target.read_text(encoding="utf-8"))
+            if not ok:
+                warnings.append(
+                    f"tech dampener exited non-zero but artifact present ({target.name}); loaded anyway"
+                )
+            return payload
+        except Exception as exc:  # noqa: BLE001
+            msg = f"tech json parse failed after run: {exc}"
+            logger.warning(msg)
+            errors.append(msg)
+            return None
+    msg = "tech dampener unavailable"
+    logger.warning(msg)
+    warnings.append(msg)
+    return None
 
 
-def _infer_theme_quality(
-    theme: Dict[str, Any],
-    theme_date: str,
-    report_date: str,
-) -> Dict[str, Any]:
-    """Build quality when old theme JSON lacks quality block.
+def ensure_theme(
+    report_dir: Path,
+    date_str: str,
+    no_run: bool,
+    *,
+    allow_stale: bool,
+    max_lag_days: int,
+    warnings: List[str],
+    errors: List[str],
+) -> Optional[Dict[str, Any]]:
+    exact = report_dir / f"theme_state_machine_{date_str}.json"
 
-    Benchmark against the consolidated report date (not denom FRED lag).
+    def _load(path: Path) -> Optional[Dict[str, Any]]:
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except Exception as exc:  # noqa: BLE001
+            msg = f"theme json parse failed ({path.name}): {exc}"
+            logger.warning(msg)
+            errors.append(msg)
+            return None
+
+    def _resolve() -> Optional[Path]:
+        path, _fb = resolve_artifact(
+            report_dir,
+            exact.name,
+            "theme_state_machine_*.json",
+            date_str,
+            allow_stale=allow_stale,
+            max_lag_days=max_lag_days,
+            kind="theme",
+            warnings=warnings,
+        )
+        return path
+
+    if no_run:
+        path = _resolve()
+        return _load(path) if path else None
+
+    args = ["--report-dir", str(report_dir), "--date", date_str, "--expected-as-of", date_str]
+    if _run_script(THEME_SCRIPT, args, errors) and exact.exists():
+        return _load(exact)
+
+    # Prefer exact; if missing after run, allow configured lag without requiring CLI --allow-stale.
+    path = _resolve()
+    if path is not None:
+        return _load(path)
+    if not allow_stale:
+        soft_warnings: List[str] = []
+        soft_path, _fb = resolve_artifact(
+            report_dir,
+            exact.name,
+            "theme_state_machine_*.json",
+            date_str,
+            allow_stale=True,
+            max_lag_days=max_lag_days,
+            kind="theme",
+            warnings=soft_warnings,
+        )
+        if soft_path is not None:
+            warnings.extend(soft_warnings)
+            return _load(soft_path)
+
+    msg = "theme state machine unavailable"
+    logger.warning(msg)
+    warnings.append(msg)
+    return None
+
+
+
+def ensure_nq(
+    report_dir: Path,
+    date_str: str,
+    no_run: bool,
+    *,
+    allow_stale: bool,
+    max_lag_days: int,
+    warnings: List[str],
+    errors: List[str],
+) -> Optional[Dict[str, Any]]:
+    """Load/run NQ driver daily artifact (fourth observer leg)."""
+    exact = report_dir / f"nq_driver_{date_str}.json"
+
+    def _load(path: Path) -> Optional[Dict[str, Any]]:
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except Exception as exc:  # noqa: BLE001
+            msg = f"nq driver json parse failed ({path.name}): {exc}"
+            logger.warning(msg)
+            errors.append(msg)
+            return None
+
+    if no_run:
+        path, _fb = resolve_artifact(
+            report_dir,
+            exact.name,
+            "nq_driver_*.json",
+            date_str,
+            allow_stale=allow_stale,
+            max_lag_days=max_lag_days,
+            kind="nq_driver",
+            warnings=warnings,
+        )
+        return _load(path) if path else None
+
+    if NQ_SCRIPT.exists():
+        _run_script(
+            NQ_SCRIPT,
+            ["--date", date_str, "--report-dir", str(report_dir)],
+            errors,
+        )
+    else:
+        warnings.append("nq_driver script missing; load existing artifact only")
+
+    if exact.exists():
+        return _load(exact)
+    path, _fb = resolve_artifact(
+        report_dir,
+        exact.name,
+        "nq_driver_*.json",
+        date_str,
+        allow_stale=allow_stale,
+        max_lag_days=max_lag_days,
+        kind="nq_driver",
+        warnings=warnings,
+    )
+    if path is None:
+        msg = "nq driver unavailable"
+        logger.warning(msg)
+        warnings.append(msg)
+        return None
+    return _load(path)
+
+
+def ensure_sector(
+    report_dir: Path,
+    date_str: str,
+    no_run: bool,
+    *,
+    allow_stale: bool,
+    max_lag_days: int,
+    warnings: List[str],
+    errors: List[str],
+) -> Optional[Dict[str, Any]]:
+    """Load/run 标普板块资金轮动复刻 (Pine v1.3m) artifact.
+
+    该读数锚定标普最新可用交易日（盘后跑即上一美国交易日），文件名按 as_of 计，
+    与 report 日历日可能差 1 个交易日；故缺失时走 allow_stale 兜底（按交易日滞后）。
+    板块轮动是美股比价视角的**互补观测**，不参与合成预算 min。
     """
+    exact = report_dir / f"sector_rotation_{date_str}.json"
+
+    def _load(path: Path) -> Optional[Dict[str, Any]]:
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except Exception as exc:  # noqa: BLE001
+            msg = f"sector rotation json parse failed ({path.name}): {exc}"
+            logger.warning(msg)
+            errors.append(msg)
+            return None
+
+    def _resolve(soft: bool) -> Optional[Path]:
+        p, _fb = resolve_artifact(
+            report_dir,
+            exact.name,
+            "sector_rotation_*.json",
+            date_str,
+            allow_stale=soft,
+            max_lag_days=max_lag_days,
+            kind="sector_rotation",
+            warnings=warnings,
+        )
+        return p
+
+    if no_run:
+        path = _resolve(allow_stale)
+        if path:
+            return _load(path)
+    else:
+        if SECTOR_SCRIPT.exists():
+            _run_script(
+                SECTOR_SCRIPT,
+                ["--report-dir", str(report_dir)],
+                errors,
+            )
+        else:
+            warnings.append("sector_rotation script missing; load existing artifact only")
+        if exact.exists():
+            return _load(exact)
+        path = _resolve(allow_stale)
+        if path:
+            return _load(path)
+
+    # 板块轮动锚定最新美国交易日，文件名日期常与 report 日历日差 <=1 交易日；
+    # 即便全局未开 allow_stale，也以 allow_stale=True 作软兜底（仅记录警告，不阻断）。
+    soft_path = _resolve(True)
+    if soft_path is not None:
+        return _load(soft_path)
+
+    msg = "sector rotation unavailable"
+    logger.warning(msg)
+    warnings.append(msg)
+    return None
+
+
+def ensure_shock(
+    report_dir: Path,
+    date_str: str,
+    no_run: bool,
+    *,
+    allow_stale: bool,
+    max_lag_days: int,
+    warnings: List[str],
+    errors: List[str],
+) -> Optional[Dict[str, Any]]:
+    """Load/run 市场冲击消化能力评判 日频端口 artifact (denominator 旁证交叉校验).
+
+    该读数定位为分母压力的**旁证**——只观察+报警，不进主状态机，不参与合成预算 min。
+    文件名按数据对齐后的最新可得日计，常与 report 日历日差 <=1 交易日，故缺失时走
+    allow_stale 软兜底（记录警告，不阻断），与板块轮动同策略。
+    """
+    exact = report_dir / f"shock_absorption_{date_str}.json"
+
+    def _load(path: Path) -> Optional[Dict[str, Any]]:
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"shock absorption json parse failed ({path.name}): {exc}")
+            return None
+
+    def _resolve(soft: bool) -> Optional[Path]:
+        p, _fb = resolve_artifact(
+            report_dir,
+            exact.name,
+            "shock_absorption_*.json",
+            date_str,
+            allow_stale=soft,
+            max_lag_days=max_lag_days,
+            kind="shock_absorption",
+            warnings=warnings,
+        )
+        return p
+
+    if no_run:
+        path = _resolve(allow_stale)
+        if path:
+            return _load(path)
+    else:
+        if SHOCK_SCRIPT.exists():
+            _run_script(
+                SHOCK_SCRIPT,
+                ["--report-dir", str(report_dir)],
+                errors,
+            )
+        else:
+            warnings.append("shock_absorption script missing; load existing artifact only")
+        if exact.exists():
+            return _load(exact)
+        path = _resolve(allow_stale)
+        if path:
+            return _load(path)
+
+    soft_path = _resolve(True)
+    if soft_path is not None:
+        return _load(soft_path)
+
+    msg = "shock absorption unavailable"
+    logger.warning(msg)
+    warnings.append(msg)
+    return None
+
+
+def _busday_lag(as_of: str, expected: str) -> Optional[int]:
+    try:
+        t_day = dt.date.fromisoformat(str(as_of)[:10])
+        e_day = dt.date.fromisoformat(str(expected)[:10])
+    except Exception:
+        return None
+    if e_day < t_day:
+        t_day, e_day = e_day, t_day
+    try:
+        import numpy as np
+
+        return int(np.busday_count(t_day, e_day))
+    except Exception:
+        return max(0, (e_day - t_day).days)
+
+
+def _infer_theme_quality(theme: Dict[str, Any], theme_date: str, report_date: str) -> Dict[str, Any]:
     tq = dict(theme.get("quality") or {})
     if tq:
         return tq
-    try:
-        t_day = dt.date.fromisoformat(str(theme.get("date") or theme_date)[:10])
-        e_day = dt.date.fromisoformat(str(report_date)[:10])
-        try:
-            import numpy as np
-
-            lag = int(np.busday_count(t_day, e_day))
-        except Exception:
-            lag = max(0, (e_day - t_day).days)
-        lag = max(0, lag)
-        stale = lag > 1
-        return {
-            "as_of": t_day.isoformat(),
-            "expected_as_of": e_day.isoformat(),
-            "lag_days": lag,
-            "stale": stale,
-            "degraded": False,
-            "data_quality": "stale" if stale else "ok",
-            "inferred": True,
-        }
-    except Exception:
+    as_of = str(theme.get("date") or theme_date)[:10]
+    lag = _busday_lag(as_of, report_date)
+    if lag is None:
         return {}
+    stale = lag > 1
+    return {
+        "as_of": as_of,
+        "expected_as_of": str(report_date)[:10],
+        "lag_days": lag,
+        "stale": stale,
+        "degraded": False,
+        "data_quality": "stale" if stale else "ok",
+        "inferred": True,
+    }
+
+
+def _classify_denom(main_state: str) -> Tuple[str, str]:
+    s_compact = (main_state or "").replace(" ", "")
+    if any(k in s_compact for k in ["未确认", "分裂", "横盘", "混合", "UNCONFIRMED"]):
+        return "未确认/横盘", "none"
+    if any(k in s_compact for k in ["RISK_OFF", "risk_off", "紧缩", "压力", "HARD_VETO", "CRISIS"]):
+        return "偏紧/压力", "risk_off"
+    if any(k in s_compact for k in ["RISK_ON", "risk_on", "宽松"]):
+        return "偏松/确认", "risk_on"
+    if "确认" in s_compact and "未确认" not in s_compact:
+        return "偏松/确认", "risk_on"
+    return "未确认/横盘", "none"
+
+
+def _tech_stress(budget: Optional[float], bands: Dict[str, float]) -> str:
+    if budget is None:
+        return "未知"
+    if budget <= float(bands.get("strong", 0.35)):
+        return "强压制"
+    if budget <= float(bands.get("medium", 0.50)):
+        return "中度压制"
+    if budget <= float(bands.get("light", 0.65)):
+        return "轻度压制"
+    return "无压制"
+
+
+def _tech_bias_from_stress(stress: str) -> str:
+    if stress in ("强压制", "中度压制"):
+        return "risk_off"
+    if stress == "轻度压制":
+        return "mixed"
+    if stress == "未知":
+        return "none"
+    return "risk_on"
 
 
 def synthesize(
@@ -242,111 +775,95 @@ def synthesize(
     tech_date: str,
     denom_date: Optional[str],
     report_date: Optional[str] = None,
+    cfg: Optional[Dict[str, Any]] = None,
+    nq: Optional[Dict] = None,
+    nq_date: Optional[str] = None,
+    shock: Optional[Dict] = None,
 ) -> Dict[str, Any]:
+    cfg = cfg or _DEFAULT_CFG
+    bands = cfg.get("tech_stress_bands") or _DEFAULT_CFG["tech_stress_bands"]
     report_date = report_date or tech_date or theme_date
 
-    tech_dd = (tech or {}).get("tech_drawdown")
     dec = (tech or {}).get("decision") or {}
     budget = dec.get("risk_budget")
     damp_active = dec.get("dampener_active")
-    if budget is None:
-        stress = "未知"
-    elif budget <= 0.35:
-        stress = "强压制"
-    elif budget <= 0.50:
-        stress = "中度压制"
-    elif budget <= 0.65:
-        stress = "轻度压制"
-    else:
-        stress = "无压制"
+    stress = _tech_stress(None if budget is None else float(budget), bands)
 
     if denom:
-        main_state = denom.get("main_state", "")
+        main_state = denom.get("main_state", "") or ""
         dont = denom.get("dont_do", "")
         trigger = denom.get("trigger_hint", "")
-        if any(k in main_state for k in ["RISK_OFF", "risk_off", "紧缩", "压力"]):
-            denom_tag = "偏紧/压力"
-            denom_bias = "risk_off"
-        elif any(k in main_state for k in ["未确认", "分裂", "横盘", "混合"]):
-            denom_tag = "未确认/横盘"
-            denom_bias = "none"
-        elif any(k in main_state for k in ["RISK_ON", "risk_on", "宽松", "确认"]):
-            # only after excluding 未确认
-            if "未确认" in main_state:
-                denom_tag = "未确认/横盘"
-                denom_bias = "none"
-            else:
-                denom_tag = "偏松/确认"
-                denom_bias = "risk_on"
-        else:
-            denom_tag = "未确认/横盘"
-            denom_bias = "none"
+        denom_tag, denom_bias = _classify_denom(main_state)
     else:
         main_state = dont = trigger = ""
-        denom_tag = "未读取"
-        denom_bias = "none"
+        denom_tag, denom_bias = "未读取", "none"
 
     dom = (theme or {}).get("dominant_theme")
     leaders = (theme or {}).get("today_leaders") or []
     strength = (theme or {}).get("strength_table") or []
     tq = _infer_theme_quality(theme or {}, theme_date, report_date) if theme else {}
 
-    theme_bias = (
-        (dom or {}).get("risk_bias")
-        or (theme or {}).get("risk_bias")
-        or "none"
+    theme_bias = (dom or {}).get("risk_bias") or (theme or {}).get("risk_bias") or "none"
+    pressure = bool((dom or {}).get("pressure_override") or (theme or {}).get("pressure_override"))
+    narrative = (
+        f"有主导叙事：{dom.get('name')}（{dom.get('family')}，{theme_bias}）"
+        if dom
+        else "无主导叙事（等待共振）"
     )
-    pressure = bool(
-        (dom or {}).get("pressure_override")
-        or (theme or {}).get("pressure_override")
-    )
-    if dom:
-        narrative = f"有主导叙事：{dom.get('name')}（{dom.get('family')}，{theme_bias}）"
-    else:
-        narrative = "无主导叙事（等待共振）"
 
     stale = bool(tq.get("stale"))
     degraded = bool(tq.get("degraded"))
     data_quality = tq.get("data_quality") or (
-        "stale_degraded" if stale and degraded else
-        "stale" if stale else
-        "degraded" if degraded else
-        "ok" if theme else "missing"
+        "stale_degraded"
+        if stale and degraded
+        else "stale"
+        if stale
+        else "degraded"
+        if degraded
+        else "ok"
+        if theme
+        else "missing"
     )
 
-    eq_down = any(l.get("dir") == "↓" and abs(l.get("z", 0)) >= 1.0 for l in leaders)
+    eq_down = any(l.get("dir") == "↓" and abs(float(l.get("z") or 0)) >= 1.0 for l in leaders)
     eq_down = eq_down or any(
-        ("标普" in s.get("label", "") or "纳指" in s.get("label", ""))
+        ("标普" in (s.get("label") or "") or "纳指" in (s.get("label") or ""))
         and s.get("dir") == "↓"
         and s.get("level") in ("强", "异常")
         for s in strength
     )
+    tech_bias = _tech_bias_from_stress(stress)
 
-    tech_bias = (
-        "risk_off" if stress not in ("无压制", "未知") else
-        ("none" if stress == "未知" else "risk_on")
+    nq_driver = (nq or {}).get("driver") or {}
+    nq_bias = (
+        nq_driver.get("risk_bias")
+        or (nq or {}).get("risk_bias")
+        or "none"
     )
+    nq_veto = bool(nq_driver.get("veto") or (nq or {}).get("pressure_override"))
+    nq_q = ((nq or {}).get("quality") or {}).get("data_quality") or ("ok" if nq else "missing")
 
-    if pressure or theme_bias == "risk_off":
+    if pressure or theme_bias == "risk_off" or nq_veto or nq_bias == "risk_off":
         bias = "risk_off"
-    elif theme_bias == "risk_on" and tech_bias == "risk_on" and denom_bias != "risk_off":
+    elif theme_bias == "risk_on" and tech_bias == "risk_on" and denom_bias != "risk_off" and nq_bias != "risk_off" and not nq_veto:
         bias = "risk_on"
     elif eq_down or tech_bias == "risk_off" or denom_bias == "risk_off":
         bias = "risk_off" if (eq_down and tech_bias == "risk_off") else "mixed"
-    elif theme_bias == "mixed":
+    elif theme_bias == "mixed" or tech_bias == "mixed":
         bias = "mixed"
     else:
         bias = "none"
 
     if data_quality in ("stale", "degraded", "stale_degraded", "missing"):
         alignment = "数据降级"
-    elif denom_tag == "未确认/横盘" and not dom and stress != "无压制":
+    elif denom_tag == "未确认/横盘" and not dom and stress not in ("无压制",):
         alignment = "未确认"
     elif denom_tag == "未读取" and not dom:
         alignment = "未确认"
     else:
-        votes = [b for b in (denom_bias, tech_bias, theme_bias) if b in ("risk_on", "risk_off")]
-        if pressure and tech_bias == "risk_off":
+        nq_vote = nq_bias if nq and nq_q not in ("missing", "bad", "degraded") else None
+        votes = [b for b in (denom_bias, tech_bias, theme_bias, nq_vote) if b in ("risk_on", "risk_off")]
+        if (pressure and tech_bias == "risk_off") or (nq_veto and tech_bias == "risk_off"):
             alignment = "共振"
         elif len(votes) >= 2 and len(set(votes)) == 1:
             alignment = "共振"
@@ -357,139 +874,643 @@ def synthesize(
         else:
             alignment = "未确认"
 
-    divergences: list = []
+    divergences: List[str] = []
     if data_quality in ("stale", "stale_degraded"):
         divergences.append(
-            f"主题 as_of 落后（lag={tq.get('lag_days', '?')}）→ 禁止把跨工具读数说成同日共振"
+            f"主题数据陈旧/降级（as_of={tq.get('as_of')}, lag={tq.get('lag_days')}）—不得解读为跨工具共振"
         )
-    if degraded:
-        miss = ",".join(tq.get("critical_missing") or tq.get("missing_symbols") or [])
-        divergences.append(f"主题关键品种缺失/降级（{miss or 'unknown'}）→ 叙事可信度下降")
-    if "偏松" in denom_tag and eq_down:
-        divergences.append("分母偏松但股市显著走弱 → 警惕分母数据滞后 / 盘中反转")
-    if denom_tag == "未确认/横盘" and not dom and stress != "无压制":
-        divergences.append("分母未确认 + 主题无共振 + 减震器激活 → 三重未确认，宜防守")
-    if denom_tag == "偏紧/压力" and stress != "无压制" and eq_down:
-        divergences.append("分母偏紧 + 减震器压制 + 股市走弱 → 三工具共振偏空，防守基调")
-    if pressure:
-        divergences.append("主题压力覆盖（美元挤兑/套息平仓）置顶 → 压过普通叙事")
+    if data_quality == "missing":
+        divergences.append("主题状态机缺失")
+    if not tech:
+        divergences.append("科技减震器缺失")
+    if not denom:
+        divergences.append("分母状态缺失")
+    if denom_bias == "risk_on" and tech_bias == "risk_off":
+        divergences.append("分母偏松但减震器压制 — 交叉冲突")
+    if denom_bias == "risk_off" and theme_bias == "risk_on" and not pressure:
+        divergences.append("分母偏紧但主题 risk_on — 交叉冲突")
+    if eq_down and stress == "无压制":
+        divergences.append("股指强势下行但减震器未触发 — 留意滞后")
+    if pressure and tech_bias == "risk_on":
+        divergences.append("主题压力置顶但减震器未压制")
+    if nq_driver.get("veto"):
+        divergences.append(
+            f"NQ动因硬否决: {nq_driver.get('state_name', '?')} — {nq_driver.get('veto_reason', nq_driver.get('driver_mod', ''))}"
+        )
+    elif (nq or {}).get("pressure_override"):
+        divergences.append(
+            f"NQ动因压力覆盖: {nq_driver.get('state_name', '?')} — {nq_driver.get('veto_reason', nq_driver.get('driver_mod', ''))}"
+        )
+    if nq and theme_bias == "risk_on" and nq_bias == "risk_off":
+        divergences.append("主题偏多但 NQ 动因偏空 — 交叉冲突")
+    if not nq:
+        divergences.append("NQ 动因缺失")
+
+    # --- 冲击吸收旁证交叉校验（分母压力视角，不进合成预算） ---
+    shock_cross = None
+    if shock:
+        s_frag = int(shock.get("fragility_level", 0) or 0)
+        s_state = shock.get("fragility_state", "—")
+        shock_cross = {
+            "fragility_level": s_frag,
+            "fragility_state": s_state,
+            "weak_link": shock.get("weak_link"),
+            "shock_score": shock.get("shock_score"),
+            "agree": None,
+        }
+        if s_frag == 2 and denom_bias != "risk_off":
+            divergences.append(
+                f"冲击吸收判【高度脆弱】但分母未收紧(risk_off)——分母旁证冲突："
+                f"冲击或集中在分母未覆盖的腿（信用/波动/美元），分母可能滞后"
+            )
+            shock_cross["agree"] = False
+        elif s_frag >= 1 and denom_bias == "risk_on":
+            divergences.append(
+                f"冲击吸收处于【{s_state}】但分母偏松(risk_on)——分母旁证冲突："
+                f"分母宏观面宽松与微观冲击吸收恶化并存，提防分母滞后"
+            )
+            shock_cross["agree"] = False
+        elif s_frag == 0 and denom_bias == "risk_off":
+            divergences.append(
+                f"冲击吸收【吸收正常】但分母偏紧(risk_off)——分母更前瞻或覆盖不同维度，非硬冲突"
+            )
+            shock_cross["agree"] = True
+        elif (s_frag >= 1 and denom_bias == "risk_off") or (s_frag == 0 and denom_bias in ("none", "risk_on")):
+            shock_cross["agree"] = True
 
     if alignment == "数据降级":
-        consistency = f"数据降级（{bias}）"
-    elif alignment == "未确认":
-        consistency = f"未确认（{bias}）"
-    elif alignment == "冲突":
-        consistency = f"冲突（{bias}）"
+        consistency, tone = "数据降级（方向未确认）", "数据不完整或主题陈旧：只陈述分工具读数，不合成一致叙事。"
     elif alignment == "共振":
-        side = "偏空" if bias == "risk_off" else ("偏多" if bias == "risk_on" else "混合")
-        consistency = f"共振（{side}）"
+        consistency = "方向共振（观察层）"
+        tone = (
+            "观察层偏防守：跨工具偏向 risk_off 或压力置顶。"
+            if bias == "risk_off"
+            else "观察层偏多但非交易指令：仍以 kernel decide() 为准。"
+        )
+    elif alignment == "冲突":
+        consistency, tone = "工具冲突", "工具互相打架：降杠杆叙事优先，等待下一交易日对齐。"
+    elif alignment == "部分":
+        consistency, tone = "部分对齐", "信息部分对齐：保持观察，不外推。"
     else:
-        consistency = f"部分对齐（{bias}）"
-
-    if alignment == "数据降级":
-        tone = (
-            "观察基调：数据降级。主题读数 stale/degraded，"
-            "综合结论不可当作同日共振；以分母「今天不做什么」为硬约束，等待数据对齐。"
-        )
-    elif pressure:
-        tone = (
-            "观察基调：压力覆盖。主题机压力类置顶（美元挤兑/套息平仓）——"
-            "叙事让位给流动性压力，控制敞口，勿用普通主题解释硬扛。"
-        )
-    elif stress != "无压制" and denom_tag != "偏松/确认" and not dom:
-        tone = (
-            "观察基调：防守。分母未确认/偏紧，减震器已压低科技敞口，主题无共振 ——"
-            "不加新表达，等分母翻转或主题共振。"
-        )
-    elif stress == "无压制" and dom and theme_bias == "risk_on" and alignment == "共振":
-        tone = (
-            f"观察基调：中性偏积极。减震器放行（预算 {budget}），主题 risk_on 叙事"
-            f"（{dom.get('name')}）—— 可关注共振方向，仍以分母状态机为准。"
-        )
-    elif stress != "无压制" and dom:
-        tone = (
-            f"观察基调：谨慎。主题有叙事（{dom.get('name')}，{theme_bias}）但减震器仍压制"
-            f"（预算 {budget}）—— 控制仓位，等分母确认。"
-        )
-    else:
-        tone = "观察基调：中性。各工具信号未形成共振，按分母状态机「今天不做什么」执行。"
+        consistency, tone = "未确认/信息不足", "信息不足或未确认：保持观察，不外推。"
 
     return {
-        "equity_stress": stress,
-        "tech_drawdown": tech_dd,
-        "risk_budget": budget,
-        "dampener_active": damp_active,
-        "denom_tag": denom_tag,
-        "main_state": main_state,
-        "narrative": narrative,
-        "equity_down": eq_down,
-        "divergences": divergences,
-        "tone": tone,
         "consistency": consistency,
         "alignment": alignment,
         "bias": bias,
         "data_quality": data_quality,
         "pressure_override": pressure,
+        "equity_down": eq_down,
+        "equity_stress": stress,
+        "risk_budget": budget,
+        "dampener_active": damp_active,
+        "denom_tag": denom_tag,
+        "denom_bias": denom_bias,
+        "tech_bias": tech_bias,
+        "theme_bias": theme_bias,
+        "narrative": narrative,
+        "divergences": divergences,
+        "tone": tone,
         "theme_quality": tq,
         "dont_do": dont,
         "trigger_hint": trigger,
+        "main_state": main_state,
         "theme_date": theme_date,
         "tech_date": tech_date,
         "denom_date": denom_date,
+        "nq_date": nq_date,
+        "nq_bias": nq_bias if nq else "none",
+        "nq_veto": bool(nq_driver.get("veto")) if nq else False,
+        "nq_pressure_override": bool((nq or {}).get("pressure_override")) if nq else False,
+        "nq_state": (nq_driver.get("state_name") if nq else None),
+        "nq_quality": nq_q,
+        "nq_dont_do": (nq_driver.get("dont_do") or (nq or {}).get("dont_do") if nq else ""),
+        "nq_driver_mod": (nq_driver.get("driver_mod") if nq else None),
+        "shock_absorption": shock_cross,
     }
 
 
-def _denom_ceiling(state: Optional[str]) -> float:
-    """Map a v1.6 denominator state string to an implied risk-budget ceiling."""
-    s = state or ""
-    if any(k in s for k in ["HARD_VETO", "危机", "CRISIS", "LIQUIDITY_SQUEEZE", "SQUEEZE"]):
-        return 0.10
-    if any(k in s for k in ["紧缩", "压力", "偏紧", "TRANSITION", "过渡"]):
-        return 0.35
-    if any(k in s for k in ["未确认", "分裂", "横盘", "混合"]):
-        return 0.55
-    if any(k in s for k in ["RISK_ON", "risk_on", "宽松", "确认"]):
-        return 0.80
-    return 0.55
+def _denom_ceiling(state: Optional[str], cfg: Optional[Dict[str, Any]] = None) -> float:
+    cfg = cfg or _DEFAULT_CFG
+    block = cfg.get("denominator_ceilings") or _DEFAULT_CFG["denominator_ceilings"]
+    s = (state or "").replace(" ", "")
+    s_upper = s.upper()
+    for tier in ("crisis", "unconfirmed", "tight", "risk_on"):
+        spec = block.get(tier) or {}
+        for kw in spec.get("keywords") or []:
+            if not kw:
+                continue
+            if kw.isascii():
+                if kw.upper() in s_upper:
+                    return float(spec.get("ceiling", block.get("default", 0.55)))
+            elif kw in s:
+                return float(spec.get("ceiling", block.get("default", 0.55)))
+    if "确认" in s and "未确认" not in s:
+        return float((block.get("risk_on") or {}).get("ceiling", 0.80))
+    return float(block.get("default", 0.55))
 
 
-def _theme_ceiling(theme: Optional[Dict]) -> float:
-    """Map a theme-state-machine read to an implied risk-budget ceiling."""
+def _theme_ceiling(theme: Optional[Dict], cfg: Optional[Dict[str, Any]] = None) -> Optional[float]:
+    cfg = cfg or _DEFAULT_CFG
+    tc = cfg.get("theme_ceilings") or _DEFAULT_CFG["theme_ceilings"]
     if not theme:
-        return 0.60
-    if theme.get("pressure_override"):
-        return 0.25
-    dom = theme.get("dominant_theme") or {}
-    rb = (dom.get("risk_bias") or theme.get("risk_bias") or "")
+        return tc.get("missing", None)
+    if theme.get("pressure_override") or ((theme.get("dominant_theme") or {}).get("pressure_override")):
+        return float(tc.get("pressure_override", 0.25))
+    rb = ((theme.get("dominant_theme") or {}).get("risk_bias") or theme.get("risk_bias") or "")
     if rb == "risk_off":
-        return 0.45
+        return float(tc.get("risk_off", 0.45))
     if rb == "risk_on":
-        return 0.80
-    return 0.60
+        return float(tc.get("risk_on", 0.80))
+    return float(tc.get("default", 0.60))
 
 
-def compute_combined_budget(denom, tech, theme) -> Dict[str, Any]:
-    """Single operative risk-budget ceiling = min across the three instruments.
+def _nq_ceiling(nq: Optional[Dict], cfg: Optional[Dict[str, Any]] = None) -> Optional[float]:
+    """Map NQ driver daily read to an implied observation ceiling."""
+    cfg = cfg or _DEFAULT_CFG
+    nc = cfg.get("nq_ceilings") or {
+        "missing": None,
+        "veto": 0.20,
+        "risk_off": 0.40,
+        "mixed": 0.55,
+        "risk_on": 0.75,
+        "default": 0.60,
+    }
+    if not nq:
+        return nc.get("missing", None)
+    driver = nq.get("driver") or {}
+    if driver.get("veto") or nq.get("pressure_override"):
+        sid = driver.get("state_id")
+        if sid in (6, 12) or driver.get("veto"):
+            return float(nc.get("veto", 0.20))
+        return float(nc.get("risk_off", 0.40))
+    bias = driver.get("risk_bias") or nq.get("risk_bias") or ""
+    if bias == "risk_off":
+        return float(nc.get("risk_off", 0.40))
+    if bias == "risk_on":
+        return float(nc.get("risk_on", 0.75))
+    if bias == "mixed":
+        return float(nc.get("mixed", 0.55))
+    return float(nc.get("default", 0.60))
 
-    Each tool imposes its own ceiling; the binding one is the strictest. This is a
-    *synthesis reference number*, not a trade instruction — the kernel remains the
-    source of truth in live trading.
+
+
+
+def build_rates_stress_from_denom(
+    denom: Optional[Dict],
+    *,
+    cfg: Optional[Dict[str, Any]] = None,
+    warnings: Optional[List[str]] = None,
+) -> Optional[Dict[str, Any]]:
+    """Build rates-stress snapshot for the consolidator fifth leg.
+
+    Prefer full history via core.rates_stress when FRED caches exist; fall back
+    to denominator artifact z5 fields (no percentile) which can only engage
+    slope-side if pct is absent — in that case remain non-binding unless
+    history loads successfully.
     """
-    denom_c = _denom_ceiling((denom or {}).get("main_state"))
-    tech_c = float(((tech or {}).get("decision") or {}).get("risk_budget", 0.8))
-    theme_c = _theme_ceiling(theme)
-    combined = min(denom_c, tech_c, theme_c)
-    binders = []
-    for label, val in (("分母", denom_c), ("减震器", tech_c), ("主题", theme_c)):
-        if abs(val - combined) < 1e-9:
-            binders.append(label)
+    cfg = cfg or _DEFAULT_CFG
+    rs_cfg = dict(cfg.get("rates_stress") or {})
+    if rs_cfg.get("enabled", True) is False:
+        return None
+    warnings = warnings if warnings is not None else []
+    try:
+        from core.rates_stress import (  # type: ignore
+            compute_rates_stress_series,
+            params_from_mapping,
+        )
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"rates_stress import failed: {exc}")
+        return None
+
+    params = params_from_mapping(rs_cfg)
+    # Try FRED daily caches under macro-os/data
+    data_dir = REPO_ROOT / "data"
+    try:
+        def _load(name: str, col: str):
+            fp = data_dir / name
+            if not fp.exists():
+                return None
+            df = __import__("pandas").read_csv(fp)
+            df["observation_date"] = __import__("pandas").to_datetime(df["observation_date"])
+            s = df.set_index("observation_date")[col]
+            return __import__("pandas").to_numeric(s, errors="coerce").sort_index()
+
+        import pandas as pd  # local
+
+        n30 = _load("_nom30y_daily.csv", "DGS30")
+        tips = _load("_tips_daily.csv", "DFII10")
+        if n30 is None:
+            warnings.append("rates_stress: missing _nom30y_daily.csv; leg skipped")
+            return None
+        frame = pd.DataFrame({"nominal_30y": n30})
+        if tips is not None:
+            frame["tips_yield"] = tips.reindex(frame.index).ffill()
+        frame = frame.dropna(subset=["nominal_30y"])
+        series = compute_rates_stress_series(frame, params)
+        last = series.iloc[-1]
+        # If denom carries a more recent as-of, still use full-series last row
+        return {
+            "rates_cap": float(last["rates_cap"]),
+            "engaged": bool(last["engaged"]),
+            "reason": str(last["raw_reason"]),
+            "nominal_30y_z5": None
+            if pd.isna(last["nominal_30y_z5"])
+            else round(float(last["nominal_30y_z5"]), 4),
+            "nominal_30y_pct": None
+            if pd.isna(last["nominal_30y_pct"])
+            else round(float(last["nominal_30y_pct"]), 2),
+            "as_of": str(series.index[-1].date())
+            if hasattr(series.index[-1], "date")
+            else str(series.index[-1]),
+            "source": "fred_cache",
+        }
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"rates_stress history failed: {exc}")
+        # Fallback: denom z5 only cannot compute percentile; stay non-binding
+        z5 = (denom or {}).get("z5") or {}
+        n30z = z5.get("n30")
+        return {
+            "rates_cap": 1.0,
+            "engaged": False,
+            "reason": "fallback_no_history",
+            "nominal_30y_z5": n30z,
+            "nominal_30y_pct": None,
+            "source": "denom_z5_fallback",
+        }
+
+
+def _rates_ceiling(
+    rates: Optional[Dict],
+    cfg: Optional[Dict[str, Any]] = None,
+) -> Optional[float]:
+    """Fifth leg: long-end rates stress cap. None=absent; values in (0,1]."""
+    cfg = cfg or _DEFAULT_CFG
+    rs_cfg = cfg.get("rates_stress") or {}
+    if rs_cfg.get("enabled", True) is False:
+        return None
+    if not rates:
+        return None
+    cap = rates.get("rates_cap")
+    if cap is None:
+        # engaged False without cap => non-binding present leg
+        if rates.get("engaged") is False:
+            return 1.0
+        return None
+    try:
+        c = float(cap)
+    except (TypeError, ValueError):
+        return None
+    if c <= 0:
+        return None
+    return min(1.0, c)
+
+
+def compute_combined_budget(
+    denom: Optional[Dict],
+    tech: Optional[Dict],
+    theme: Optional[Dict],
+    nq: Optional[Dict] = None,
+    rates: Optional[Dict] = None,
+    *,
+    data_quality: str = "ok",
+    nq_quality: str = "ok",
+    cfg: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    cfg = cfg or _DEFAULT_CFG
+    tech_default = float(cfg.get("tech_default_ceiling", 0.80))
+    denom_present = denom is not None
+    tech_present = tech is not None and ((tech.get("decision") or {}).get("risk_budget") is not None)
+    theme_present = theme is not None
+    nq_present = nq is not None
+    rates_present = rates is not None
+    theme_usable = theme_present and data_quality not in (
+        "stale",
+        "degraded",
+        "stale_degraded",
+        "missing",
+    )
+    nq_usable = nq_present and nq_quality not in (
+        "stale",
+        "degraded",
+        "stale_degraded",
+        "missing",
+        "bad",
+    )
+
+    denom_c = _denom_ceiling((denom or {}).get("main_state"), cfg) if denom_present else None
+    tech_c = float((tech.get("decision") or {}).get("risk_budget")) if tech_present else None
+    theme_c = _theme_ceiling(theme, cfg) if theme_usable else None
+    nq_c = _nq_ceiling(nq, cfg) if nq_usable else None
+    rates_c = _rates_ceiling(rates, cfg) if rates_present else None
+    theme_status = (
+        "excluded_quality"
+        if theme_present and not theme_usable
+        else ("missing" if not theme_present else "ok")
+    )
+    nq_status = (
+        "excluded_quality"
+        if nq_present and not nq_usable
+        else ("missing" if not nq_present else "ok")
+    )
+    rates_status = (
+        "missing" if not rates_present else ("ok" if rates_c is not None else "disabled")
+    )
+
+    labels: List[Tuple[str, float]] = []
+    if denom_c is not None:
+        labels.append(("分母", denom_c))
+    if tech_c is not None:
+        labels.append(("减震器", tech_c))
+    if theme_c is not None:
+        labels.append(("主题", theme_c))
+    if nq_c is not None:
+        labels.append(("NQ动因", nq_c))
+    if rates_c is not None and rates_c < 0.999:
+        labels.append(("利率", rates_c))
+
+    complete = denom_present and tech_present and theme_usable
+    if not labels:
+        return {
+            "denominator_ceiling": denom_c,
+            "tech_ceiling": tech_c if tech_c is not None else tech_default,
+            "theme_ceiling": theme_c,
+            "nq_ceiling": nq_c,
+            "rates_ceiling": rates_c,
+            "combined_budget": None,
+            "binding": [],
+            "complete": False,
+            "degraded": True,
+            "theme_status": theme_status,
+            "nq_status": nq_status,
+            "rates_status": rates_status,
+            "reason": "no_ceilings_available",
+        }
+
+    combined = min(v for _, v in labels)
+    binders = [lab for lab, val in labels if abs(val - combined) < 1e-9]
+    degraded = (not complete) or data_quality in (
+        "stale",
+        "degraded",
+        "stale_degraded",
+        "missing",
+    ) or (nq_present and not nq_usable)
     return {
-        "denominator_ceiling": round(denom_c, 2),
-        "tech_ceiling": round(tech_c, 2),
-        "theme_ceiling": round(theme_c, 2),
+        "denominator_ceiling": None if denom_c is None else round(denom_c, 2),
+        "tech_ceiling": round(tech_c if tech_c is not None else tech_default, 2),
+        "theme_ceiling": None if theme_c is None else round(theme_c, 2),
+        "nq_ceiling": None if nq_c is None else round(nq_c, 2),
+        "rates_ceiling": None if rates_c is None else round(rates_c, 2),
         "combined_budget": round(combined, 2),
         "binding": binders,
+        "complete": complete,
+        "degraded": degraded,
+        "theme_status": theme_status,
+        "nq_status": nq_status,
+        "rates_status": rates_status,
+        "reason": "ok" if complete and not degraded else "partial_or_degraded",
     }
+
+
+def try_load_sentiment_shadow(
+    report_dir: Path, date_str: str, warnings: List[str]
+) -> Optional[Dict[str, Any]]:
+    candidates = [
+        report_dir / f"sentiment_shadow_{date_str}.json",
+        REPO_ROOT / "vault" / "shadow" / f"sentiment_{date_str}.json",
+    ]
+    for p in candidates:
+        if p.exists():
+            try:
+                return json.loads(p.read_text(encoding="utf-8"))
+            except Exception as exc:  # noqa: BLE001
+                warnings.append(f"sentiment shadow parse failed ({p.name}): {exc}")
+    jsonl = REPO_ROOT / "vault" / "shadow" / "sentiment_shadow.jsonl"
+    if jsonl.exists():
+        try:
+            for line in reversed(jsonl.read_text(encoding="utf-8").strip().splitlines()):
+                if not line.strip():
+                    continue
+                obj = json.loads(line)
+                if str(obj.get("as_of") or "")[:10] == date_str:
+                    return obj
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"sentiment jsonl read failed: {exc}")
+    return None
+
+
+
+def build_plain_advice(
+    theme: Optional[Dict],
+    tech: Optional[Dict],
+    denom: Optional[Dict],
+    nq: Optional[Dict],
+    synth: Dict[str, Any],
+    combined: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Pine V3 读法 -> 白话交易建议（观察纪律，非下单信号）。"""
+    drv = (nq or {}).get("driver") or {}
+    hard_veto = bool(drv.get("veto") or synth.get("nq_veto"))
+    pressure = bool((nq or {}).get("pressure_override") or synth.get("nq_pressure_override"))
+    nq_state = drv.get("state_name") or synth.get("nq_state") or "—"
+    nq_bias = drv.get("risk_bias") or synth.get("nq_bias") or "none"
+    driver_mod = drv.get("driver_mod") or synth.get("nq_driver_mod") or "—"
+    dont_do = drv.get("dont_do") or synth.get("nq_dont_do") or ""
+    invalid = drv.get("invalid_if") or ""
+    playbook = drv.get("playbook") or ""
+    attitude = drv.get("attitude") or "—"
+    participation = drv.get("participation") or "—"
+    opp_over = bool(drv.get("opposing_over_dominant"))
+    sid = drv.get("state_id")
+
+    dec = (tech or {}).get("decision") or {}
+    tech_budget = dec.get("risk_budget")
+    damp = bool(dec.get("dampener_active"))
+    dom = (theme or {}).get("dominant_theme") or {}
+    theme_name = dom.get("name") or "无主导"
+    theme_bias = dom.get("risk_bias") or (theme or {}).get("risk_bias") or "none"
+    denom_state = ""
+    if denom:
+        denom_state = str(denom.get("state") or denom.get("main_state") or "")
+    denom_dont = (denom or {}).get("dont_do") or ""
+
+    if hard_veto:
+        stance = f"防守优先：NQ 硬否决（{nq_state}），多头打法暂停"
+        posture = "defend"
+    elif pressure or nq_bias == "risk_off" or (
+        tech_budget is not None and float(tech_budget) <= 0.35
+    ):
+        stance = f"防守日：{nq_state} · 降杠杆观望，不接飞刀"
+        posture = "defend"
+    elif synth.get("bias") == "risk_on" and synth.get("alignment") == "共振":
+        stance = f"顺风观察：{nq_state} · 仅在失效未触发时持有，禁做优先"
+        posture = "risk_on_observe"
+    elif synth.get("bias") == "mixed" or nq_bias == "mixed":
+        stance = f"混合日：{nq_state} · 控制仓位，先看禁做再看打法"
+        posture = "mixed"
+    else:
+        stance = f"等待确认：{nq_state} · 轻仓或观望"
+        posture = "wait"
+
+    mod = str(driver_mod)
+    if "否决" in mod:
+        mod_plain = "动因层否决级：对应方向的进攻打法暂停，不是普通减半"
+    elif "逆风减半" in mod:
+        mod_plain = "逆风减半：若仍想参与，仓位/进攻性先砍半，不是开多许可证"
+    elif "对抗" in mod or opp_over:
+        mod_plain = "对抗力已压过主导：状态可能靠切换惯性撑着——减仓或收紧止损的正式理由"
+    elif "顺风足额" in mod:
+        mod_plain = "顺风足额（观察）：框架偏多，但仍以「今天不做」和失效条件为先"
+    elif "顶压" in mod or "空头暂停" in mod:
+        mod_plain = "顶压上涨：空头打法暂停，等投降信号，不抢空"
+    elif "过渡" in str(playbook) or sid in (13, 14, 15):
+        mod_plain = "过渡态：理由与价格未对齐，禁止提前重仓押方向"
+    else:
+        mod_plain = f"动因修正：{mod}"
+
+    do_list: List[str] = []
+    dont_list: List[str] = []
+    if dont_do:
+        for part in re.split(r"[；;]", str(dont_do)):
+            part = part.strip()
+            if part:
+                dont_list.append(part)
+    if denom_dont:
+        for part in re.split(r"[；;，,]", str(denom_dont)):
+            part = part.strip()
+            if part and part not in dont_list:
+                dont_list.append(f"分母纪律：{part}")
+
+    if posture == "defend":
+        do_list.extend(
+            [
+                "降杠杆、降久期，优先减 NQ/SOXX 贝塔暴露",
+                "以观望/防守为主；若交易仅小仓短持并设硬止损",
+                f"把失效条件当重新评估开关：{invalid or '见 NQ 面板失效行'}",
+            ]
+        )
+        if damp or (tech_budget is not None and float(tech_budget) <= 0.50):
+            do_list.append(
+                f"科技减震器激活（budget={tech_budget}）：科技多头敞口按更严上限管理"
+            )
+    elif posture == "risk_on_observe":
+        do_list.extend(
+            [
+                "仅在失效条件未触发时考虑持有或回撤轻仓，而非追高满仓",
+                "用参与度验成色：全员参与优于 NQ 独行",
+                f"打法框架参考：{playbook or '顺风框架'}",
+            ]
+        )
+    elif posture == "mixed":
+        do_list.extend(
+            [
+                "控制总仓位，先执行禁做清单再考虑方向",
+                f"态度={attitude} · 参与度={participation}：不对齐时减少交易频率",
+            ]
+        )
+    else:
+        do_list.extend(
+            [
+                "轻仓或空仓等待主题/价格对齐",
+                "避免在无主题或力量酝酿窗口硬编故事重仓",
+            ]
+        )
+
+    conflicts: List[str] = []
+    if theme_bias == "risk_on" and (nq_bias == "risk_off" or hard_veto or pressure):
+        conflicts.append(
+            f"主题「{theme_name}」偏多，但 NQ 为 {nq_state}（{nq_bias}）"
+        )
+        arb = "跨腿冲突时以更严一侧为准：跟 NQ 动因/减震器纪律，不把主题 risk_on 当满仓许可证"
+    elif denom_state and ("分裂" in denom_state or "未确认" in denom_state) and theme_bias == "risk_on":
+        conflicts.append(f"分母 {denom_state} vs 主题偏多")
+        arb = "分母未确认时，主题叙事可看、仓位仍收敛"
+    elif synth.get("divergences"):
+        arb = "存在背离警示：先消化背离，再谈进攻"
+    else:
+        arb = "四腿无尖锐冲突时，仍以 NQ「今天不做」> 打法框架 > 叙事"
+
+    cb = (combined or {}).get("combined_budget")
+    binding = ", ".join((combined or {}).get("binding") or []) or "—"
+    if cb is None:
+        budget_line = "合成上限不可用（数据不足/降级）——只陈述纪律，不给完整进攻预算"
+    else:
+        budget_line = f"观察层合成风险上限约 {cb}（约束：{binding}）；实盘仍以 kernel decide() 为准"
+
+    pine_gap = [
+        "日频代理不含 15m/1h/4h 三周期打法行与事件静默窗",
+        "不替代 TradingView 上 NQ 动因 V3 盘中面板",
+        "「今天不做」优先级高于打法；本栏是战术纪律翻译，不是买卖信号",
+    ]
+
+    return {
+        "headline": stance,
+        "posture": posture,
+        "stance": stance,
+        "driver_mod_plain": mod_plain,
+        "playbook": playbook or "—",
+        "attitude": attitude,
+        "participation": participation,
+        "do": do_list,
+        "dont": dont_list or ["（NQ 未给出 dont_do）"],
+        "invalid_if": invalid or "—",
+        "conflicts": conflicts,
+        "arbitration": arb,
+        "budget_line": budget_line,
+        "pine_gap": pine_gap,
+        "nq_state": nq_state,
+        "hard_veto": hard_veto,
+        "pressure_override": pressure,
+    }
+
+
+def format_plain_advice_md(advice: Dict[str, Any]) -> List[str]:
+    """Markdown lines for section ⑥."""
+    L: List[str] = []
+    L.append("## ⑥ 白话交易建议（Pine V3 读法 · 非信号）")
+    L.append("")
+    L.append(f"> **一句话**：{advice.get('headline') or '—'}")
+    L.append("")
+    L.append(f"- **NQ 状态**：{advice.get('nq_state') or '—'} ｜ posture=`{advice.get('posture')}`")
+    flag = (
+        "硬否决"
+        if advice.get("hard_veto")
+        else ("压力覆盖" if advice.get("pressure_override") else "否")
+    )
+    L.append(f"- **硬否决/压力**：{flag}")
+    L.append(f"- **动因修正（白话）**：{advice.get('driver_mod_plain') or '—'}")
+    L.append(f"- **打法框架**：{advice.get('playbook') or '—'}")
+    L.append(
+        f"- **态度 / 参与度**：{advice.get('attitude') or '—'} / {advice.get('participation') or '—'}"
+    )
+    L.append("")
+    L.append("### 今天不做（最高优先）")
+    L.append("")
+    for x in advice.get("dont") or []:
+        L.append(f"- ❌ {x}")
+    L.append("")
+    L.append("### 可以考虑")
+    L.append("")
+    for x in advice.get("do") or []:
+        L.append(f"- ✅ {x}")
+    L.append("")
+    L.append(f"- **失效再评估**：{advice.get('invalid_if') or '—'}")
+    L.append(f"- **预算锚**：{advice.get('budget_line') or '—'}")
+    if advice.get("conflicts"):
+        L.append("")
+        L.append("### 跨腿冲突")
+        L.append("")
+        for c in advice["conflicts"]:
+            L.append(f"- ⚠ {c}")
+    L.append(f"- **仲裁**：{advice.get('arbitration') or '—'}")
+    L.append("")
+    L.append("### 与真·Pine 盘中面板的差距")
+    L.append("")
+    for g in advice.get("pine_gap") or []:
+        L.append(f"- {g}")
+    L.append("")
+    return L
+
 
 
 def build_report(
@@ -499,62 +1520,80 @@ def build_report(
     theme: Optional[Dict],
     synth: Dict[str, Any],
     combined: Optional[Dict[str, Any]] = None,
+    *,
+    warnings: Optional[List[str]] = None,
+    sentiment: Optional[Dict[str, Any]] = None,
+    nq: Optional[Dict[str, Any]] = None,
+    sector: Optional[Dict[str, Any]] = None,
+    shock: Optional[Dict[str, Any]] = None,
+    advice: Optional[Dict[str, Any]] = None,
 ) -> str:
-    L: list = []
-    L.append(f"# 每日宏观三件套 · 统一读数 | {date_str}")
+    L: List[str] = []
+    L.append(f"# Daily Macro 综合观察 · {date_str}")
     L.append("")
-    L.append("- **观察性质**: 三个独立观察工具的综合读数，非交易信号，非投资建议。")
+    L.append("> **观察合成 · 非交易指令**。实盘预算以 kernel `decide()` 为准。")
+    L.append("")
+    sector_date = (sector or {}).get("as_of") if sector else None
     L.append(
-        f"- **数据截至**: 主题 {synth['theme_date']} ｜ 减震器 {synth['tech_date']} ｜ "
-        f"分母 {synth['denom_date'] or '未读取'}"
+        f"- **主题 as_of**: {synth.get('theme_date') or '—'} ｜ "
+        f"**减震器 as_of**: {synth.get('tech_date') or '—'} ｜ "
+        f"**分母 as_of**: {synth.get('denom_date') or '—'} ｜ "
+        f"**NQ as_of**: {synth.get('nq_date') or '—'}"
+        + (f" ｜ **板块轮动 as_of**: {sector_date}" if sector_date else "")
     )
-    L.append("")
+    L.append(
+        f"- **alignment / bias / 数据质量**: "
+        f"{synth.get('alignment', '—')} / {synth.get('bias', '—')} / {synth.get('data_quality', '—')}"
+    )
+    if warnings:
+        L.append("")
+        L.append("## ⚠ 运行警告")
+        L.append("")
+        for w in warnings:
+            L.append(f"- {w}")
+        L.append("")
 
-    L.append("## 一致性矩阵")
-    L.append("")
-    L.append("| 维度 | 分母状态机 | 科技减震器 | 主题状态机 |")
-    L.append("|---|---|---|---|")
-    L.append(
-        f"| 风险倾向 | {synth['main_state'] or '未读取'} | "
-        f"预算 {synth['risk_budget']}（{synth['equity_stress']}） | {synth['narrative']} |"
-    )
-    L.append(
-        f"| alignment | {synth.get('alignment', '—')} | bias={synth.get('bias', '—')} | "
-        f"quality={synth.get('data_quality', '—')} |"
-    )
-    L.append(f"| 综合判定 | {synth['consistency']} | — | — |")
-    L.append("")
-
-    L.append("## ① 分母状态机（资金价格斜率 v1.6）")
+    L.append("## ① 分母状态")
     L.append("")
     if denom:
-        L.append(f"- **主状态**: {denom.get('main_state', '—')}")
+        L.append(f"- **主状态**: {denom.get('main_state') or '—'}")
+        L.append(f"- **标签**: {synth.get('denom_tag', '—')}")
         if denom.get("four_quad"):
-            L.append(f"- **四象限（官方）**: {denom['four_quad']}")
+            L.append(f"- **四象限**: {denom.get('four_quad')}")
         if denom.get("dont_do"):
-            L.append(f"- **今天不做什么**: {denom['dont_do']}")
+            L.append(f"- **今天不做什么**: {denom.get('dont_do')}")
         if denom.get("trigger_hint"):
-            L.append(f"- **触发提示**: {denom['trigger_hint']}")
-        L.append("")
-        L.append(f"> 完整读数见 `denominator_state_{synth['denom_date']}.md`")
+            L.append(f"- **触发提示**: {denom.get('trigger_hint')}")
+        L.append(f"- **来源**: {denom.get('source', '—')}")
     else:
-        L.append("> 本次未读取分母状态。综合研判仅基于科技减震器 + 主题状态机。")
+        L.append("> 分母状态未读取。")
     L.append("")
 
-    L.append("## ② 科技减震器（Equity-Stress Overlay）")
+    L.append("## ② 科技减震器")
     L.append("")
     if tech:
         dec = tech.get("decision") or {}
-        dd = tech.get("tech_drawdown")
         L.append(
-            f"- **SOXX 20日峰值回撤**: "
-            f"{('-%.2f%%' % (abs(dd) * 100)) if dd is not None else '—'}"
+            f"- **risk_budget**: **{synth.get('risk_budget')}** （{synth.get('equity_stress')}）"
         )
-        L.append(f"- **内核风险预算**: **{synth['risk_budget']}** （{synth['equity_stress']}）")
-        L.append(f"- **减震器状态**: {'激活' if synth['dampener_active'] else '未触发'}")
+        L.append(f"- **减震器状态**: {'激活' if synth.get('dampener_active') else '未触发'}")
         L.append(
             f"- **权限 / 原因**: `{dec.get('authority', '—')}` / `{dec.get('reason_code', '—')}`"
         )
+        traj = tech.get("trajectory")
+        if traj:
+            _lab_cn = {"rebuilding": "反弹恢复中", "bottoming": "摸底横盘", "deepening": "探底加深"}
+            _lab = _lab_cn.get(traj.get("label"), traj.get("label"))
+            L.append(
+                f"- **回撤轨迹（斜率/方向）**: **{_lab}** ｜ 谷位 {traj['trough_date']}="
+                f"{traj['trough_close']} ｜ 自谷反弹 +{traj['recovery_from_trough_pct']}% ｜ "
+                f"近5日回撤斜率 +{traj['drawdown_slope_5d_pp']}pp/日"
+            )
+            L.append(
+                f"- **解读**: 喂内核的 tech_drawdown={tech.get('tech_drawdown')} 为**迟滞平滑值**，"
+                f"滞后于价格反弹；原始(非迟滞)20日峰值回撤仅 {traj['naive_20d_peak_dd_pct']}%。"
+                f"方向以轨迹为准，勿因单一回撤数字误判为仍在下跌。"
+            )
         L.append("")
         L.append(
             f"> 完整读数见 `tech_dampener_decision_{date_str}.md` + `tech_drawdown_{date_str}.json`"
@@ -563,16 +1602,74 @@ def build_report(
         L.append("> 科技减震器未运行。")
     L.append("")
 
-    L.append("## ③ 主题状态机（v3.1r 日频复刻）")
+    # ②-b 冲击吸收旁证（分母压力交叉校验，观察+报警，不进主状态机，不动合成预算）
+    L.append("## ②-b 冲击吸收旁证（分母交叉校验 · 观察+报警）")
+    L.append("")
+    if shock:
+        legs = shock.get("legs", {})
+        r = shock.get("record_20d", {})
+        fp = shock.get("fingerprints", {})
+        cross = (synth or {}).get("shock_absorption") or {}
+        L.append(
+            f"- **大状态**: {shock.get('fragility_state')} (level={shock.get('fragility_level')}) ｜ "
+            f"主软肋: {shock.get('weak_link')} ｜ 今日: {shock.get('day_text')}"
+        )
+        L.append(
+            f"- **20日记录**: 冲击 {r.get('hit')} · 加剧 {r.get('strain')} · 破裂 {r.get('fail')}"
+            f"（利率 {r.get('rate_fail')} / 信用 {r.get('cred_fail')} / 美元 {r.get('dxy_fail')} / 波动 {r.get('vol_fail')}）"
+        )
+
+        def _leg_line(name: str, leg: Dict[str, Any]) -> str:
+            if leg.get("abstain"):
+                return f"  - {name}: 缺数弃权"
+            if not leg.get("hit"):
+                return f"  - {name}: 无冲击 (z {leg.get('z')})"
+            extra = ""
+            if name == "利率" and leg.get("bp") is not None:
+                extra = f" ({leg['bp']}bp {'长端' if leg.get('long_end') else '腹部'})"
+            elif name == "美元" and leg.get("ret_pct") is not None:
+                extra = f" ({leg['ret_pct']}%)"
+            elif name == "信用" and leg.get("qual_z") is not None:
+                extra = f" · 质量差 z {leg['qual_z']}"
+            elif name == "波动" and leg.get("pct") is not None:
+                extra = f" · 水位 {leg['pct']}分位"
+            return (f"  - {name}: {leg.get('dir', '')} · {leg.get('code_text')} · "
+                    f"z {leg.get('z')} · 损伤比 q {leg.get('q')}{extra}")
+
+        L.append("- **四条冲击腿**:")
+        L.append(_leg_line("利率", legs.get("rate", {})))
+        L.append(_leg_line("美元", legs.get("dxy", {})))
+        L.append(_leg_line("信用", legs.get("credit", {})))
+        L.append(_leg_line("波动", legs.get("vol", {})))
+        L.append(
+            f"- **指纹**: 保证金抛售={'出现' if fp.get('margin_call') else '未出现'} ｜ "
+            f"股债汇三杀={'出现' if fp.get('sell_america') else '未出现'} ｜ "
+            f"BTC金丝雀={'报警' if fp.get('btc_canary') else '平静'}"
+        )
+        agree = cross.get("agree")
+        if agree is False:
+            L.append("- **与分母交叉**: ⚠ 冲突（见 ④ 背离警示）")
+        elif agree is True:
+            L.append("- **与分母交叉**: 同向，无硬冲突")
+        L.append("")
+        L.append(
+            f"> 冲击吸收判读见 `shock_absorption_{shock.get('date')}.md` + `.json`。"
+            "本段仅为分母压力旁证，不进主状态机，不动合成预算 min。门槛初值未标定(SA-1)。"
+        )
+    else:
+        L.append("> 冲击吸收旁证未运行/不可用。")
+    L.append("")
+
+    L.append("## ③ 主题状态机")
     L.append("")
     if theme:
         dom = theme.get("dominant_theme")
         if dom:
+            conf = dom.get("confidence") or {}
             L.append(f"- **市场主题**: {dom.get('name')}")
             L.append(
                 f"- **家族**: {dom.get('family')} ｜ **置信**: "
-                f"n3={dom.get('confidence', {}).get('n3')}, "
-                f"持续 {dom.get('confidence', {}).get('persist_days')} 日"
+                f"n3={conf.get('n3')}, 持续 {conf.get('persist_days')} 日"
             )
             L.append(
                 f"- **risk_bias**: {dom.get('risk_bias') or theme.get('risk_bias')} ｜ "
@@ -591,27 +1688,175 @@ def build_report(
             )
         leaders = theme.get("today_leaders") or []
         if leaders:
-            lead_str = "  ".join(f"{l['label']}{l['dir']}{l['z']:+.2f}" for l in leaders)
-            L.append(f"- **今日主角**: {lead_str}")
+            # today_leaders 的 z 是「5日动量异常度」，箭头由 z 符号决定，**不是当日涨跌**。
+            # 旧版 json 无 ret1d_pct → 回退到 strength_table 按 label 关联补齐。
+            ret_by_label = {}
+            for row in (theme.get("strength_table") or []):
+                if isinstance(row, dict) and row.get("label") is not None:
+                    ret_by_label[str(row["label"])] = row.get("ret1d_pct")
+            parts = []
+            for item in leaders:
+                lab = item.get("label", "?")
+                direction = item.get("dir", "")
+                try:
+                    z_s = f"{float(item.get('z')):+.2f}"
+                except (TypeError, ValueError):
+                    z_s = str(item.get("z", ""))
+                r1p = item.get("ret1d_pct")
+                if r1p is None:
+                    r1p = next(
+                        (v for k, v in ret_by_label.items() if k.startswith(str(lab))),
+                        None,
+                    )
+                try:
+                    r1_s = "—" if r1p is None else f"{float(r1p):+.2f}%"
+                except (TypeError, ValueError):
+                    r1_s = "—"
+                parts.append(f"{lab} z{z_s}{direction}（当日{r1_s}）")
+            L.append(
+                f"- **动量主角（5日动量z｜非当日涨跌）**: {'  '.join(parts)}"
+            )
         fam = theme.get("families") or {}
-        fam_items = [f"{k}: {('无' if not v else v.get('theme'))}" for k, v in fam.items()]
-        L.append(f"- **五题材分区**: {' ｜ '.join(fam_items)}")
+        if fam:
+            fam_items = [
+                f"{k}: {('无' if not v else (v.get('theme') if isinstance(v, dict) else v))}"
+                for k, v in fam.items()
+            ]
+            L.append(f"- **五题材分区**: {' ｜ '.join(fam_items)}")
         L.append("")
-        L.append(f"> 完整读数见 `theme_state_machine_{synth['theme_date']}.md`")
+        L.append(f"> 完整读数见 `theme_state_machine_{synth.get('theme_date')}.md`")
     else:
         L.append("> 主题状态机未运行。")
     L.append("")
 
+    if sentiment:
+        L.append("## ③-b A股情绪影子（旁路，可选）")
+        L.append("")
+        cycle = sentiment.get("cycle") or {}
+        L.append(
+            f"- **stage**: {cycle.get('stage', sentiment.get('stage', '—'))} ｜ "
+            f"**rebound**: {cycle.get('rebound_type', '—')}"
+        )
+        flags = sentiment.get("corroboration_flags") or sentiment.get("flags") or []
+        if flags:
+            L.append(f"- **flags**: {' '.join(f'`{f}`' for f in flags[:12])}")
+        L.append("> Shadow only · 不修改 Kernel")
+        L.append("")
+
+    L.append("## ③-c NQ 动因（日频代理）")
+    L.append("")
+    if nq:
+        drv = nq.get("driver") or {}
+        L.append(
+            f"- **状态**: {drv.get('state_name') or synth.get('nq_state') or '—'} "
+            f"(id={drv.get('state_id', '—')}, {drv.get('side', '—')})"
+        )
+        hard_veto = bool(drv.get("veto"))
+        pressure = bool(nq.get("pressure_override")) and not hard_veto
+        flag = "硬否决" if hard_veto else ("压力覆盖" if pressure else "否")
+        L.append(
+            f"- **risk_bias**: {synth.get('nq_bias', drv.get('risk_bias'))} ｜ "
+            f"veto/压力={flag} ｜ "
+            f"mod={drv.get('driver_mod') or synth.get('nq_driver_mod') or '—'}"
+        )
+        L.append(
+            f"- **净力量/态度/参与度**: {drv.get('net_force')} / {drv.get('attitude')} / {drv.get('participation')}"
+        )
+        L.append(
+            f"- **主导 vs 对抗**: {drv.get('dominant_theme')} ({drv.get('dominant_score')}) vs "
+            f"{drv.get('opposing_theme')} ({drv.get('opposing_score')})"
+            + (" ⚠对抗已压过主导" if drv.get("opposing_over_dominant") else "")
+        )
+        L.append(f"- **股债体制**: {drv.get('bond_regime')} (corr={drv.get('bond_corr_nq_tlt_60d')})")
+        L.append(f"- **打法框架**: {drv.get('playbook')}")
+        L.append(f"- **今天不做**: {drv.get('dont_do') or synth.get('nq_dont_do') or '—'}")
+        L.append(f"- **失效**: {drv.get('invalid_if') or '—'}")
+        nqq = (nq.get("quality") or {})
+        L.append(
+            f"- **数据质量**: `{nqq.get('data_quality', synth.get('nq_quality', '—'))}`"
+            f" ｜ missing={nqq.get('missing_legs', [])}"
+        )
+        L.append("")
+        L.append(f"> 完整读数见 `nq_driver_{synth.get('nq_date') or date_str}.md`")
+    else:
+        L.append("> NQ 动因未运行。")
+    L.append("")
+
+    # ③-d 标普板块资金轮动（Pine v1.3m 复刻）— 互补美股比价视角，不入合成预算 min
+    L.append("## ③-d 标普板块资金轮动（Pine v1.3m 复刻 · 美股视角）")
+    L.append("")
+    if sector:
+        b = sector.get("bench") or {}
+        L.append(
+            f"- **基准(SPY) 分数/状态**: {b.get('score')} / {b.get('state')}"
+            f" ｜ 绝对5D {b.get('abs5_pct')} ｜ 真广度 {b.get('breadth_pct')}% ｜ 原因: {b.get('reason')}"
+        )
+        themes = sorted(
+            [t for t in (sector.get("themes") or []) if isinstance(t, dict)],
+            key=lambda t: (t.get("score") if t.get("score") is not None else -1),
+            reverse=True,
+        )
+        if themes:
+            top = themes[:3]
+            bottom = [t for t in themes if (t.get("score") or 0) < 45][-2:]
+            if not bottom:
+                bottom = themes[-2:]
+            L.append(
+                "- **最强板块(分数/状态/原因)**: "
+                + "  ".join(
+                    f"{t.get('name')} {t.get('score')}/{t.get('state')}/{t.get('reason')}"
+                    for t in top
+                )
+            )
+            L.append(
+                "- **最弱板块(分数/状态/原因)**: "
+                + "  ".join(
+                    f"{t.get('name')} {t.get('score')}/{t.get('state')}/{t.get('reason')}"
+                    for t in bottom
+                )
+            )
+        attr = sorted(
+            [a for a in (sector.get("attribution") or []) if isinstance(a, dict)],
+            key=lambda a: (a.get("score") if a.get("score") is not None else -1),
+            reverse=True,
+        )
+        if attr:
+            a0 = attr[0]
+            L.append(f"- **最强归因剧本**: {a0.get('name')} 分 {a0.get('score')} ｜ 核心信号: {a0.get('hint')}")
+        cnt = sector.get("counts") or {}
+        if cnt:
+            L.append(
+                f"- **板块计数**: 转正(5D相对>0) {cnt.get('pos_rel')}/11 ｜ "
+                f"转弱(5D相对<0) {cnt.get('weak')}/11 ｜ 绝对下跌 {cnt.get('abs_down')}/11"
+            )
+        if sector.get("expired"):
+            L.append(
+                f"- ⚠ **引擎已过期**（有效期至 {sector.get('version')} 标注的到期日）；"
+                "该板块轮动读数为过期引擎产出，仅供参考。"
+            )
+        L.append(
+            "> 美股板块相对 SPY 比价的独立观测，与分母/减震器/主题/NQ 平行互补，**不参与合成预算 min**。"
+            "基准走弱时主题高分只说明跌得少；基准「龙头抬轿」= 指数涨但过半板块没跟上，提防补跌。"
+            "分数 75/60/45 为经验线，非下注指令。"
+        )
+        L.append("")
+        L.append(f"> 完整读数见 `sector_rotation_{sector_date}.md` + `sector_rotation_{sector_date}.json`")
+    else:
+        L.append("> 标普板块轮动未运行/不可用。")
+    L.append("")
+
     L.append("## ④ 综合研判（跨工具交叉验证）")
     L.append("")
-    L.append(f"- **一致性**: {synth['consistency']}")
-    L.append(f"- **alignment / bias**: {synth.get('alignment', '—')} / {synth.get('bias', '—')}")
+    L.append(f"- **一致性**: {synth.get('consistency')}")
+    L.append(
+        f"- **alignment / bias**: {synth.get('alignment', '—')} / {synth.get('bias', '—')}"
+    )
     L.append(
         f"- **数据质量**: {synth.get('data_quality', '—')}"
         f"{' ｜ 压力置顶' if synth.get('pressure_override') else ''}"
     )
-    L.append(f"- **股市承压信号**: {'是' if synth['equity_down'] else '否'}")
-    if synth["divergences"]:
+    L.append(f"- **股市承压信号**: {'是' if synth.get('equity_down') else '否'}")
+    if synth.get("divergences"):
         L.append("- **背离警示**:")
         for d in synth["divergences"]:
             L.append(f"  - ⚠ {d}")
@@ -619,31 +1864,46 @@ def build_report(
         L.append("- **背离警示**: 无")
     L.append("")
 
-    # ⑤ Combined risk-budget ceiling (single operative reference number)
     if combined:
-        L.append("## ⑤ 合成风险预算上限（行动参考）")
+        L.append("## ⑤ 合成风险预算上限（行动参考 · 非下单）")
         L.append("")
         L.append(
-            f"- **分母上限**: {combined['denominator_ceiling']} ｜ "
-            f"**减震器上限**: {combined['tech_ceiling']} ｜ "
-            f"**主题上限**: {combined['theme_ceiling']}"
+            f"- **分母上限**: {combined.get('denominator_ceiling')} ｜ "
+            f"**减震器上限**: {combined.get('tech_ceiling')} ｜ "
+            f"**主题上限**: {combined.get('theme_ceiling')} ｜ "
+            f"**NQ上限**: {combined.get('nq_ceiling')} ｜ "
+            f"**利率上限**: {combined.get('rates_ceiling')}"
         )
+        cb = combined.get("combined_budget")
+        if cb is None:
+            L.append("- **合成上限**: `null`（可用工具不足，拒绝给出完整合成）")
+        else:
+            binding = ", ".join(combined.get("binding") or []) or "—"
+            L.append(f"- **合成上限 = min = {cb}** （约束项: {binding}）")
+            L.append(
+                f"- **完整三工具**: {'是' if combined.get('complete') else '否'} ｜ "
+                f"**降级**: {'是' if combined.get('degraded') else '否'} ｜ "
+                f"theme_status={combined.get('theme_status')} ｜ "
+                f"nq_status={combined.get('nq_status')} ｜ reason={combined.get('reason')}"
+            )
         L.append(
-            f"- **合成上限 = min = {combined['combined_budget']}** "
-            f"（约束项: {', '.join(combined['binding'])}）"
-        )
-        L.append(
-            "> 合成上限是三工具各自口径下最严格的风险预算天花板，仅供盘前快速定位防线；"
-            "实盘仍以 kernel `decide()` 为准。减震器上限已包含分母状态的隐含约束（分母未确认时不会给满 0.8）。"
+            "> 合成上限是观察层最严格天花板参考；主题 stale/missing 时不参与 min。"
+            "实盘仍以 kernel `decide()` 为准。"
         )
         L.append("")
 
-    L.append(f"> **{synth['tone']}**")
+    L.append(f"> **{synth.get('tone', '')}**")
     L.append("")
     L.append("---")
     L.append("")
-    L.append("*本文件由 `scripts/daily_macro_consolidated.py` 自动汇总三个独立观察工具生成。*")
-    L.append("*三工具各自为政、互为交叉验证；任何单一工具都不构成交易信号。投资有风险，决策需谨慎。*")
+    
+    # ⑥ 白话交易建议（Pine 读法）
+    if advice is None:
+        advice = build_plain_advice(theme, tech, denom, nq, synth, combined)
+    L.extend(format_plain_advice_md(advice))
+
+    L.append("*本文件由 `scripts/daily_macro_consolidated.py` 自动汇总生成。*")
+    L.append("*三工具交叉验证；任何单一工具都不构成交易信号。*")
     L.append("")
     return "\n".join(L)
 
@@ -655,104 +1915,249 @@ def build_json(
     theme: Optional[Dict],
     synth: Dict[str, Any],
     combined: Optional[Dict[str, Any]] = None,
+    *,
+    warnings: Optional[List[str]] = None,
+    errors: Optional[List[str]] = None,
+    sentiment: Optional[Dict[str, Any]] = None,
+    nq: Optional[Dict[str, Any]] = None,
+    sector: Optional[Dict[str, Any]] = None,
+    shock: Optional[Dict[str, Any]] = None,
+    rates: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     return {
         "report_date": date_str,
-        "schema": "macro-os.daily-macro-consolidated.v2",
+        "schema": "macro-os.daily-macro-consolidated.v4",
         "as_of": {
-            "theme": synth["theme_date"],
-            "tech": synth["tech_date"],
-            "denominator": synth["denom_date"],
+            "theme": synth.get("theme_date"),
+            "tech": synth.get("tech_date"),
+            "denominator": synth.get("denom_date"),
+            "nq_driver": synth.get("nq_date"),
+            "sector_rotation": (sector or {}).get("as_of"),
+            "shock_absorption": (shock or {}).get("date"),
         },
+        "warnings": list(warnings or []),
+        "errors": list(errors or []),
         "synthesis": {
-            "consistency": synth["consistency"],
+            "consistency": synth.get("consistency"),
             "alignment": synth.get("alignment"),
             "bias": synth.get("bias"),
             "data_quality": synth.get("data_quality"),
             "pressure_override": synth.get("pressure_override"),
-            "equity_down": synth["equity_down"],
-            "equity_stress": synth["equity_stress"],
-            "risk_budget": synth["risk_budget"],
-            "dampener_active": synth["dampener_active"],
-            "denom_tag": synth["denom_tag"],
-            "narrative": synth["narrative"],
-            "divergences": synth["divergences"],
-            "tone": synth["tone"],
+            "equity_down": synth.get("equity_down"),
+            "equity_stress": synth.get("equity_stress"),
+            "risk_budget": synth.get("risk_budget"),
+            "dampener_active": synth.get("dampener_active"),
+            "denom_tag": synth.get("denom_tag"),
+            "denom_bias": synth.get("denom_bias"),
+            "tech_bias": synth.get("tech_bias"),
+            "theme_bias": synth.get("theme_bias"),
+            "narrative": synth.get("narrative"),
+            "divergences": synth.get("divergences"),
+            "tone": synth.get("tone"),
             "theme_quality": synth.get("theme_quality"),
+            "nq_bias": synth.get("nq_bias"),
+            "nq_veto": synth.get("nq_veto"),
+            "nq_state": synth.get("nq_state"),
+            "nq_quality": synth.get("nq_quality"),
+            "shock_absorption": synth.get("shock_absorption"),
         },
         "combined_risk_budget": combined,
+        "rates_stress": rates,
+        "plain_advice": synth.get("plain_advice"),
         "denominator_state": denom,
         "tech_dampener": tech,
         "theme_state_machine": theme,
+        "nq_driver": nq,
+        "sentiment_shadow": sentiment,
+        "sector_rotation": sector,
+        "shock_absorption": shock,
     }
 
 
 def main(argv: Optional[list] = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Daily Macro Consolidated Report (denominator + tech dampener + theme)"
+        description=(
+            "Daily Macro Consolidated Report (denominator + tech dampener + theme). "
+            f"Default --report-dir: {DEFAULT_REPORT_DIR}"
+        )
     )
     parser.add_argument("--date", default=dt.date.today().isoformat(), help="YYYY-MM-DD")
     parser.add_argument(
         "--report-dir",
         default=str(DEFAULT_REPORT_DIR),
-        help="output dir holding the three instruments' artifacts",
+        help=f"artifact dir (default: {DEFAULT_REPORT_DIR})",
     )
     parser.add_argument(
-        "--no-run-theme",
+        "--config",
+        default=str(DEFAULT_CONFIG),
+        help="YAML config for ceilings / stale policy",
+    )
+    parser.add_argument("--no-run-theme", action="store_true")
+    parser.add_argument("--no-run-tech", action="store_true")
+    parser.add_argument("--no-run-denom", action="store_true")
+    parser.add_argument("--no-run-nq", action="store_true")
+    parser.add_argument("--no-run-sector", action="store_true")
+    parser.add_argument("--no-run-shock", action="store_true", help="skip 冲击吸收旁证脚本运行")
+    parser.add_argument("--force-refresh", action="store_true", help="force re-run all observers")
+    parser.add_argument(
+        "--allow-stale",
         action="store_true",
-        help="never run theme script; use newest existing json only",
+        help="allow nearest dated artifact within configured lag when exact date missing",
     )
     parser.add_argument(
-        "--no-run-tech",
+        "--include-sentiment",
         action="store_true",
-        help="never run tech script; use existing json for --date only",
-    )
-    parser.add_argument(
-        "--no-run-denom",
-        action="store_true",
-        help="never run denominator port; use newest existing json/md only",
-    )
-    parser.add_argument(
-        "--force-refresh",
-        action="store_true",
-        help="force re-run theme+tech+denom",
+        help="attach sentiment shadow json if present (bypass, observation only)",
     )
     args = parser.parse_args(argv)
     if args.force_refresh:
         args.no_run_theme = False
         args.no_run_tech = False
         args.no_run_denom = False
+        args.no_run_nq = False
+        args.no_run_sector = False
+
+    cfg = load_config(Path(args.config))
+    max_lag = int(cfg.get("stale_fallback_max_trading_days", cfg.get("stale_fallback_max_calendar_days", 1)))
+    warnings: List[str] = []
+    errors: List[str] = []
 
     report_dir = Path(args.report_dir)
     report_dir.mkdir(parents=True, exist_ok=True)
     date_str = args.date
-
-    logger.info("Date: %s | Report dir: %s", date_str, report_dir)
-
-    denom = ensure_denominator(report_dir, date_str, args.no_run_denom)
-    denom_date = (denom or {}).get("date")
-
-    tech = ensure_tech(report_dir, date_str, args.no_run_tech)
-    tech_date = (tech or {}).get("date", date_str)
-
-    theme = ensure_theme(report_dir, args.no_run_theme, expected_as_of=date_str)
-    theme_date = (theme or {}).get("date", date_str)
-
-    synth = synthesize(
-        theme, tech, denom, theme_date, tech_date, denom_date, report_date=date_str
+    logger.info(
+        "Date: %s | Report dir: %s | allow_stale=%s",
+        date_str,
+        report_dir,
+        args.allow_stale,
     )
 
-    combined = compute_combined_budget(denom, tech, theme)
+    denom = ensure_denominator(
+        report_dir,
+        date_str,
+        args.no_run_denom,
+        allow_stale=args.allow_stale,
+        max_lag_days=max_lag,
+        warnings=warnings,
+        errors=errors,
+    )
+    tech = ensure_tech(
+        report_dir,
+        date_str,
+        args.no_run_tech,
+        warnings=warnings,
+        errors=errors,
+    )
+    theme = ensure_theme(
+        report_dir,
+        date_str,
+        args.no_run_theme,
+        allow_stale=args.allow_stale,
+        max_lag_days=max_lag,
+        warnings=warnings,
+        errors=errors,
+    )
+    nq = ensure_nq(
+        report_dir,
+        date_str,
+        args.no_run_nq,
+        allow_stale=args.allow_stale,
+        max_lag_days=max_lag,
+        warnings=warnings,
+        errors=errors,
+    )
+    sector = ensure_sector(
+        report_dir,
+        date_str,
+        args.no_run_sector,
+        allow_stale=args.allow_stale,
+        max_lag_days=max_lag,
+        warnings=warnings,
+        errors=errors,
+    )
+    shock = ensure_shock(
+        report_dir,
+        date_str,
+        args.no_run_shock,
+        allow_stale=args.allow_stale,
+        max_lag_days=max_lag,
+        warnings=warnings,
+        errors=errors,
+    )
 
-    md = build_report(date_str, denom, tech, theme, synth, combined)
-    payload = build_json(date_str, denom, tech, theme, synth, combined)
+    denom_date = (denom or {}).get("date")
+    tech_date = (tech or {}).get("date", date_str)
+    theme_date = (theme or {}).get("date", date_str)
+    nq_date = (nq or {}).get("date", date_str)
+
+    synth = synthesize(
+        theme,
+        tech,
+        denom,
+        theme_date,
+        tech_date,
+        denom_date,
+        report_date=date_str,
+        cfg=cfg,
+        nq=nq,
+        nq_date=nq_date,
+        shock=shock,
+    )
+    rates = build_rates_stress_from_denom(denom, cfg=cfg, warnings=warnings)
+    combined = compute_combined_budget(
+        denom,
+        tech,
+        theme,
+        nq,
+        rates,
+        data_quality=str(synth.get("data_quality") or "ok"),
+        nq_quality=str(synth.get("nq_quality") or "ok"),
+        cfg=cfg,
+    )
+    sentiment = (
+        try_load_sentiment_shadow(report_dir, date_str, warnings)
+        if args.include_sentiment
+        else None
+    )
+
+    advice = build_plain_advice(theme, tech, denom, nq, synth, combined)
+    synth = dict(synth)
+    synth["plain_advice"] = advice
+
+    md = build_report(
+        date_str,
+        denom,
+        tech,
+        theme,
+        synth,
+        combined,
+        warnings=warnings,
+        sentiment=sentiment,
+        nq=nq,
+        sector=sector,
+        shock=shock,
+        advice=advice,
+    )
+    payload = build_json(
+        date_str,
+        denom,
+        tech,
+        theme,
+        synth,
+        combined,
+        warnings=warnings,
+        errors=errors,
+        sentiment=sentiment,
+        nq=nq,
+        sector=sector,
+        shock=shock,
+        rates=rates,
+    )
 
     out_md = report_dir / f"daily_macro_{date_str}.md"
     out_json = report_dir / f"daily_macro_{date_str}.json"
     out_md.write_text(md, encoding="utf-8")
-    out_json.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-    )
+    out_json.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     logger.info("written: %s", out_md)
     logger.info("written: %s", out_json)
 

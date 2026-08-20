@@ -1,0 +1,66 @@
+# config/daily_macro_consolidated.yaml
+# Observation-only ceilings and label maps for daily_macro_consolidated.py
+# Not constitutional kernel constants.
+
+version: "1"
+schema: "macro-os.daily-macro-consolidated.v4"
+
+# Prefer exact date artifacts; fallback only when lag <= this many TRADING days
+# (weekends don't count, so a Monday run falls back to Friday's data as lag=1).
+stale_fallback_max_trading_days: 1
+
+denominator_ceilings:
+  # ordered: first match wins (normalized uppercase / substring checks in code)
+  crisis:
+    keywords: ["HARD_VETO", "CRISIS", "LIQUIDITY_SQUEEZE", "SQUEEZE", "危机"]
+    ceiling: 0.10
+  tight:
+    keywords: ["RISK_OFF", "TIGHT", "TRANSITION", "紧缩", "压力", "偏紧", "过渡"]
+    ceiling: 0.35
+  unconfirmed:
+    keywords: ["UNCONFIRMED", "未确认", "分裂", "横盘", "混合"]
+    ceiling: 0.55
+  risk_on:
+    keywords: ["RISK_ON", "宽松"]
+    # note: bare "确认" handled in code only if 未确认 not present
+    ceiling: 0.80
+  default: 0.55
+
+theme_ceilings:
+  missing: null          # do not bind combined when theme absent
+  pressure_override: 0.25
+  risk_off: 0.45
+  risk_on: 0.80
+  default: 0.60
+
+tech_default_ceiling: 0.80
+
+# tech stress bands from dampener risk_budget
+tech_stress_bands:
+  strong: 0.35
+  medium: 0.50
+  light: 0.65
+
+
+nq_ceilings:
+  missing: null
+  veto: 0.20
+  risk_off: 0.40
+  mixed: 0.55
+  risk_on: 0.75
+  default: 0.60
+
+# Fifth leg: long-end rates stress (FRED 30Y/TIPS). Orthogonal to tech dampener.
+# confirm_days>=2 avoids single-day spike; not a kernel constant.
+rates_stress:
+  enabled: true
+  z_enter: 1.0
+  pct_enter: 97.0
+  confirm_days: 2
+  exit_days: 3
+  cap_level_only: 0.65
+  cap_slope_level: 0.55
+  cap_extreme: 0.45
+  z_extreme: 1.75
+  tlt_z_confirm: 0.0
+
