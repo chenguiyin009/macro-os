@@ -1,19 +1,19 @@
 # config/daily_macro_consolidated.yaml
-# Observation-only ceilings and label maps for daily_macro_consolidated.py
+# Observation-only ceilings for daily_macro_consolidated.py
 # Not constitutional kernel constants.
 #
-# Production posture (2026-08 backtests):
-#   D-enhancement: denom state binds with exit hysteresis
+# Production posture:
+#   D-enhancement: denom bind + exit hysteresis
 #   Frozen C: tech dampener SOXX tiers untouched
 #   rates: soft/diagnostic (bind_mode=shadow)
+#   PPO: positioning path flag_only by default
 
 version: "1"
-schema: "macro-os.daily-macro-consolidated.v5-d-enhancement"
+schema: "macro-os.daily-macro-consolidated.v5-ppo"
 
 stale_fallback_max_trading_days: 1
 
 denominator_ceilings:
-  # ordered via core.denom_ceiling explicit Pine map first, then keywords
   crisis:
     keywords: ["HARD_VETO", "CRISIS", "LIQUIDITY_SQUEEZE", "SQUEEZE", "危机", "信用传导", "仓位主导"]
     ceiling: 0.10
@@ -28,7 +28,6 @@ denominator_ceilings:
     ceiling: 0.80
   default: 0.55
 
-# D-enhancement: bind denom ceiling; exit looser only after confirm_exit days
 denom_policy:
   bind: true
   confirm_enter: 1
@@ -45,7 +44,7 @@ theme_ceilings:
 tech_default_ceiling: 0.80
 tech_policy:
   mode: frozen_c_tier
-  note: "SOXX -13/-10/-7 -> 0.35/0.50/0.65 remains in dampener/kernel; do not retune here"
+  note: "SOXX -13/-10/-7 -> 0.35/0.50/0.65; do not retune here"
 
 tech_stress_bands:
   strong: 0.35
@@ -60,7 +59,6 @@ nq_ceilings:
   risk_on: 0.75
   default: 0.60
 
-# Rates: diagnostic by default. Options: shadow | b_zone_only | hard | off
 rates_stress:
   enabled: true
   bind_mode: shadow
@@ -74,3 +72,15 @@ rates_stress:
   z_extreme: 1.75
   tlt_z_confirm: 0.0
   b_zone_cap: 0.65
+
+positioning_path:
+  enabled: true
+  mode: flag_only
+  z_dead: 0.5
+  z_enter: 1.0
+  nq_break_ret_20: -0.05
+  nq_lead_eps: 0.0
+  soft_cap_deteriorate: 0.55
+  soft_cap_bad_ease: 0.45
+  confirm_days: 1
+  exit_days: 2

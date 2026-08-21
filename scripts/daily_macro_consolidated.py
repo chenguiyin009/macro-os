@@ -107,6 +107,18 @@ _DEFAULT_CFG: Dict[str, Any] = {
         "tlt_z_confirm": 0.0,
         "b_zone_cap": 0.65,
     },
+    "positioning_path": {
+        "enabled": True,
+        "mode": "flag_only",
+        "z_dead": 0.5,
+        "z_enter": 1.0,
+        "nq_break_ret_20": -0.05,
+        "nq_lead_eps": 0.0,
+        "soft_cap_deteriorate": 0.55,
+        "soft_cap_bad_ease": 0.45,
+        "confirm_days": 1,
+        "exit_days": 2,
+    },
 }
 
 
@@ -122,7 +134,7 @@ def load_config(path: Optional[Path] = None) -> Dict[str, Any]:
         if not isinstance(loaded, dict):
             return cfg
         for k, v in loaded.items():
-            if k in ("denominator_ceilings", "theme_ceilings", "tech_stress_bands", "rates_stress", "denom_policy", "tech_policy") and isinstance(v, dict):
+            if k in ("denominator_ceilings", "theme_ceilings", "tech_stress_bands", "rates_stress", "denom_policy", "tech_policy", "positioning_path") and isinstance(v, dict):
                 base = cfg.get(k) or {}
                 if isinstance(base, dict):
                     base.update(v)
@@ -1281,12 +1293,147 @@ def _rates_ceiling(
     return min(1.0, c)
 
 
+
+def _qqq_es_ret20(report_dir: Path, warnings: Optional[List[str]] = None) -> Dict[str, Optional[float]]:
+    """Best-effort 20d total return for QQQ/ES proxies from local caches."""
+    warnings = warnings if warnings is not None else []
+    out: Dict[str, Optional[float]] = {"qqq_ret_20": None, "es_ret_20": None}
+    try:
+        import pandas as pd
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"ppo equity import failed: {exc}")
+        return out
+
+    def _ret20(candidates: List[Path]) -> Optional[float]:
+        for fp in candidates:
+            if not fp.exists():
+                continue
+            try:
+                df = pd.read_csv(fp)
+            except Exception:
+                continue
+            cols = {c.lower(): c for c in df.columns}
+            dcol = cols.get("observation_date") or cols.get("date") or df.columns[0]
+            ccol = cols.get("close") or cols.get("c") or df.columns[1]
+            s = df[[dcol, ccol]].copy()
+            s[dcol] = pd.to_datetime(s[dcol], errors="coerce")
+            s[ccol] = pd.to_numeric(s[ccol], errors="coerce")
+            s = s.dropna().sort_values(dcol)
+            if len(s) < 25:
+                continue
+            px = s[ccol].astype(float).values
+            if px[-1] <= 0 or px[-21] <= 0:
+                continue
+            return float(px[-1] / px[-21] - 1.0)
+        return None
+
+    data = REPO_ROOT / "data"
+    out["qqq_ret_20"] = _ret20([
+        data / "_eq_qqq.csv",
+        data / "_2022_eq_qqq.csv",
+        report_dir / "_eq_qqq.csv",
+    ])
+    out["es_ret_20"] = _ret20([
+        data / "_eq_spx.csv",
+        data / "_2022_eq_spy.csv",
+        data / "_eq_spy.csv",
+    ])
+    return out
+
+
+def build_positioning_path(
+    denom: Optional[Dict],
+    rates: Optional[Dict],
+    nq: Optional[Dict],
+    *,
+    cfg: Optional[Dict[str, Any]] = None,
+    prev_combined: Optional[Dict[str, Any]] = None,
+    report_dir: Optional[Path] = None,
+    warnings: Optional[List[str]] = None,
+) -> Optional[Dict[str, Any]]:
+    """Build PPO snapshot for consolidator."""
+    cfg = cfg or _DEFAULT_CFG
+    pp = dict(cfg.get("positioning_path") or {})
+    if pp.get("enabled", True) is False:
+        return None
+    warnings = warnings if warnings is not None else []
+    try:
+        from core.positioning_path import (
+            bind_path_day,
+            classify_path,
+            finalize_snapshot,
+            params_from_mapping,
+        )
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"positioning_path import failed: {exc}")
+        return None
+
+    params = params_from_mapping(pp)
+    eq = _qqq_es_ret20(report_dir or DEFAULT_REPORT_DIR, warnings)
+    z5 = (denom or {}).get("z5") or {}
+    tips_z = z5.get("tips") if isinstance(z5, dict) else None
+    n30_z = z5.get("n30") if isinstance(z5, dict) else None
+    if rates and rates.get("nominal_30y_z5") is not None:
+        n30_z = rates.get("nominal_30y_z5")
+    features = {
+        "tips_z5": tips_z,
+        "n30_z5": n30_z,
+        "hy_z5": z5.get("cs") if isinstance(z5, dict) else None,
+        "qqq_ret_20": eq.get("qqq_ret_20"),
+        "es_ret_20": eq.get("es_ret_20"),
+        "gold_z5": z5.get("gold") if isinstance(z5, dict) else None,
+        "bei_d5": None,
+        "rates_engaged": bool((rates or {}).get("engaged")),
+        "denom_tier": (prev_combined or {}).get("denom_tier") if prev_combined else None,
+        "denom_state": (denom or {}).get("main_state") or (denom or {}).get("state"),
+        "main_state": (denom or {}).get("main_state") or (denom or {}).get("state"),
+        "settle_ok": True,
+    }
+    try:
+        from core.denom_ceiling import classify_denom_tier
+
+        block = cfg.get("denominator_ceilings") or {}
+        policy = cfg.get("denom_policy") or {}
+        features["denom_tier"] = classify_denom_tier(
+            features.get("main_state"), block, policy.get("state_tier_map")
+        )
+    except Exception:
+        pass
+
+    raw = classify_path(features, params)
+    prev_ppo = None
+    if isinstance(prev_combined, dict):
+        prev_ppo = prev_combined.get("positioning_path_state")
+    hyst = bind_path_day(
+        str(raw.get("path") or "MIXED"),
+        prev_held=(prev_ppo or {}).get("held_path") if isinstance(prev_ppo, dict) else None,
+        up_streak=int((prev_ppo or {}).get("up_streak") or 0) if isinstance(prev_ppo, dict) else 0,
+        dn_streak=int((prev_ppo or {}).get("dn_streak") or 0) if isinstance(prev_ppo, dict) else 0,
+        confirm_days=params.confirm_days,
+        exit_days=params.exit_days,
+    )
+    snap = finalize_snapshot(raw, held_path=str(hyst["held_path"]), hyst=hyst, params=params)
+    snap["positioning_path_state"] = {
+        "held_path": hyst["held_path"],
+        "raw_path": hyst["raw_path"],
+        "up_streak": hyst["up_streak"],
+        "dn_streak": hyst["dn_streak"],
+        "hyst": hyst["hyst"],
+    }
+    if nq:
+        drv = nq.get("driver") or nq
+        snap["nq_state"] = drv.get("state_name") or nq.get("state_name")
+        snap["nq_bias"] = drv.get("risk_bias") or nq.get("risk_bias")
+    return snap
+
+
 def compute_combined_budget(
     denom: Optional[Dict],
     tech: Optional[Dict],
     theme: Optional[Dict],
     nq: Optional[Dict] = None,
     rates: Optional[Dict] = None,
+    ppo: Optional[Dict] = None,
     *,
     data_quality: str = "ok",
     nq_quality: str = "ok",
@@ -1319,6 +1466,24 @@ def compute_combined_budget(
     theme_c = _theme_ceiling(theme, cfg) if theme_usable else None
     nq_c = _nq_ceiling(nq, cfg) if nq_usable else None
     rates_c = _rates_ceiling(rates, cfg) if rates_present else None
+    ppo_c = None
+    if ppo and str((cfg.get("positioning_path") or {}).get("mode", "flag_only")).lower() == "soft_cap":
+        sc = ppo.get("soft_cap")
+        if sc is None and ppo.get("path") in ("DETERIOR", "BAD_EASE"):
+            try:
+                from core.positioning_path import path_soft_cap, params_from_mapping
+
+                ppo_c = path_soft_cap(
+                    str(ppo.get("path")),
+                    params_from_mapping(cfg.get("positioning_path") or {}),
+                )
+            except Exception:
+                ppo_c = None
+        else:
+            try:
+                ppo_c = float(sc) if sc is not None else None
+            except (TypeError, ValueError):
+                ppo_c = None
 
     theme_status = (
         "excluded_quality" if theme_present and not theme_usable
@@ -1345,6 +1510,8 @@ def compute_combined_budget(
         labels.append(("NQ动因", nq_c))
     if rates_c is not None and rates_c < 0.999:
         labels.append(("利率", rates_c))
+    if ppo_c is not None and ppo_c < 0.999:
+        labels.append(("定位", float(ppo_c)))
 
     complete = denom_present and tech_present and theme_usable
     base_meta = {
@@ -1364,6 +1531,18 @@ def compute_combined_budget(
             "as_of": rates.get("as_of"),
         },
         "tech_policy": (cfg.get("tech_policy") or {}).get("mode", "frozen_c_tier"),
+        "positioning_path": None
+        if not ppo
+        else {
+            "path": ppo.get("path"),
+            "path_zh": ppo.get("path_zh"),
+            "gate": ppo.get("gate"),
+            "skew": ppo.get("skew"),
+            "mode": ppo.get("mode"),
+            "soft_cap": ppo_c if ppo_c is not None else ppo.get("soft_cap"),
+        },
+        "positioning_path_state": (ppo or {}).get("positioning_path_state"),
+        "ppo_ceiling": None if ppo_c is None else round(float(ppo_c), 2),
     }
 
     if not labels:
@@ -2040,6 +2219,18 @@ def build_report(
             "> 合成上限是观察层最严格天花板参考；主题 stale/missing 时不参与 min。"
             "实盘仍以 kernel `decide()` 为准。"
         )
+        
+    ppo_blk = (combined or {}).get("positioning_path") if combined else None
+    if ppo_blk:
+        L.append("## 6. Positioning Path (PPO)")
+        L.append("")
+        L.append(
+            f"- **path**: **{ppo_blk.get('path_zh') or ppo_blk.get('path')}** "
+            f"(`{ppo_blk.get('path')}`) | gate: `{ppo_blk.get('gate')}` | "
+            f"mode={ppo_blk.get('mode')} | skew={ppo_blk.get('skew')}"
+        )
+        if ppo_blk.get("soft_cap") is not None:
+            L.append(f"- **soft_cap**: {ppo_blk.get('soft_cap')}")
         L.append("")
 
     L.append(f"> **{synth.get('tone', '')}**")
@@ -2073,6 +2264,7 @@ def build_json(
     sector: Optional[Dict[str, Any]] = None,
     shock: Optional[Dict[str, Any]] = None,
     rates: Optional[Dict[str, Any]] = None,
+    ppo: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     return {
         "report_date": date_str,
@@ -2113,6 +2305,7 @@ def build_json(
         },
         "combined_risk_budget": combined,
         "rates_stress": rates,
+        "positioning_path": ppo,
         "plain_advice": synth.get("plain_advice"),
         "denominator_state": denom,
         "tech_dampener": tech,
@@ -2255,12 +2448,22 @@ def main(argv: Optional[list] = None) -> int:
     )
     rates = build_rates_stress_from_denom(denom, cfg=cfg, warnings=warnings)
     prev_combined = _load_prev_combined(report_dir, date_str)
+    ppo = build_positioning_path(
+        denom,
+        rates,
+        nq,
+        cfg=cfg,
+        prev_combined=prev_combined,
+        report_dir=report_dir,
+        warnings=warnings,
+    )
     combined = compute_combined_budget(
         denom,
         tech,
         theme,
         nq,
         rates,
+        ppo,
         data_quality=str(synth.get("data_quality") or "ok"),
         nq_quality=str(synth.get("nq_quality") or "ok"),
         cfg=cfg,
@@ -2304,6 +2507,7 @@ def main(argv: Optional[list] = None) -> int:
         sector=sector,
         shock=shock,
         rates=rates,
+        ppo=ppo,
     )
 
     out_md = report_dir / f"daily_macro_{date_str}.md"
