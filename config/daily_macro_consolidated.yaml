@@ -80,7 +80,12 @@ positioning_path:
   z_enter: 1.0
   nq_break_ret_20: -0.05
   nq_lead_eps: 0.0
+  require_lh_ll_for_deteriorate: true
+  swing_left: 2
+  swing_right: 2
+  swing_lookback: 60
   soft_cap_deteriorate: 0.55
   soft_cap_bad_ease: 0.45
-  confirm_days: 1
+  confirm_days: 2
   exit_days: 2
+  deteriorate_confirm_days: 3

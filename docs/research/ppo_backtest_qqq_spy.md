@@ -1,20 +1,21 @@
 # PPO Backtest — BASE vs flag vs soft (QQQ/SPY)
 
+Tightened DETERIOR: require LH/LL + ret20<=-5%; deteriorate_confirm_days=3.
+
 - Friction: 5bps toggle; budget lag-1
 - **Verdict:** signal_ok=False soft_bear_ok=True soft_full_ok=True → **recommend `flag_only`**
 - Notes:
-  - recent_full_2023_2026: det_fwd20 0.0210 > non 0.0185
-  - recent_drawdown_days: det_fwd5 -0.0024 > non -0.0139
-  - recent_drawdown_days: det_fwd20 -0.0235 > non -0.0296
-  - 2022_p2t: det_fwd5 -0.0042 > non -0.0121
-  - 2022_p2t: det_fwd20 -0.0101 > non -0.0407
-  - 2022_full: det_fwd5 -0.0002 > non -0.0110
-  - 2022_full: det_fwd20 -0.0057 > non -0.0332
+  - recent_full_2023_2026: det_fwd5 0.0547 > non 0.0043
+  - recent_full_2023_2026: det_fwd20 0.0887 > non 0.0180
+  - recent_drawdown_days: det_fwd5 0.0341 > non -0.0141
+  - recent_drawdown_days: det_fwd20 -0.0232 > non -0.0272
+  - 2022_p2t: det_fwd5 -0.0054 > non -0.0093
+  - 2022_full: det_fwd5 -0.0064 > non -0.0068
 
 ## recent_full_2023_2026 (2023-08-01 → 2026-08-13, n=791)
 
-- path_counts: `{'MIXED': 515, 'REPAIR': 249, 'DETERIOR': 27}`
-- signal DETERIOR days=27 fwd5 det/non=0.0018508132635724627/0.004749756061728741 fwd20 det/non=0.021014995327796434/0.01851188925771335
+- path_counts: `{'MIXED': 562, 'REPAIR': 223, 'DETERIOR': 6}`
+- signal DETERIOR days=6 fwd5 det/non=0.05469847399183362/0.0042651871346379095 fwd20 det/non=0.08869656272788491/0.018043222082459818
 
 ### QQQ
 
@@ -40,8 +41,8 @@
 
 ## recent_drawdown_days (2023-10-25 → 2026-07-30, n=80)
 
-- path_counts: `{'MIXED': 50, 'DETERIOR': 28, 'REPAIR': 2}`
-- signal DETERIOR days=28 fwd5 det/non=-0.00236981398237014/-0.013893872309058074 fwd20 det/non=-0.023523651856095607/-0.029612246217859368
+- path_counts: `{'MIXED': 71, 'DETERIOR': 7, 'REPAIR': 2}`
+- signal DETERIOR days=7 fwd5 det/non=0.03412456950151437/-0.014091746713863146 fwd20 det/non=-0.02315874828803347/-0.027247979111810237
 
 ### QQQ
 
@@ -67,8 +68,8 @@
 
 ## 2022_p2t (2022-01-03 → 2022-10-12, n=200)
 
-- path_counts: `{'DETERIOR': 91, 'MIXED': 56, 'REPAIR': 53}`
-- signal DETERIOR days=91 fwd5 det/non=-0.004235291970312347/-0.012065514494321496 fwd20 det/non=-0.010055540438789166/-0.040704908549235704
+- path_counts: `{'MIXED': 126, 'REPAIR': 40, 'DETERIOR': 34}`
+- signal DETERIOR days=34 fwd5 det/non=-0.005441232122131946/-0.009258120551219448 fwd20 det/non=-0.04555181652691622/-0.026733615466273033
 
 ### QQQ
 
@@ -94,8 +95,8 @@
 
 ## 2022_full (2022-01-03 → 2022-12-30, n=256)
 
-- path_counts: `{'DETERIOR': 103, 'MIXED': 95, 'REPAIR': 58}`
-- signal DETERIOR days=103 fwd5 det/non=-0.00021799625726238067/-0.010992464316420609 fwd20 det/non=-0.005704702360247518/-0.033227834311818624
+- path_counts: `{'MIXED': 173, 'REPAIR': 45, 'DETERIOR': 38}`
+- signal DETERIOR days=38 fwd5 det/non=-0.006431341602635646/-0.0068412214706656885 fwd20 det/non=-0.03680781750009049/-0.019272456293723515
 
 ### QQQ
 

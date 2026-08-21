@@ -34,6 +34,7 @@ from core.positioning_path import (  # noqa: E402
     PPOParams,
     apply_path_hysteresis,
     classify_path,
+    detect_swing_structure,
     path_soft_cap,
 )
 from core.rates_stress import RatesStressParams, compute_rates_stress_series  # noqa: E402
@@ -155,9 +156,9 @@ def run_window(
     rates_c: pd.Series,
     paths: pd.Series,
 ) -> Dict:
-    pparams = PPOParams(mode="soft_cap", confirm_days=2, exit_days=2)
+    pparams = PPOParams(mode="soft_cap", confirm_days=2, exit_days=2, deteriorate_confirm_days=3, require_lh_ll_for_deteriorate=True)
     raw_paths = paths.reindex(idx).fillna("MIXED").astype(str).tolist()
-    held = apply_path_hysteresis(raw_paths, confirm_days=2, exit_days=2)
+    held = apply_path_hysteresis(raw_paths, confirm_days=2, exit_days=2, deteriorate_confirm_days=3)
     held_s = pd.Series(held, index=idx)
     soft = held_s.map(lambda p: path_soft_cap(p, pparams)).astype(float)
     # where None -> 1.0 nonbinding
@@ -368,8 +369,17 @@ def main() -> int:
                 tips_z = ds["tips_z5"].reindex(idx)
                 n30_z = ds["n30_z5"].reindex(idx) if "n30_z5" in ds.columns else rs.reindex(idx)["nominal_30y_z5"]
             hy_z = ds["cs_z5"].reindex(idx) if "cs_z5" in ds.columns else pd.Series(0.0, index=idx)
+            # price path for LH/LL
+            qqq_px_full = (1.0 + qret.fillna(0.0)).cumprod()
             raw_paths = []
+            ppo_p = PPOParams(require_lh_ll_for_deteriorate=True, confirm_days=2, deteriorate_confirm_days=3)
             for dt in idx:
+                # trailing closes window
+                loc = qqq_px_full.index.get_loc(dt)
+                if isinstance(loc, slice):
+                    loc = loc.stop - 1
+                start = max(0, int(loc) - 79)
+                closes = [float(x) for x in qqq_px_full.iloc[start : int(loc) + 1].values]
                 feat = {
                     "tips_z5": float(tips_z.loc[dt]) if dt in tips_z.index and pd.notna(tips_z.loc[dt]) else 0.0,
                     "n30_z5": float(n30_z.loc[dt]) if dt in n30_z.index and pd.notna(n30_z.loc[dt]) else 0.0,
@@ -379,16 +389,14 @@ def main() -> int:
                     "denom_state": str(st.loc[dt]) if dt in st.index else "分裂/未确认",
                     "denom_tier": classify_denom_tier(str(st.loc[dt]) if dt in st.index else ""),
                     "rates_engaged": bool(rs["engaged"].reindex(idx).get(dt, False)) if "engaged" in rs.columns else False,
+                    "qqq_closes": closes,
                 }
-                raw_paths.append(classify_path(feat, PPOParams())["path"])
+                raw_paths.append(classify_path(feat, ppo_p)["path"])
             paths = pd.Series(raw_paths, index=idx)
         except Exception as exc:
             print("  path rebuild failed, using heuristic", exc)
             # heuristic: bad when q20<=-5% and kernel high
-            paths = pd.Series(
-                np.where(q20.reindex(idx).fillna(0) <= -0.05, PATH_DETERIOR, "MIXED"),
-                index=idx,
-            )
+            paths = pd.Series(["MIXED"] * len(idx), index=idx)
 
         # tech from soxx if column missing
         if "soxx_dd20" in recent.columns:
@@ -440,8 +448,15 @@ def main() -> int:
         s20 = (1 + sret.fillna(0)).cumprod().pct_change(20)
         # paths: prefer recompute with denom_state col
         raw_paths = []
+        qqq_px_full = (1.0 + qret.fillna(0.0)).cumprod()
+        ppo_p = PPOParams(require_lh_ll_for_deteriorate=True, confirm_days=2, deteriorate_confirm_days=3)
         for dt in idx:
             st = str(d22.loc[dt, "denom_state"]) if "denom_state" in d22.columns else "分裂/未确认"
+            loc = qqq_px_full.index.get_loc(dt)
+            if isinstance(loc, slice):
+                loc = loc.stop - 1
+            start = max(0, int(loc) - 79)
+            closes = [float(x) for x in qqq_px_full.iloc[start : int(loc) + 1].values]
             feat = {
                 "tips_z5": 0.0,
                 "n30_z5": 0.0,
@@ -451,11 +466,11 @@ def main() -> int:
                 "denom_state": st,
                 "denom_tier": classify_denom_tier(st),
                 "rates_engaged": bool(d22.loc[dt, "rates_engaged"]) if "rates_engaged" in d22.columns else False,
+                "qqq_closes": closes,
             }
-            # approximate tips_z from regime: if LIQUIDITY high rates, mild
             if "regime" in d22.columns and str(d22.loc[dt, "regime"]) == "LIQUIDITY_SQUEEZE":
                 feat["tips_z5"] = 0.3
-            raw_paths.append(classify_path(feat, PPOParams())["path"])
+            raw_paths.append(classify_path(feat, ppo_p)["path"])
         paths = pd.Series(raw_paths, index=idx)
         p2t = idx[(idx >= "2022-01-03") & (idx <= "2022-10-12")]
         results["2022_p2t"] = run_window("2022_p2t", p2t, qret, sret, kernel, tech_c, denom_c, rates_c, paths)
@@ -471,6 +486,8 @@ def main() -> int:
 
     lines = []
     lines.append("# PPO Backtest — BASE vs flag vs soft (QQQ/SPY)")
+    lines.append("")
+    lines.append("Tightened DETERIOR: require LH/LL + ret20<=-5%; deteriorate_confirm_days=3.")
     lines.append("")
     lines.append(f"- Friction: {FRICTION*1e4:.0f}bps toggle; budget lag-1")
     lines.append(

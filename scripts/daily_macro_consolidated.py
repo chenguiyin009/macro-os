@@ -114,10 +114,15 @@ _DEFAULT_CFG: Dict[str, Any] = {
         "z_enter": 1.0,
         "nq_break_ret_20": -0.05,
         "nq_lead_eps": 0.0,
+        "require_lh_ll_for_deteriorate": True,
+        "swing_left": 2,
+        "swing_right": 2,
+        "swing_lookback": 60,
         "soft_cap_deteriorate": 0.55,
         "soft_cap_bad_ease": 0.45,
-        "confirm_days": 1,
+        "confirm_days": 2,
         "exit_days": 2,
+        "deteriorate_confirm_days": 3,
     },
 }
 
@@ -1294,10 +1299,10 @@ def _rates_ceiling(
 
 
 
-def _qqq_es_ret20(report_dir: Path, warnings: Optional[List[str]] = None) -> Dict[str, Optional[float]]:
+def _qqq_es_ret20(report_dir: Path, warnings: Optional[List[str]] = None) -> Dict[str, Any]:
     """Best-effort 20d total return for QQQ/ES proxies from local caches."""
     warnings = warnings if warnings is not None else []
-    out: Dict[str, Optional[float]] = {"qqq_ret_20": None, "es_ret_20": None}
+    out: Dict[str, Any] = {"qqq_ret_20": None, "es_ret_20": None, "qqq_closes": None}
     try:
         import pandas as pd
     except Exception as exc:  # noqa: BLE001
@@ -1328,16 +1333,36 @@ def _qqq_es_ret20(report_dir: Path, warnings: Optional[List[str]] = None) -> Dic
         return None
 
     data = REPO_ROOT / "data"
-    out["qqq_ret_20"] = _ret20([
+    qqq_paths = [
         data / "_eq_qqq.csv",
         data / "_2022_eq_qqq.csv",
         report_dir / "_eq_qqq.csv",
-    ])
+    ]
+    out["qqq_ret_20"] = _ret20(qqq_paths)
     out["es_ret_20"] = _ret20([
         data / "_eq_spx.csv",
         data / "_2022_eq_spy.csv",
         data / "_eq_spy.csv",
     ])
+    try:
+        import pandas as pd
+        lookback = 80
+        for fp in qqq_paths:
+            if not fp.exists():
+                continue
+            df = pd.read_csv(fp)
+            cols = {c.lower(): c for c in df.columns}
+            dcol = cols.get("observation_date") or cols.get("date") or df.columns[0]
+            ccol = cols.get("close") or cols.get("c") or df.columns[1]
+            s = df[[dcol, ccol]].copy()
+            s[dcol] = pd.to_datetime(s[dcol], errors="coerce")
+            s[ccol] = pd.to_numeric(s[ccol], errors="coerce")
+            s = s.dropna().sort_values(dcol)
+            if len(s) >= 30:
+                out["qqq_closes"] = [float(x) for x in s[ccol].astype(float).tolist()[-lookback:]]
+                break
+    except Exception:
+        pass
     return out
 
 
@@ -1381,6 +1406,7 @@ def build_positioning_path(
         "hy_z5": z5.get("cs") if isinstance(z5, dict) else None,
         "qqq_ret_20": eq.get("qqq_ret_20"),
         "es_ret_20": eq.get("es_ret_20"),
+        "qqq_closes": eq.get("qqq_closes"),
         "gold_z5": z5.get("gold") if isinstance(z5, dict) else None,
         "bei_d5": None,
         "rates_engaged": bool((rates or {}).get("engaged")),
@@ -1411,6 +1437,7 @@ def build_positioning_path(
         dn_streak=int((prev_ppo or {}).get("dn_streak") or 0) if isinstance(prev_ppo, dict) else 0,
         confirm_days=params.confirm_days,
         exit_days=params.exit_days,
+        deteriorate_confirm_days=getattr(params, "deteriorate_confirm_days", 3),
     )
     snap = finalize_snapshot(raw, held_path=str(hyst["held_path"]), hyst=hyst, params=params)
     snap["positioning_path_state"] = {
