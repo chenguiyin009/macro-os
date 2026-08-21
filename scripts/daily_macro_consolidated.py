@@ -54,8 +54,12 @@ _DEFAULT_CFG: Dict[str, Any] = {
     "stale_fallback_max_trading_days": 1,
     "denominator_ceilings": {
         "crisis": {
-            "keywords": ["HARD_VETO", "CRISIS", "LIQUIDITY_SQUEEZE", "危机"],
+            "keywords": ["HARD_VETO", "CRISIS", "危机", "信用传导", "仓位主导"],
             "ceiling": 0.10,
+        },
+        "squeeze": {
+            "keywords": ["LIQUIDITY_SQUEEZE", "SQUEEZE", "流动性挤兑"],
+            "ceiling": 0.20,
         },
         "tight": {
             "keywords": ["RISK_OFF", "TIGHT", "TRANSITION", "紧缩", "压力", "偏紧", "过渡"],
@@ -86,7 +90,9 @@ _DEFAULT_CFG: Dict[str, Any] = {
     "denom_policy": {
         "bind": True,
         "confirm_enter": 1,
-        "confirm_exit": 3,
+        "confirm_exit": 2,
+        "crisis_exit": 2,
+        "squeeze_exit": 2,
         "persist_hysteresis": True,
     },
     # Rates soft/diagnostic by default
@@ -128,9 +134,9 @@ _DEFAULT_CFG: Dict[str, Any] = {
     "re_risk": {
         "enabled": True,
         "offense_cap": 0.80,
-        "max_step_up": 0.10,
-        "step_confirm_days": 3,
-        "min_hold_after_up_days": 2,
+        "max_step_up": 0.15,
+        "step_confirm_days": 2,
+        "min_hold_after_up_days": 1,
         "tech_min_for_permit": 0.50,
         "require_not_lh_ll": True,
         "require_ret20_nonneg": True,

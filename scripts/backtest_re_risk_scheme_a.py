@@ -24,11 +24,13 @@ FRICTION = 0.0005
 TECH_TIERS = [(-0.13, 0.35), (-0.10, 0.50), (-0.07, 0.65)]
 DENOM_BLOCK = {
     "crisis": {"ceiling": 0.10},
+    "squeeze": {"ceiling": 0.20},
     "tight": {"ceiling": 0.35},
     "unconfirmed": {"ceiling": 0.55},
     "risk_on": {"ceiling": 0.80},
     "default": 0.55,
 }
+KERNEL_FLOOR = 0.20  # Scheme C: observation-layer floor when kernel prints ~0 in squeeze
 
 
 def ann_stats(rets: pd.Series):
@@ -71,7 +73,7 @@ def run_panel(idx, qret, sret, defense, paths_raw, ppo_flags_series, tiers, rate
     )
     held_s = pd.Series(held, index=idx)
     # build target path
-    rr_p = ReRiskParams(step_confirm_days=3, max_step_up=0.10, min_hold_after_up_days=2)
+    rr_p = ReRiskParams(step_confirm_days=2, max_step_up=0.15, min_hold_after_up_days=1)
     targets = []
     defenses = []
     permits = []
@@ -173,7 +175,7 @@ def main():
         kernel = df["kernel"] if "kernel" in df.columns else pd.Series(0.8, index=idx)
         tech = df["tech_cap"] if "tech_cap" in df.columns else pd.Series(1.0, index=idx)
         denom = df["denom_cap"] if "denom_cap" in df.columns else pd.Series(0.55, index=idx)
-        defense = np.minimum(np.minimum(kernel, tech), denom)
+        defense = np.minimum(np.minimum(pd.Series(kernel, index=idx).astype(float).clip(lower=KERNEL_FLOOR), tech), denom)
         # paths via qqq structure
         from core.positioning_path import classify_path as cp
         qpx = (1 + qret.fillna(0)).cumprod()
@@ -198,10 +200,11 @@ def main():
             frame, _ = build_frame()
             ds = compute_denominator_states(frame, DenominatorParams())
             st = ds["state"].reindex(idx).ffill()
-            bound = series_bind(st.astype(str).tolist(), DENOM_BLOCK, {"confirm_enter": 1, "confirm_exit": 3})
+            bound = series_bind(st.astype(str).tolist(), DENOM_BLOCK, {"confirm_enter": 1, "confirm_exit": 2, "squeeze_exit": 2, "crisis_exit": 2})
             denom = pd.Series([b["ceiling"] for b in bound], index=st.index).reindex(idx).ffill()
             tiers = pd.Series([b["tier"] for b in bound], index=st.index).reindex(idx).ffill()
-            defense = np.minimum(np.minimum(kernel.astype(float), tech.astype(float)), denom.astype(float))
+            k = kernel.astype(float).clip(lower=KERNEL_FLOOR)
+            defense = np.minimum(np.minimum(k, tech.astype(float)), denom.astype(float))
             rs = compute_rates_stress_series(frame[["nominal_30y", "tips_yield"]].dropna(), RatesStressParams())
             reng = rs["engaged"].reindex(idx).fillna(False)
         except Exception as exc:
@@ -214,7 +217,8 @@ def main():
         d22 = pd.read_csv(fp22, parse_dates=["date"]).set_index("date").sort_index()
         idx = d22.index
         qret, sret = d22["qqq_ret"], d22["spy_ret"]
-        defense = np.minimum(np.minimum(d22["kernel"], d22["tech_cap"]), d22["denom_cap"])
+        k22 = d22["kernel"].astype(float).clip(lower=KERNEL_FLOOR)
+        defense = np.minimum(np.minimum(k22, d22["tech_cap"].astype(float)), d22["denom_cap"].astype(float))
         qpx = (1 + qret.fillna(0)).cumprod()
         raw, flags = [], {}
         for dt in idx:

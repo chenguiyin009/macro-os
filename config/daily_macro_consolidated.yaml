@@ -14,9 +14,13 @@ schema: "macro-os.daily-macro-consolidated.v5-ppo"
 stale_fallback_max_trading_days: 1
 
 denominator_ceilings:
+  # Scheme C: split hard credit crisis vs liquidity squeeze floors
   crisis:
-    keywords: ["HARD_VETO", "CRISIS", "LIQUIDITY_SQUEEZE", "SQUEEZE", "危机", "信用传导", "仓位主导"]
+    keywords: ["HARD_VETO", "CRISIS", "危机", "信用传导", "仓位主导"]
     ceiling: 0.10
+  squeeze:
+    keywords: ["LIQUIDITY_SQUEEZE", "SQUEEZE", "流动性挤兑", "挤兑"]
+    ceiling: 0.20
   tight:
     keywords: ["RISK_OFF", "TIGHT", "TRANSITION", "紧缩", "压力", "偏紧", "过渡", "久期压力", "美元压力"]
     ceiling: 0.35
@@ -31,7 +35,9 @@ denominator_ceilings:
 denom_policy:
   bind: true
   confirm_enter: 1
-  confirm_exit: 3
+  confirm_exit: 2
+  crisis_exit: 2
+  squeeze_exit: 2
   persist_hysteresis: true
 
 theme_ceilings:
@@ -93,13 +99,15 @@ positioning_path:
 re_risk:
   enabled: true
   offense_cap: 0.80
-  max_step_up: 0.10
-  step_confirm_days: 3
-  min_hold_after_up_days: 2
+  max_step_up: 0.15
+  step_confirm_days: 2
+  min_hold_after_up_days: 1
   tech_min_for_permit: 0.50
   require_not_lh_ll: true
   require_ret20_nonneg: true
   block_both_tight: true
   block_ppo_block_add: true
   permit_tiers: ["unconfirmed", "risk_on", "default"]
+  # Scheme C companion: never let defense path sit below floor when only squeeze
+  defense_floor: 0.0
 

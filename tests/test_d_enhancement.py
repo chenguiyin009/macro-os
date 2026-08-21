@@ -19,12 +19,10 @@ def test_classify_pine_states():
 
 def test_exit_hysteresis_holds_tight():
     raw = [0.35, 0.35, 0.80, 0.80, 0.80, 0.80]
-    held = apply_ceiling_hysteresis(raw, confirm_enter=1, confirm_exit=3)
+    held = apply_ceiling_hysteresis(raw, confirm_enter=1, confirm_exit=2)
     assert held[:2] == [0.35, 0.35]
     assert held[2] == 0.35
-    assert held[3] == 0.35
-    assert held[4] == 0.80
-    assert held[5] == 0.80
+    assert held[3] == 0.80
 
 
 def test_enter_tighter_immediate():
@@ -41,12 +39,12 @@ def test_bind_day_counters():
         "risk_on": {"ceiling": 0.80},
         "default": 0.55,
     }
-    d1 = bind_denom_ceiling("久期压力", cfg_block=block, hyst_cfg={"confirm_enter": 1, "confirm_exit": 3})
+    d1 = bind_denom_ceiling("久期压力", cfg_block=block, hyst_cfg={"confirm_enter": 1, "confirm_exit": 2})
     assert d1["ceiling"] == 0.35
     d2 = bind_denom_ceiling(
         "分裂/未确认",
         cfg_block=block,
-        hyst_cfg={"confirm_enter": 1, "confirm_exit": 3},
+        hyst_cfg={"confirm_enter": 1, "confirm_exit": 2},
         prev_ceiling=0.35,
         loose_streak=0,
     )
@@ -55,9 +53,9 @@ def test_bind_day_counters():
     d3 = bind_denom_ceiling(
         "分裂/未确认",
         cfg_block=block,
-        hyst_cfg={"confirm_enter": 1, "confirm_exit": 3},
+        hyst_cfg={"confirm_enter": 1, "confirm_exit": 2},
         prev_ceiling=0.35,
-        loose_streak=2,
+        loose_streak=1,
     )
     assert d3["ceiling"] == 0.55
     assert d3["hysteresis"] == "exit_looser"
@@ -81,13 +79,12 @@ def test_series_bind_pine_path():
         "分母端宽松",
         "分母端宽松",
     ]
-    out = series_bind(states, block, {"confirm_enter": 1, "confirm_exit": 3})
+    out = series_bind(states, block, {"confirm_enter": 1, "confirm_exit": 2})
     ceilings = [r["ceiling"] for r in out]
     assert ceilings[0] == 0.35
-    assert ceilings[1] == 0.35
-    assert ceilings[2] == 0.35
-    assert ceilings[3] == 0.55  # released to unconfirmed
-    assert ceilings[4] == 0.55  # pending looser to risk_on
+    assert ceilings[1] == 0.35  # first looser day pending
+    assert ceilings[2] == 0.55  # exit after 2 looser days
+    assert ceilings[4] == 0.55  # pending toward risk_on
     assert ceilings[6] == 0.80
 
 
@@ -102,7 +99,7 @@ def test_combined_shadow_rates_not_in_min():
 
     cfg = dmc.load_config()
     assert (cfg.get("rates_stress") or {}).get("bind_mode") == "shadow"
-    assert (cfg.get("denom_policy") or {}).get("confirm_exit") == 3
+    assert (cfg.get("denom_policy") or {}).get("confirm_exit") == 2
 
     denom = {"main_state": "久期压力"}
     tech = {"decision": {"risk_budget": 0.80}}

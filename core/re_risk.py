@@ -12,9 +12,9 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 class ReRiskParams:
     enabled: bool = True
     offense_cap: float = 0.80
-    max_step_up: float = 0.10
-    step_confirm_days: int = 3
-    min_hold_after_up_days: int = 2
+    max_step_up: float = 0.15
+    step_confirm_days: int = 2
+    min_hold_after_up_days: int = 1
     tech_min_for_permit: float = 0.50
     require_not_lh_ll: bool = True
     require_ret20_nonneg: bool = True
@@ -72,13 +72,14 @@ def evaluate_permit(
         "risk_on": "risk_on",
         "tight": "tight",
         "crisis": "crisis",
+        "squeeze": "squeeze",
         "default": "default",
         "unknown": "unknown",
         "legacy": "unconfirmed",
     }
     tier_n = tier_map.get(tier, tier)
 
-    if tier_n == "crisis" or tier_n == "tight":
+    if tier_n in ("crisis", "squeeze", "tight"):
         blockers.append(f"denom_tier_{tier_n}")
     elif tier_n not in p.permit_tiers and tier_n not in ("unconfirmed", "risk_on", "default"):
         blockers.append(f"denom_tier_{tier_n}")
