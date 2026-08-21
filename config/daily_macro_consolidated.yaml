@@ -89,3 +89,17 @@ positioning_path:
   confirm_days: 2
   exit_days: 2
   deteriorate_confirm_days: 3
+
+re_risk:
+  enabled: true
+  offense_cap: 0.80
+  max_step_up: 0.10
+  step_confirm_days: 3
+  min_hold_after_up_days: 2
+  tech_min_for_permit: 0.50
+  require_not_lh_ll: true
+  require_ret20_nonneg: true
+  block_both_tight: true
+  block_ppo_block_add: true
+  permit_tiers: ["unconfirmed", "risk_on", "default"]
+

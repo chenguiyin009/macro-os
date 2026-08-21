@@ -124,6 +124,20 @@ _DEFAULT_CFG: Dict[str, Any] = {
         "exit_days": 2,
         "deteriorate_confirm_days": 3,
     },
+    # Scheme A: dual budget re-risk (defense ceiling + stepped target)
+    "re_risk": {
+        "enabled": True,
+        "offense_cap": 0.80,
+        "max_step_up": 0.10,
+        "step_confirm_days": 3,
+        "min_hold_after_up_days": 2,
+        "tech_min_for_permit": 0.50,
+        "require_not_lh_ll": True,
+        "require_ret20_nonneg": True,
+        "block_both_tight": True,
+        "block_ppo_block_add": True,
+        "permit_tiers": ["unconfirmed", "risk_on", "default"],
+    },
 }
 
 
@@ -139,7 +153,7 @@ def load_config(path: Optional[Path] = None) -> Dict[str, Any]:
         if not isinstance(loaded, dict):
             return cfg
         for k, v in loaded.items():
-            if k in ("denominator_ceilings", "theme_ceilings", "tech_stress_bands", "rates_stress", "denom_policy", "tech_policy", "positioning_path") and isinstance(v, dict):
+            if k in ("denominator_ceilings", "theme_ceilings", "tech_stress_bands", "rates_stress", "denom_policy", "tech_policy", "positioning_path", "re_risk") and isinstance(v, dict):
                 base = cfg.get(k) or {}
                 if isinstance(base, dict):
                     base.update(v)
@@ -1641,6 +1655,49 @@ def try_load_sentiment_shadow(
 
 
 
+def build_re_risk_snapshot(
+    combined: Optional[Dict[str, Any]],
+    ppo: Optional[Dict[str, Any]],
+    *,
+    cfg: Optional[Dict[str, Any]] = None,
+    prev_combined: Optional[Dict[str, Any]] = None,
+) -> Optional[Dict[str, Any]]:
+    """Scheme A dual budget on top of defense combined ceiling."""
+    cfg = cfg or _DEFAULT_CFG
+    rr_cfg = dict(cfg.get("re_risk") or {})
+    if rr_cfg.get("enabled", True) is False:
+        return None
+    if not combined or combined.get("combined_budget") is None:
+        return None
+    try:
+        from core.re_risk import compute_re_risk, params_from_mapping
+    except Exception:
+        return None
+
+    params = params_from_mapping(rr_cfg)
+    prev_rr = None
+    if isinstance(prev_combined, dict):
+        prev_rr = prev_combined.get("re_risk")
+    rates_shadow = combined.get("rates_shadow") if isinstance(combined, dict) else None
+    qqq_r20 = None
+    if ppo and isinstance(ppo.get("metrics"), dict):
+        qqq_r20 = ppo["metrics"].get("qqq_ret_20")
+    snap = compute_re_risk(
+        defense_ceiling=float(combined["combined_budget"]),
+        prev_state=prev_rr if isinstance(prev_rr, dict) else None,
+        denom_tier=combined.get("denom_tier"),
+        denom_hyst=combined.get("denom_hysteresis"),
+        tech_ceiling=combined.get("tech_ceiling"),
+        ppo=ppo,
+        rates_shadow=rates_shadow,
+        qqq_ret_20=qqq_r20,
+        curve_skew=(ppo or {}).get("skew") if ppo else None,
+        params=params,
+    )
+    return snap
+
+
+
 def build_plain_advice(
     theme: Optional[Dict],
     tech: Optional[Dict],
@@ -2260,6 +2317,29 @@ def build_report(
             L.append(f"- **soft_cap**: {ppo_blk.get('soft_cap')}")
         L.append("")
 
+    rr = (combined or {}).get("re_risk") if combined else None
+    if rr:
+        L.append("## 7. Re-Risk (Scheme A)")
+        L.append("")
+        L.append(
+            f"- **defense_ceiling**: {rr.get('defense_ceiling')} | "
+            f"**target_budget**: **{rr.get('target_budget')}** | "
+            f"permit={rr.get('risk_on_permit')} | action={rr.get('action')}"
+        )
+        blockers = rr.get("permit_blockers") or []
+        if blockers:
+            L.append(f"- **permit_blockers**: {', '.join(map(str, blockers))}")
+        else:
+            L.append(
+                f"- **permit_streak**: {rr.get('permit_streak')} | "
+                f"step={rr.get('step')} | days_since_up={rr.get('days_since_up')}"
+            )
+        L.append(
+            "> Desk primary sizing hint is **target_budget** (slow re-risk). "
+            "defense_ceiling remains the hard stress cap."
+        )
+        L.append("")
+
     L.append(f"> **{synth.get('tone', '')}**")
     L.append("")
     L.append("---")
@@ -2496,6 +2576,15 @@ def main(argv: Optional[list] = None) -> int:
         cfg=cfg,
         prev_combined=prev_combined,
     )
+    re_risk = build_re_risk_snapshot(
+        combined, ppo, cfg=cfg, prev_combined=prev_combined
+    )
+    if isinstance(combined, dict) and re_risk is not None:
+        combined = dict(combined)
+        combined["re_risk"] = re_risk
+        combined["defense_ceiling"] = re_risk.get("defense_ceiling")
+        combined["target_budget"] = re_risk.get("target_budget")
+        combined["risk_on_permit"] = re_risk.get("risk_on_permit")
     sentiment = (
         try_load_sentiment_shadow(report_dir, date_str, warnings)
         if args.include_sentiment
