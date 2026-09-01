@@ -79,3 +79,6 @@ docs/research/theme_*_calibration.md
 # --- Local data files (not in VCS) ---
 data/a_share_margin_top100.csv
 vault/shadow/
+
+# --- yfinance 日线缓存（可再生，仅供加速与断网降级）---
+data/sector_price_cache/
