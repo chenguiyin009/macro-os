@@ -49,7 +49,11 @@ def compute_drawdown(days: int, lag: int, force_refresh: bool):
     is kept only for cross-check transparency against the denominator thermometer.
     """
     sys.path.insert(0, str(REPO_ROOT))
-    from adapters.equity_stress import compute_soxx_drawdown, compute_soxx_drawdown_smoothed
+    from adapters.equity_stress import (
+        compute_soxx_drawdown,
+        compute_soxx_drawdown_smoothed,
+        compute_soxx_trajectory,
+    )
 
     raw = compute_soxx_drawdown(days=days, force_refresh=force_refresh)
     smoothed = compute_soxx_drawdown_smoothed(days=days, lag=lag, force_refresh=force_refresh)
@@ -128,7 +132,13 @@ def run_decision(tech_dd: float, hard_regime: str = "RISK_ON") -> Dict[str, Any]
 
 
 def build_report(date_str: str, tech_dd: Optional[float], thermometer: Optional[str],
-                 decision: Optional[Dict[str, Any]], raw_dd: Optional[float] = None) -> str:
+                 decision: Optional[Dict[str, Any]], raw_dd: Optional[float] = None,
+                 trajectory: Optional[Dict[str, Any]] = None) -> str:
+    label_cn = {
+        "rebuilding": "反弹恢复中",
+        "bottoming": "摸底横盘",
+        "deepening": "探底加深",
+    }
     lines = [
         f"# 科技板块减震器内核决策 | {date_str}",
         "",
@@ -139,6 +149,23 @@ def build_report(date_str: str, tech_dd: Optional[float], thermometer: Optional[
         f"- **分母状态机 SOXX 温度计 (交叉校验)**: {thermometer or '（未读取到）'}",
         "",
     ]
+    if trajectory:
+        lab = label_cn.get(trajectory.get("label"), trajectory.get("label"))
+        lines += [
+            "### 📈 回撤轨迹（斜率/方向，非瞬时水位）",
+            f"- 轨迹判定: **{lab}**",
+            f"- 近期谷位: **{trajectory['trough_date']} = {trajectory['trough_close']}** "
+            f"｜ 距谷已反弹 **+{trajectory['recovery_from_trough_pct']}%** "
+            f"（{trajectory['sessions_since_trough']} 个交易日后）",
+            f"- 20日峰值回撤斜率: 近3日 **+{trajectory['drawdown_slope_3d_pp']}pp/日** ｜ "
+            f"近5日 **+{trajectory['drawdown_slope_5d_pp']}pp/日** ｜ "
+            f"近10日 **+{trajectory['drawdown_slope_10d_pp']}pp/日**（正=向0恢复）",
+            f"- 原始(非迟滞)20日峰值回撤: **{trajectory['naive_20d_peak_dd_pct']}%** ｜ "
+            f"近5日价格斜率: {trajectory['recent_price_slope_5d']} 点/日（反弹段）",
+            "> 注：喂内核的 tech_drawdown 是**迟滞平滑值**（进档快/出档慢），会滞后于价格反弹；"
+            "上面斜率显示的**真实方向**才是当下态势，单一回撤数字请配合轨迹读。",
+            "",
+        ]
     if tech_dd is None:
         lines += [
             "> ⚠️ SOXX 数据获取失败（网络/代理），`tech_drawdown` 缺省为 0.0，减震器未激活。",
@@ -194,6 +221,7 @@ def build_report(date_str: str, tech_dd: Optional[float], thermometer: Optional[
 
 def main(argv=None):
     sys.path.insert(0, str(REPO_ROOT))
+    from adapters.equity_stress import compute_soxx_trajectory
     parser = argparse.ArgumentParser(description="Daily SOXX drawdown -> kernel dampener bridge")
     parser.add_argument("--date", default=dt.date.today().isoformat(), help="YYYY-MM-DD")
     parser.add_argument("--days", type=int, default=20, help="drawdown lookback window")
@@ -227,8 +255,15 @@ def main(argv=None):
     # 3. feed kernel (uses the hysteresis-smoothed value — production parity)
     decision = run_decision(tech_dd, hard_regime=args.hard_regime) if tech_dd is not None else None
 
+    # 3b. trajectory (direction/slope of the drawdown; None if data unavailable)
+    trajectory = None
+    try:
+        trajectory = compute_soxx_trajectory(args.days, force_refresh=args.force_refresh)
+    except Exception as exc:  # pragma: no cover
+        logger.warning("SOXX trajectory computation failed: %s", exc)
+
     # 4. emit
-    report = build_report(args.date, tech_dd, thermometer, decision, raw_dd)
+    report = build_report(args.date, tech_dd, thermometer, decision, raw_dd, trajectory=trajectory)
     out_md = report_dir / f"tech_dampener_decision_{args.date}.md"
     out_md.write_text(report, encoding="utf-8")
 
@@ -238,14 +273,22 @@ def main(argv=None):
         "tech_drawdown_raw": raw_dd,
         "hysteresis_lag_days": args.lag,
         "soxx_thermometer": thermometer,
+        "trajectory": trajectory,
         "decision": decision,
     }
     out_json = report_dir / f"tech_drawdown_{args.date}.json"
     out_json.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
-    print(report)
-    print(f"\n[written] {out_md}")
-    print(f"[written] {out_json}")
+    def _safe_print(text: str) -> None:
+        try:
+            print(text)
+        except UnicodeEncodeError:
+            enc = getattr(sys.stdout, "encoding", None) or "utf-8"
+            sys.stdout.buffer.write((text + "\n").encode(enc, errors="replace"))
+
+    _safe_print(report)
+    _safe_print(f"\n[written] {out_md}")
+    _safe_print(f"[written] {out_json}")
     return 0
 
 
