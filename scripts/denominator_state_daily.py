@@ -32,6 +32,15 @@ from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
+# Defensive: cap BLAS/OpenMP threads BEFORE numpy import. On memory-pressured
+# sandboxes the default thread fan-out can trigger spurious "out of memory"
+# tokenizing crashes during pd.read_csv; single-thread is harmless at this
+# data scale and removes the failure mode for both headless and automated runs.
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("NUMEXPR_MAX_THREADS", "1")
+
 import numpy as np
 import pandas as pd
 
@@ -72,7 +81,19 @@ logger = logging.getLogger("denominator-daily")
 # Proxy + FRED refresh
 # --------------------------------------------------------------------------- #
 def _ensure_proxy() -> Optional[urllib.request.OpenerDirector]:
-    proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY")
+    # SECTOR_PROXY 开关（供无本地代理环境，如 grokbot 云机）：
+    #   off/none/0/false/no/""  → 完全不设代理（依赖直连/环境自带代理）
+    #   http://host:port        → 使用指定代理
+    #   未设置                   → 默认 127.0.0.1:7890（作者本机）
+    #   已设 HTTPS_PROXY/HTTP_PROXY → 以环境既有代理为准
+    sp = os.environ.get("SECTOR_PROXY")
+    OFF = ("off", "none", "0", "false", "no", "")
+    if sp is not None:
+        if sp.strip().lower() in OFF:
+            return None
+        proxy = sp.strip()
+    else:
+        proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY")
     if not proxy:
         try:
             os.environ.setdefault("HTTPS_PROXY", "http://127.0.0.1:7890")

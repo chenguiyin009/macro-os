@@ -34,6 +34,7 @@ import json
 import logging
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -161,54 +162,95 @@ THEME_FAMILY = {k + 1: v for k, v in THEME_FAMILY.items()}
 
 
 def _ensure_proxy() -> None:
-    if any(os.environ.get(k) for k in _PROXY_ENV_KEYS):
+    # SECTOR_PROXY 开关（供无本地代理环境，如 grokbot 云机）：
+    #   off/none/0/false/no/""  → 完全不设代理（依赖直连/环境自带代理）
+    #   http://host:port        → 使用指定代理
+    #   未设置                   → 默认 127.0.0.1:7890（作者本机）
+    #   已设 _PROXY_ENV_KEYS 任一 → 以环境既有代理为准，不覆盖
+    sp = os.environ.get("SECTOR_PROXY")
+    OFF = ("off", "none", "0", "false", "no", "")
+    if sp is not None:
+        if sp.strip().lower() in OFF:
+            return
+        proxy = sp.strip()
+    elif any(os.environ.get(k) for k in _PROXY_ENV_KEYS):
         return
+    else:
+        proxy = DEFAULT_PROXY
     try:
-        os.environ.setdefault("HTTPS_PROXY", DEFAULT_PROXY)
-        os.environ.setdefault("HTTP_PROXY", DEFAULT_PROXY)
+        os.environ.setdefault("HTTPS_PROXY", proxy)
+        os.environ.setdefault("HTTP_PROXY", proxy)
     except Exception:
         pass
 
 
-def _download_close(ticker: str, period: str = "2y") -> Optional[pd.Series]:
+def _download_close(ticker: str, period: str = "2y", retries: int = 3) -> Optional[pd.Series]:
     try:
         import yfinance as yf
     except Exception as exc:
         logger.warning("yfinance import failed: %s", exc)
         return None
-    _ensure_proxy()
-    try:
-        raw = yf.download(ticker, period=period, auto_adjust=True, progress=False, threads=False)
-    except Exception as exc:
-        logger.warning("download %s failed: %s", ticker, exc)
-        return None
-    if raw is None or getattr(raw, "empty", True):
-        return None
-    try:
-        cols = raw.columns
-        if getattr(cols, "nlevels", 1) > 1:
-            # yfinance 1.x: MultiIndex (field=level0, ticker=level1)
-            if ("Close", ticker) in cols:
-                close = raw[("Close", ticker)]
-            elif (ticker, "Close") in cols:
-                close = raw[(ticker, "Close")]
-            elif "Close" in cols.get_level_values(0):
-                cd = raw.xs("Close", axis=1, level=0)
-                close = cd[ticker] if ticker in cd.columns else cd.iloc[:, 0]
+    last_err: Any = None
+    for attempt in range(1, retries + 1):
+        try:
+            _ensure_proxy()
+            raw = yf.download(ticker, period=period, auto_adjust=True, progress=False, threads=False)
+        except Exception as exc:  # transient network / rate-limit
+            last_err = exc
+            logger.warning("download %s attempt %d/%d failed: %s", ticker, attempt, retries, exc)
+            if attempt < retries:
+                time.sleep(2 * attempt)
+            continue
+        if raw is None or getattr(raw, "empty", True):
+            last_err = "empty payload"
+            logger.warning("download %s attempt %d/%d returned empty", ticker, attempt, retries)
+            if attempt < retries:
+                time.sleep(2 * attempt)
+            continue
+        try:
+            cols = raw.columns
+            if getattr(cols, "nlevels", 1) > 1:
+                # yfinance 1.x: MultiIndex (field=level0, ticker=level1)
+                if ("Close", ticker) in cols:
+                    close = raw[("Close", ticker)]
+                elif (ticker, "Close") in cols:
+                    close = raw[(ticker, "Close")]
+                elif "Close" in cols.get_level_values(0):
+                    cd = raw.xs("Close", axis=1, level=0)
+                    close = cd[ticker] if ticker in cd.columns else cd.iloc[:, 0]
+                else:
+                    close = None
             else:
-                close = None
-        else:
-            close = raw["Close"] if "Close" in cols else (raw[ticker] if ticker in cols else None)
-        if close is None:
-            return None
-        s = pd.to_numeric(close, errors="coerce").dropna()
-        return s if len(s) >= 30 else None
-    except Exception as exc:
-        logger.warning("parse %s failed: %s", ticker, exc)
-        return None
+                close = raw["Close"] if "Close" in cols else (raw[ticker] if ticker in cols else None)
+            if close is None:
+                last_err = "no Close column"
+                if attempt < retries:
+                    time.sleep(2 * attempt)
+                continue
+            s = pd.to_numeric(close, errors="coerce").dropna()
+            if len(s) < 30:
+                last_err = f"too short ({len(s)})"
+                if attempt < retries:
+                    time.sleep(2 * attempt)
+                continue
+            return s
+        except Exception as exc:  # noqa: BLE001
+            last_err = exc
+            logger.warning("parse %s attempt %d/%d failed: %s", ticker, attempt, retries, exc)
+            if attempt < retries:
+                time.sleep(2 * attempt)
+            continue
+    if last_err is not None:
+        logger.warning("download %s all %d attempts failed: %s", ticker, retries, last_err)
+    return None
 
 
-def _read_cache(ticker: str, max_age_seconds: int) -> Optional[pd.Series]:
+def _read_cache(ticker: str, max_age_seconds: int):
+    """返回 (series, last_date)，仅当缓存文件在 max_age_seconds 之内。
+
+    调用方用 last_date 判断缓存是否已覆盖「最新已完成美股会话」——而非仅看
+    文件 mtime。否则会出现「今天写的文件、但数据是 T-2」被当成新鲜而永不刷新。
+    """
     p = CACHE_DIR / f"{ticker}.csv"
     if not p.exists():
         return None
@@ -219,7 +261,10 @@ def _read_cache(ticker: str, max_age_seconds: int) -> Optional[pd.Series]:
         if "Close" not in df.columns:
             return None
         s = pd.to_numeric(df["Close"], errors="coerce").dropna()
-        return s if len(s) >= 30 else None
+        if len(s) < 30:
+            return None
+        last_date = pd.Timestamp(s.index[-1]).date()
+        return s, last_date
     except Exception:
         return None
 
@@ -232,16 +277,41 @@ def _write_cache(ticker: str, s: pd.Series) -> None:
         logger.warning("cache write %s failed: %s", ticker, exc)
 
 
-def load_closes(force_refresh: bool = False) -> Dict[str, pd.Series]:
+def load_closes(
+    force_refresh: bool = False,
+    stale_cache_max_age: int = 3 * 86400,
+) -> Dict[str, pd.Series]:
+    """抓取收盘价。
+
+    健壮性策略（防止盘前自动化因 yfinance 瞬态失败而整体缺失主题腿）：
+      1) 优先用覆盖「最新已完成美股会话」的鲜活缓存（按数据日期判定，非文件 mtime）；
+      2) 否则实时抓取（含重试）；
+      3) 实时仍失败 → 用 <=3天 的陈旧缓存兜底（总比整腿 missing 好）；
+      4) 都失败 → 该品种缺失，记 warning。
+    """
     closes: Dict[str, pd.Series] = {}
+    completed = last_completed_equity_session()
     for key, yf_tkr, _, label in SYMBOLS:
         s = None
         if not force_refresh:
-            s = _read_cache(yf_tkr, max_age_seconds=86400)
+            cached = _read_cache(yf_tkr, max_age_seconds=86400)
+            if cached is not None:
+                cs, cdate = cached
+                # 缓存须覆盖最新已完成美股会话才算新鲜；否则仍去实时抓取。
+                # 修复：旧逻辑只看文件 mtime(<1天)，会让「今天写但数据是 T-2」的
+                # 缓存被当成新鲜而永远不刷新，导致盘前自动化卡在 T-2、主题腿缺失。
+                if cdate >= completed:
+                    s = cs
         if s is None:
             s = _download_close(yf_tkr)
             if s is not None:
                 _write_cache(yf_tkr, s)
+        if s is None and not force_refresh:
+            # 实时抓取失败 → 陈旧缓存兜底（<=3天），避免整腿 missing
+            cached = _read_cache(yf_tkr, max_age_seconds=stale_cache_max_age)
+            if cached is not None:
+                s = cached[0]
+                logger.warning("实时抓取失败，使用陈旧缓存(<=3天)兜底: %s (%s)", label, yf_tkr)
         if s is None:
             logger.warning("无数据: %s (%s)", label, yf_tkr)
         else:
@@ -717,8 +787,11 @@ def build_report(state: Dict) -> str:
 
     pairs = sorted(zip(LEADER_KEYS, LEADER_LABELS, [x[k] for k in LEADER_KEYS]),
                    key=lambda t: abs(t[2]), reverse=True)[:3]
-    leaders_txt = "   ".join(f"{i+1}) {lbl}{u5(v)}{v:+.1f}"
-                                for i, (_, lbl, v) in enumerate(pairs))
+    # z=5日动量异常度（非当日涨跌）；同时带出当日 1D% 避免「↑」被误读为今天上涨。
+    _r1_lead = state.get("ret1d") or {}
+    leaders_txt = "   ".join(
+        f"{i+1}) {lbl} z{v:+.1f}{u5(v)}（当日{fmt_ret1d(_r1_lead.get(k))}）"
+        for i, (k, lbl, v) in enumerate(pairs))
 
     fam_lines = []
     for fam in range(5):
@@ -786,7 +859,7 @@ def build_report(state: Dict) -> str:
         "",
         *quality_lines,
         "",
-        "## 今日主角（品种强度前三）",
+        "## 动量主角（5日动量z 前三 · 箭头=z符号，非当日涨跌）",
         "",
         f"> {leaders_txt}",
         "",
@@ -872,8 +945,15 @@ def build_json(state: Dict) -> Dict:
         "theme_pressure_level": tpl,
         "quality": state.get("quality") or {},
         "x": {k: (round(v, 4) if isinstance(v, float) else v) for k, v in x.items()},
-        "today_leaders": [{"label": lbl, "z": round(v, 3), "dir": u5(v)}
-                          for _, lbl, v in pairs],
+        # 注意：z 是「5日动量异常度」(u1: 5日收益 vs 200日分布)，**不是当日涨跌**；
+        # dir 箭头同样只由 z 的符号决定。故额外带出 ret1d_pct，防止下游把「↑」误读为当日上涨。
+        "today_leaders": [{"label": lbl, "z": round(v, 3), "dir": u5(v),
+                           "basis": "mom5d_z",
+                           "ret1d_pct": (
+                               None if (r1.get(k) is None or r1.get(k) != r1.get(k))
+                               else round(float(r1[k]) * 100.0, 2)
+                           )}
+                          for k, lbl, v in pairs],
         "families": families,
         "strength_table": strength,
     }
