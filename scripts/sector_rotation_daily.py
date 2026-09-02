@@ -38,6 +38,12 @@ logger = logging.getLogger("sector-rotation")
 
 DEFAULT_PROXY = "http://127.0.0.1:7890"
 _PROXY_KEYS = ("HTTPS_PROXY", "HTTP_PROXY")
+# 代理开关（向后兼容）：默认仍走本地代理 127.0.0.1:7890（用户本机行为不变）。
+# 外部环境（如 grokbot 云机无本地代理）可设 SECTOR_PROXY 重定向或关闭：
+#   SECTOR_PROXY=off|none|0|false|no|""  → 完全不设代理（依赖直连/环境自带代理）
+#   SECTOR_PROXY=http://host:port         → 使用指定代理
+# 若已设置系统变量 HTTPS_PROXY/HTTP_PROXY，则优先级最高、本函数不覆盖。
+_PROXY_OFF_VALUES = ("", "off", "none", "0", "false", "no")
 
 # ---- 版本与有效期（与 Pine 流水线盖戳区一致）----
 VER_TXT = "会员版 v1.3m"
@@ -96,11 +102,17 @@ SECTOR_KEYS = ["xlk", "xlf", "xlv", "xly", "xlp", "xle", "xli", "xlb", "xlu", "x
 
 # ===================== 阶段二：代理注入 =====================
 def _ensure_proxy() -> None:
+    # 已显式设置系统代理 → 直接采用，不覆盖
     if any(os.environ.get(k) for k in _PROXY_KEYS):
         return
+    # SECTOR_PROXY 开关：显式关闭/置空则不设代理（供无本地代理环境，如 grokbot 云机）
+    sp = os.environ.get("SECTOR_PROXY")
+    if sp is not None and str(sp).strip().lower() in _PROXY_OFF_VALUES:
+        return
     try:
-        os.environ.setdefault("HTTPS_PROXY", DEFAULT_PROXY)
-        os.environ.setdefault("HTTP_PROXY", DEFAULT_PROXY)
+        proxy = sp if (sp and str(sp).strip()) else DEFAULT_PROXY
+        os.environ.setdefault("HTTPS_PROXY", proxy)
+        os.environ.setdefault("HTTP_PROXY", proxy)
     except Exception:
         pass
 
