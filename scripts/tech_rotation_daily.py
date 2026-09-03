@@ -342,6 +342,10 @@ def score_accel(x, scale: float, max_score: float) -> float:
 
 def calc_metrics_full(idx: pd.Series, dv: pd.Series, c_qqq: pd.Series):
     """返回完整序列；仅末值用于读数。dv = 美元成交额序列；c_qqq = 基准收盘价序列。"""
+    # Align to idx so np.where/Series(index=...) cannot see 401 vs 400 when
+    # yfinance/cache bars differ by one session across close vs volume.
+    dv = dv.reindex(idx.index)
+    c_qqq = c_qqq.reindex(idx.index)
     ratio = safe_div(idx, c_qqq)
     rel1 = pct_change_n(ratio, 1)
     rel5 = pct_change_n(ratio, 5)
@@ -357,15 +361,17 @@ def calc_metrics_full(idx: pd.Series, dv: pd.Series, c_qqq: pd.Series):
     valid = ratio.notna() & c_qqq.notna()
     trend_score = (ratio > ma20).astype(float) * 10.0 + (ratio > ma50).astype(float) * 10.0 + (ma20 > ma20.shift(5)).astype(float) * 10.0
     flow_score = (rel5 > 0).astype(float) * 10.0 + (rel20 > 0).astype(float) * 8.0 + (rel5 > rel5.shift(5)).astype(float) * 8.0 + (rel5 > rel20 / 4.0).astype(float) * 8.0
-    vol_score = pd.Series(np.where((rel1 > 0).fillna(False) & (vol_r >= VOL_CONFIRM).fillna(False), 20.0,
-                            np.where((rel1 > 0).fillna(False) & (vol_r >= 1.0).fillna(False), 10.0, 0.0)), index=ratio.index)
+    rel1_pos = (rel1 > 0).fillna(False)
+    vol_score = pd.Series(0.0, index=ratio.index)
+    vol_score = vol_score.mask(rel1_pos & (vol_r >= 1.0).fillna(False), 10.0)
+    vol_score = vol_score.mask(rel1_pos & (vol_r >= VOL_CONFIRM).fillna(False), 20.0)
     # 广度在此传标量系列（已是 70/30 或 %），合成 br_score 用 state 判定时再分类
     br = None  # 占位，由调用方传入 breadth 系列后单独算 br_score
     over_ext = (rel60 > CROWD_REL60).fillna(False) | (dist50 > CROWD_DIST50).fillna(False)
-    crowd_score = np.where(over_ext, 0.0, 8.0)
+    crowd_score = pd.Series(8.0, index=ratio.index).mask(over_ext.fillna(False), 0.0)
     # 注意：raw 不含 br，br 在调用处结合 breadth 系列补
     raw = trend_score + flow_score + vol_score + crowd_score
-    score = pd.Series(np.where(valid, np.clip(raw, 0, 100), np.nan), index=ratio.index)
+    score = raw.clip(0, 100).where(valid)
 
     distribution = valid & (ratio < ma20) & (rel5 < 0) & (vol_r > VOL_CONFIRM) & (rel1 < 0)
     beta_lift = valid & (abs5 > 0) & (rel5 < 0)
@@ -507,8 +513,9 @@ def main(argv: Optional[list] = None) -> int:
     all_vol = {code: v["vol"] for code, v in data.items()}
     df_close = pd.DataFrame(all_close).ffill().bfill()
     df_vol = pd.DataFrame(all_vol).ffill().fillna(0.0)
-    df_close = df_close.tail(HISTORY_BARS)
-    df_vol = df_vol.tail(HISTORY_BARS)
+    common = df_close.index.intersection(df_vol.index)
+    df_close = df_close.loc[common].tail(HISTORY_BARS)
+    df_vol = df_vol.reindex(df_close.index).ffill().fillna(0.0)
 
     as_of = df_close.index[-1].date()
     if args.date:
@@ -553,9 +560,10 @@ def main(argv: Optional[list] = None) -> int:
         ts = theme_series[key]
         m = calc_metrics_full(ts["idx"], ts["dv"], c_qqq)
         m["breadth"] = ts["breadth"]
-        br = ts["breadth"]
-        br_score = pd.Series(np.where(br.isna(), 0.0,
-                            np.where(br >= 70.0, 15.0, np.where(br >= 50.0, 8.0, 0.0))), index=br.index)
+        br = ts["breadth"].reindex(m["score"].index)
+        br_score = pd.Series(0.0, index=m["score"].index)
+        br_score = br_score.mask((br >= 50.0).fillna(False), 8.0)
+        br_score = br_score.mask((br >= 70.0).fillna(False), 15.0)
         m["br_score"] = br_score
         # 末值标量：Pine raw = trend+flow+vol+crowd+br；calc_metrics_full 的 score 不含 br，必须在此补回
         # 末值标量：Pine raw = trend+flow+vol+crowd+br；calc_metrics_full 的 score 不含 br，必须在此补回（保持 Series 以便 last_of 取末值）
