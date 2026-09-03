@@ -56,6 +56,12 @@ logger = logging.getLogger("shock-absorption-daily")
 DEFAULT_PROXY = "http://127.0.0.1:7890"
 _PROXY_ENV_KEYS = ("HTTPS_PROXY", "HTTP_PROXY")
 
+# 外部环境（如 grokbot 云机无本地代理）可设 SECTOR_PROXY 重定向或关闭：
+#   SECTOR_PROXY=off|none|0|false|no|""  → 完全不设代理（依赖直连/环境自带代理）
+#   SECTOR_PROXY=http://host:port         → 使用指定代理
+# 若已设置系统变量 HTTPS_PROXY/HTTP_PROXY，则优先级最高、本函数不覆盖。
+_PROXY_OFF_VALUES = ("", "off", "none", "0", "false", "no")
+
 # ---- 阶段一：Ticker 映射字典 (TV ticker -> yfinance 代理) ----
 # kind 仅用于文档化：双边/单边在腿判定里单独处理。
 SYMBOL_MAP: Dict[str, str] = {
@@ -84,11 +90,21 @@ LABELS = {
 # 阶段二：代理注入 + 防御式取数
 # --------------------------------------------------------------------------- #
 def _ensure_proxy() -> None:
+    """Best-effort: set a local proxy if none is configured (yfinance needs it here).
+
+    Honors SECTOR_PROXY so cloud runners without the local 127.0.0.1:7890 proxy
+    (e.g. grokbot) run with direct egress or their own proxy instead of being
+    silently pointed at a non-existent local proxy.
+    """
     if any(os.environ.get(k) for k in _PROXY_ENV_KEYS):
         return
+    sp = os.environ.get("SECTOR_PROXY")
+    if sp is not None and str(sp).strip().lower() in _PROXY_OFF_VALUES:
+        return
     try:
-        os.environ.setdefault("HTTPS_PROXY", DEFAULT_PROXY)
-        os.environ.setdefault("HTTP_PROXY", DEFAULT_PROXY)
+        proxy = sp if (sp and str(sp).strip()) else DEFAULT_PROXY
+        os.environ.setdefault("HTTPS_PROXY", proxy)
+        os.environ.setdefault("HTTP_PROXY", proxy)
     except Exception:
         pass
 

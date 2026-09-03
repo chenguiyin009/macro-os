@@ -25,6 +25,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, List, Optional, Sequence
 
+import numpy as np
 import pandas as pd
 
 # Asymmetric hysteresis-band sensor (L1 feature producer). Keeps core.decision_kernel
@@ -42,6 +43,9 @@ DEFAULT_QQQ_TICKER = "QQQ"
 DEFAULT_QQQ_CACHE_PATH = (
     Path(__file__).resolve().parents[1] / "data" / "_tech_drawdown_qqq.csv"
 )
+DEFAULT_CACHE_DATED_PATH = (
+    Path(__file__).resolve().parents[1] / "data" / "_tech_drawdown_sox_dated.csv"
+)
 # Local proxy default documented for this machine; only applied when actually
 # downloading and not already present in the environment.
 DEFAULT_PROXY = "http://127.0.0.1:7890"
@@ -49,14 +53,29 @@ DEFAULT_PROXY = "http://127.0.0.1:7890"
 # Default HTTP proxy is forced only when absent, so offline/dev stays clean.
 _PROXY_ENV_KEYS = ("HTTPS_PROXY", "HTTP_PROXY")
 
+# 外部环境（如 grokbot 云机无本地代理）可设 SECTOR_PROXY 重定向或关闭：
+#   SECTOR_PROXY=off|none|0|false|no|""  → 完全不设代理（依赖直连/环境自带代理）
+#   SECTOR_PROXY=http://host:port         → 使用指定代理
+# 若已设置系统变量 HTTPS_PROXY/HTTP_PROXY，则优先级最高、本函数不覆盖。
+_PROXY_OFF_VALUES = ("", "off", "none", "0", "false", "no")
+
 
 def _ensure_proxy() -> None:
-    """Best-effort: set a local proxy if none is configured (yfinance needs it here)."""
+    """Best-effort: set a local proxy if none is configured (yfinance needs it here).
+
+    Honors SECTOR_PROXY so cloud runners without the local 127.0.0.1:7890 proxy
+    (e.g. grokbot) run with direct egress or their own proxy instead of being
+    silently pointed at a non-existent local proxy.
+    """
     if any(os.environ.get(k) for k in _PROXY_ENV_KEYS):
         return
+    sp = os.environ.get("SECTOR_PROXY")
+    if sp is not None and str(sp).strip().lower() in _PROXY_OFF_VALUES:
+        return
     try:
-        os.environ.setdefault("HTTPS_PROXY", DEFAULT_PROXY)
-        os.environ.setdefault("HTTP_PROXY", DEFAULT_PROXY)
+        proxy = sp if (sp and str(sp).strip()) else DEFAULT_PROXY
+        os.environ.setdefault("HTTPS_PROXY", proxy)
+        os.environ.setdefault("HTTP_PROXY", proxy)
     except Exception:  # pragma: no cover - env writes are best-effort
         pass
 
@@ -254,6 +273,182 @@ def compute_soxx_drawdown_smoothed(
 
     sensor = EquityStressSensor(lookback_window=days, smoothing_lag_days=lag)
     return sensor.compute_smoothed_drawdown(pd.Series(closes))
+
+
+def _yf_download_dated(
+    ticker: str,
+    downloader: Optional[Callable[[Any], Any]] = None,
+) -> Optional[List[tuple]]:
+    """Fetch dated SOXX ``(date, close)`` series via yfinance for trajectory analysis.
+
+    Mirrors ``_yf_download`` but preserves the date axis so callers can locate the
+    drawdown trough and measure recovery/slope. Returns None on any failure.
+    """
+    try:
+        if downloader is not None:
+            raw = downloader(ticker)
+        else:
+            try:
+                import yfinance as yf  # local import keeps module light
+            except Exception as exc:  # pragma: no cover
+                logger.warning("yfinance import failed: %s", exc)
+                return None
+            _ensure_proxy()
+            raw = yf.download(
+                ticker,
+                period="3mo",
+                auto_adjust=True,
+                progress=False,
+                threads=False,
+            )
+    except Exception as exc:  # pragma: no cover
+        logger.warning("SOXX dated yfinance download failed: %s", exc)
+        return None
+    if raw is None or getattr(raw, "empty", True):
+        return None
+    try:
+        close_col = None
+        if getattr(raw.columns, "nlevels", 1) > 1:
+            price_level = 0 if "Close" in raw.columns.get_level_values(0) else 1
+            ticker_level = 1 - price_level
+            levels = raw.columns.get_level_values(ticker_level)
+            if ticker in levels:
+                sub = raw.xs(ticker, axis=1, level=ticker_level)
+                close_col = sub["Close"] if "Close" in sub.columns else None
+        else:
+            close_col = raw["Close"] if "Close" in raw.columns else None
+        if close_col is None:
+            logger.warning("SOXX Close column not found in dated frame")
+            return None
+        out: List[tuple] = []
+        for idx, val in close_col.items():
+            if val == val and val is not None:
+                d = str(idx.date()) if hasattr(idx, "date") else str(idx)
+                out.append((d, float(val)))
+        return out or None
+    except Exception as exc:  # pragma: no cover
+        logger.warning("SOXX dated parse failed: %s", exc)
+        return None
+
+
+def _read_dated_cache(cache_path: Path, max_age_seconds: int) -> Optional[List[tuple]]:
+    if not cache_path.exists():
+        return None
+    try:
+        age = datetime.now().timestamp() - cache_path.stat().st_mtime
+        if age > max_age_seconds:
+            return None
+        import csv
+
+        rows: List[tuple] = []
+        with cache_path.open("r", encoding="utf-8", newline="") as fh:
+            reader = csv.DictReader(fh)
+            for row in reader:
+                d = row.get("date")
+                v = row.get("Close") or row.get("close")
+                if not d or v in (None, ""):
+                    continue
+                try:
+                    rows.append((d, float(v)))
+                except ValueError:
+                    continue
+        return rows or None
+    except Exception as exc:  # pragma: no cover
+        logger.warning("dated tech_drawdown cache read failed: %s", exc)
+        return None
+
+
+def _write_dated_cache(cache_path: Path, series: List[tuple]) -> None:
+    try:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        import csv
+
+        with cache_path.open("w", encoding="utf-8", newline="") as fh:
+            w = csv.writer(fh)
+            w.writerow(["date", "Close"])
+            for d, c in series:
+                w.writerow([d, f"{c:.4f}"])
+    except Exception as exc:  # pragma: no cover
+        logger.warning("dated tech_drawdown cache write failed: %s", exc)
+
+
+def compute_soxx_trajectory(
+    days: int = 20,
+    *,
+    ticker: str = DEFAULT_SOX_TICKER,
+    cache_path: Optional[Path] = None,
+    max_age_seconds: int = 2 * 86400,
+    force_refresh: bool = False,
+    downloader: Optional[Callable[[Any], Any]] = None,
+) -> Optional[dict]:
+    """Trajectory of SOXX 20-day-peak drawdown: trough, rebound, slope, label.
+
+    The single drawdown number is a *level* (how far below the recent high) and is
+    lagging; this adds *direction* so readers do not mistake a lagging level for a
+    still-falling price. Returns None if data is unavailable.
+
+    ``label`` is one of ``deepening`` (探底加深) / ``bottoming`` (摸底横盘) /
+    ``rebuilding`` (反弹恢复中).
+    """
+    cache_path = Path(cache_path or DEFAULT_CACHE_DATED_PATH)
+    series: Optional[List[tuple]] = None
+    if not force_refresh:
+        series = _read_dated_cache(cache_path, max_age_seconds)
+    if series is None:
+        series = _yf_download_dated(ticker, downloader=downloader)
+        if series is not None:
+            _write_dated_cache(cache_path, series)
+    if not series or len(series) < 5:
+        return None
+
+    dates = [d for d, _ in series]
+    closes = [c for _, c in series]
+    s = pd.Series(closes)
+    runmax = s.rolling(days, min_periods=1).max()
+    dd = (s / runmax - 1.0).values  # negative
+
+    win = min(30, len(closes))
+    local_trough = int(np.argmin(closes[-win:]))
+    trough_i = len(closes) - win + local_trough
+    trough_close = float(closes[trough_i])
+    trough_date = dates[trough_i]
+    last = float(closes[-1])
+    recovery = last / trough_close - 1.0 if trough_close > 0 else 0.0
+    sessions_since_trough = (len(closes) - 1) - trough_i
+
+    def _slope(n: int) -> float:
+        x = np.arange(n, dtype=float)
+        y = dd[-n:]
+        return float(np.polyfit(x, y, 1)[0])
+
+    s3 = _slope(3)
+    s5 = _slope(5)
+    s10 = _slope(10)
+    n_recent = min(5, len(closes))
+    recent_psl = float(
+        np.polyfit(np.arange(n_recent, dtype=float), np.array(closes[-n_recent:]), 1)[0]
+    )
+
+    if s5 * 100.0 > 0.4:
+        label = "rebuilding"
+    elif s5 * 100.0 < -0.4:
+        label = "deepening"
+    else:
+        label = "bottoming"
+
+    return {
+        "trough_date": trough_date,
+        "trough_close": round(trough_close, 2),
+        "last_close": round(last, 2),
+        "recovery_from_trough_pct": round(recovery * 100.0, 2),
+        "sessions_since_trough": int(sessions_since_trough),
+        "drawdown_slope_3d_pp": round(s3 * 100.0, 3),
+        "drawdown_slope_5d_pp": round(s5 * 100.0, 3),
+        "drawdown_slope_10d_pp": round(s10 * 100.0, 3),
+        "recent_price_slope_5d": round(recent_psl, 2),
+        "naive_20d_peak_dd_pct": round(float(dd[-1]) * 100.0, 2),
+        "label": label,
+    }
 
 
 def compute_qqq_drawdown_smoothed(
