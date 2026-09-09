@@ -319,6 +319,10 @@ def chain_index(ret: pd.Series) -> pd.Series:
 # ===================== 阶段三：打分引擎（全序列）=====================
 def calc_metrics_full(idx: pd.Series, dv: pd.Series, c_spy: pd.Series):
     """返回所有派生量的完整 Series（仅末值会用于最终读数）。"""
+    # Align to idx so np.where/Series(index=...) cannot see 401 vs 400 when
+    # yfinance/cache bars differ by one session across close vs volume.
+    dv = dv.reindex(idx.index)
+    c_spy = c_spy.reindex(idx.index)
     ratio = safe_div(idx, c_spy)
     rel1 = pct_change_n(ratio, 1)
     rel5 = pct_change_n(ratio, 5)
@@ -337,19 +341,22 @@ def calc_metrics_full(idx: pd.Series, dv: pd.Series, c_spy: pd.Series):
     trend_score = (ratio > ma20).astype(float) * 10.0 + (ratio > ma50).astype(float) * 10.0 + (ma20 > ma20.shift(5)).astype(float) * 10.0
     flow_score = (rel5 > 0).astype(float) * 10.0 + (rel20 > 0).astype(float) * 8.0 + (rel5 > rel5.shift(5)).astype(float) * 8.0 + (rel5 > rel20 / 4.0).astype(float) * 8.0
 
-    vol_score = pd.Series(np.where((rel1 > 0).fillna(False) & (vol_r >= VOL_CONFIRM).fillna(False), 20.0,
-                            np.where((rel1 > 0).fillna(False) & (vol_r >= 1.0).fillna(False), 10.0, 0.0)), index=ratio.index)
+    rel1_pos = (rel1 > 0).fillna(False)
+    vol_score = pd.Series(0.0, index=ratio.index)
+    vol_score = vol_score.mask(rel1_pos & (vol_r >= 1.0).fillna(False), 10.0)
+    vol_score = vol_score.mask(rel1_pos & (vol_r >= VOL_CONFIRM).fillna(False), 20.0)
 
     # 广度：ETF 价 vs 自身20均（70/30 粗占位，与 Pine 一致）
-    br = breadth_etf(idx)
-    br_score = pd.Series(np.where(br.isna(), 0.0,
-                           np.where(br >= 70.0, 15.0, np.where(br >= 50.0, 8.0, 0.0))), index=ratio.index)
+    br = breadth_etf(idx).reindex(ratio.index)
+    br_score = pd.Series(0.0, index=ratio.index)
+    br_score = br_score.mask((br >= 50.0).fillna(False), 8.0)
+    br_score = br_score.mask((br >= 70.0).fillna(False), 15.0)
 
     over_ext = (rel60 > CROWD_REL60).fillna(False) | (dist50 > CROWD_DIST50).fillna(False)
-    crowd_score = np.where(over_ext, 0.0, 8.0)
+    crowd_score = pd.Series(8.0, index=ratio.index).mask(over_ext.fillna(False), 0.0)
 
     raw = trend_score + flow_score + vol_score + br_score + crowd_score
-    score = pd.Series(np.where(valid, np.clip(raw, 0, 100), np.nan), index=ratio.index)
+    score = raw.clip(0, 100).where(valid)
 
     distribution = valid & (ratio < ma20) & (rel5 < 0) & (vol_r > VOL_CONFIRM) & (rel1 < 0)
     beta_lift = valid & (abs5 > 0) & (rel5 < 0)
@@ -375,6 +382,8 @@ def calc_metrics_full(idx: pd.Series, dv: pd.Series, c_spy: pd.Series):
 
 
 def calc_bench_full(px: pd.Series, dv: pd.Series, br_pct: float, c_spy: Optional[pd.Series] = None):
+    # Align volume to price index (close vs vol HISTORY_BARS tails can diverge).
+    dv = dv.reindex(px.index)
     a1 = pct_change_n(px, 1)
     a5 = pct_change_n(px, 5)
     a20 = pct_change_n(px, 20)
@@ -390,16 +399,18 @@ def calc_bench_full(px: pd.Series, dv: pd.Series, br_pct: float, c_spy: Optional
 
     trend_score = (px > m20).astype(float) * 10.0 + (px > m50).astype(float) * 10.0 + (m20 > m20.shift(5)).astype(float) * 10.0
     flow_score = (a5 > 0).astype(float) * 10.0 + (a20 > 0).astype(float) * 8.0 + (a5 > a5.shift(5)).astype(float) * 8.0 + (a5 > a20 / 4.0).astype(float) * 8.0
-    vol_score = pd.Series(np.where((a1 > 0).fillna(False) & (v_r >= VOL_CONFIRM).fillna(False), 20.0,
-                            np.where((a1 > 0).fillna(False) & (v_r >= 1.0).fillna(False), 10.0, 0.0)), index=px.index)
+    a1_pos = (a1 > 0).fillna(False)
+    vol_score = pd.Series(0.0, index=px.index)
+    vol_score = vol_score.mask(a1_pos & (v_r >= 1.0).fillna(False), 10.0)
+    vol_score = vol_score.mask(a1_pos & (v_r >= VOL_CONFIRM).fillna(False), 20.0)
     br_score = 15.0 if (not np.isnan(br_pct) and br_pct >= 70.0) else (8.0 if (not np.isnan(br_pct) and br_pct >= 50.0) else 0.0)
     br_score = pd.Series(br_score, index=px.index)
 
     over_ext = (a60 > BENCH_CROWD60).fillna(False) | (d50 > BENCH_CROWD_DIST).fillna(False)
-    crowd_score = np.where(over_ext, 0.0, 8.0)
+    crowd_score = pd.Series(8.0, index=px.index).mask(over_ext.fillna(False), 0.0)
 
     raw = trend_score + flow_score + vol_score + br_score + crowd_score
-    score = pd.Series(np.where(valid, np.clip(raw, 0, 100), np.nan), index=px.index)
+    score = raw.clip(0, 100).where(valid)
 
     distribution = valid & (px < m20) & (a5 < 0) & (v_r > VOL_CONFIRM) & (a1 < 0)
     state = np.select(
@@ -416,10 +427,8 @@ def calc_bench_full(px: pd.Series, dv: pd.Series, br_pct: float, c_spy: Optional
     br_cont = pd.Series(
         float(np.clip((br_pct / 100.0) * BREADTH_CONT_MAX, 0.0, BREADTH_CONT_MAX))
         if (br_pct is not None and not np.isnan(br_pct)) else 0.0, index=px.index)
-    crowd_s = pd.Series(crowd_score, index=px.index)
-    score_cont = pd.Series(
-        np.where(valid, np.clip(trend_score + flow_score + vol_score + br_cont + crowd_s, 0, 100), np.nan),
-        index=px.index)
+    crowd_s = crowd_score  # already aligned Series
+    score_cont = (trend_score + flow_score + vol_score + br_cont + crowd_s).clip(0, 100).where(valid)
 
     return {
         "a1": a1, "a5": a5, "a20": a20, "a60": a60, "vol_r": v_r, "dist50": d50,
@@ -589,13 +598,17 @@ def main(argv: Optional[list] = None) -> int:
     if from_cache:
         logger.warning("以下标的来自本地缓存（非实时）：%s", ", ".join(from_cache))
 
-    # 对齐到公共日期轴（前向填充，尾端回填）
+    # 对齐到公共日期轴；先取 close∩vol 公共 index 再 tail，避免 close/vol 401 vs 400 错位
     df_close = pd.DataFrame({k: v["close"] for k, v in data.items()})
     df_vol = pd.DataFrame({k: v["vol"] for k, v in data.items()})
     df_close = df_close.ffill().bfill()
     df_vol = df_vol.ffill().fillna(0.0)
-    df_close = df_close.tail(HISTORY_BARS)
-    df_vol = df_vol.tail(HISTORY_BARS)
+    common = df_close.index.intersection(df_vol.index)
+    if len(common) == 0:
+        logger.error("close 与 volume 无公共交易日，无法对齐 HISTORY_BARS（拒绝写出错误读数）。")
+        return 2
+    df_close = df_close.loc[common].tail(HISTORY_BARS)
+    df_vol = df_vol.reindex(df_close.index).ffill().fillna(0.0)
 
     # as_of = 最新交易日
     as_of = df_close.index[-1].date()
