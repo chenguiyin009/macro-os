@@ -14,6 +14,12 @@ Writes output/daily_macro_<date>.md + .json
 Date contract (P0): prefer exact --date files; fallback only with --allow-stale
 within configured lag; always surface as_of + warnings.
 
+US cash session as_of (America/New_York): before 16:00 ET use previous business day;
+after close use that day if business day; weekends/holidays -> prior BD.
+Never accept a Chinese/CJK date string. Reject leg fallbacks whose as_of is AFTER
+the requested report date (no lookahead). Pre-close / incomplete sessions are
+marked incomplete_bar + non_actionable (observation writes still OK).
+
 Observation only — not trade signals. Kernel decide() remains source of truth.
 
 Usage:
@@ -33,6 +39,7 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+from zoneinfo import ZoneInfo
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger("daily-macro-consolidated")
@@ -49,6 +56,165 @@ SECTOR_SCRIPT = REPO_ROOT / "scripts" / "sector_rotation_daily.py"
 SHOCK_SCRIPT = REPO_ROOT / "scripts" / "shock_absorption_daily.py"
 
 _DATE_RE = re.compile(r"(20\d{2}-\d{2}-\d{2})")
+_CJK_RE = re.compile(r"[\u4e00-\u9fff]")
+_NY_TZ = ZoneInfo("America/New_York")
+_US_CASH_CLOSE_HOUR = 16  # 16:00 ET = regular cash session close
+
+
+def _is_us_business_day(d: dt.date) -> bool:
+    """Mon-Fri minus US federal holidays (proxy for NYSE; good enough for as_of)."""
+    if d.weekday() >= 5:
+        return False
+    try:
+        from pandas.tseries.holiday import USFederalHolidayCalendar
+
+        cal = USFederalHolidayCalendar()
+        holidays = set(cal.holidays(start=d - dt.timedelta(days=5), end=d + dt.timedelta(days=5)).date)
+        return d not in holidays
+    except Exception:
+        return True
+
+
+def _prior_us_business_day(d: dt.date) -> dt.date:
+    cur = d - dt.timedelta(days=1)
+    while not _is_us_business_day(cur):
+        cur -= dt.timedelta(days=1)
+    return cur
+
+
+def parse_strict_iso_date(raw: str) -> dt.date:
+    """Accept only YYYY-MM-DD. Reject CJK / Chinese date strings loudly."""
+    s = (raw or "").strip()
+    if not s:
+        raise ValueError("empty date")
+    if _CJK_RE.search(s):
+        raise ValueError(
+            f"Chinese/CJK date string refused: {raw!r}. "
+            "Pass YYYY-MM-DD for a completed US cash session (America/New_York)."
+        )
+    if not re.fullmatch(r"20\d{2}-\d{2}-\d{2}", s):
+        raise ValueError(
+            f"invalid date {raw!r}; expected YYYY-MM-DD (US cash session as_of)."
+        )
+    return dt.date.fromisoformat(s)
+
+
+def resolve_completed_us_cash_session(
+    explicit: Optional[str] = None,
+    *,
+    now: Optional[dt.datetime] = None,
+) -> Dict[str, Any]:
+    """Resolve report date for a *completed* US cash equity session.
+
+    Auto (no --date):
+      - before 16:00 ET -> previous US business day
+      - after 16:00 ET on a US BD -> that day
+      - weekends/holidays -> prior US BD
+
+    Explicit --date:
+      - must be YYYY-MM-DD (no CJK)
+      - if that NY calendar day is not yet closed (today pre-16:00, or future),
+        keep the date for observation files but mark incomplete_bar / non_actionable
+      - if weekend/holiday, snap to prior BD and warn via reason
+    """
+    now_ny = now.astimezone(_NY_TZ) if now is not None else dt.datetime.now(_NY_TZ)
+    today_ny = now_ny.date()
+    # Closed at/after 16:00:00 ET (regular US cash equity session).
+    session_closed = now_ny.hour >= _US_CASH_CLOSE_HOUR
+
+    incomplete_bar = False
+    actionable = True
+    reason = "completed_us_cash_session"
+    warnings_local: List[str] = []
+
+    if explicit is None or str(explicit).strip() == "" or str(explicit).strip().lower() in ("auto", "latest"):
+        if session_closed and _is_us_business_day(today_ny):
+            as_of = today_ny
+            reason = "post_close_same_bd"
+        else:
+            as_of = _prior_us_business_day(today_ny)
+            reason = "pre_close_or_non_bd_prior"
+        incomplete_bar = False
+        actionable = True
+    else:
+        as_of = parse_strict_iso_date(str(explicit))
+        if as_of > today_ny:
+            incomplete_bar = True
+            actionable = False
+            reason = "future_date_non_actionable"
+            warnings_local.append(
+                f"requested date {as_of} is after NY calendar today {today_ny}; "
+                "observation only (non_actionable)."
+            )
+        elif as_of == today_ny and not session_closed:
+            incomplete_bar = True
+            actionable = False
+            reason = "pre_close_incomplete_bar"
+            warnings_local.append(
+                f"requested date {as_of} is still pre-close in America/New_York "
+                f"(now={now_ny.strftime('%Y-%m-%d %H:%M %Z')}); incomplete_bar / non_actionable."
+            )
+        elif not _is_us_business_day(as_of):
+            snapped = _prior_us_business_day(as_of)
+            warnings_local.append(
+                f"requested date {as_of} is weekend/holiday; snapping to prior US BD {snapped}."
+            )
+            as_of = snapped
+            reason = "snapped_prior_bd"
+            # after snap, if somehow still open session on that day — only same-day pre-close matters
+            if as_of == today_ny and not session_closed:
+                incomplete_bar = True
+                actionable = False
+                reason = "pre_close_incomplete_bar"
+        else:
+            reason = "explicit_completed_or_historical"
+            actionable = True
+            incomplete_bar = False
+
+    return {
+        "date": as_of.isoformat(),
+        "as_of": as_of.isoformat(),
+        "incomplete_bar": incomplete_bar,
+        "actionable": actionable,
+        "non_actionable": not actionable,
+        "actionability_reason": reason,
+        "ny_now": now_ny.isoformat(),
+        "session_closed": session_closed,
+        "warnings": warnings_local,
+    }
+
+
+def _artifact_as_of(obj: Optional[Dict[str, Any]], fallback: str = "") -> str:
+    if not obj:
+        return str(fallback or "")[:10]
+    for key in ("as_of", "date", "report_date"):
+        v = obj.get(key)
+        if v:
+            return str(v)[:10]
+    return str(fallback or "")[:10]
+
+
+def reject_lookahead_artifact(
+    obj: Optional[Dict[str, Any]],
+    expected_date: str,
+    *,
+    kind: str,
+    warnings: List[str],
+) -> Optional[Dict[str, Any]]:
+    """Return obj only if its as_of is not AFTER expected_date; else None + warning."""
+    if obj is None:
+        return None
+    as_of = _artifact_as_of(obj)
+    if as_of and expected_date and as_of > expected_date:
+        msg = (
+            f"{kind}: refusing lookahead artifact as_of={as_of} > report_date={expected_date} "
+            "(would present future Top/signals as today's)."
+        )
+        logger.warning(msg)
+        warnings.append(msg)
+        return None
+    return obj
+
 
 _DEFAULT_CFG: Dict[str, Any] = {
     "stale_fallback_max_trading_days": 1,
@@ -258,6 +424,16 @@ def resolve_artifact(
         return None, False
 
     file_date = _date_from_name(newest) or ""
+    # Hard reject: never use a fallback dated AFTER the requested report date (lookahead).
+    if file_date and expected_date and file_date > expected_date:
+        msg = (
+            f"{kind}: refusing lookahead fallback {newest.name} "
+            f"(as_of={file_date} > expected={expected_date})."
+        )
+        logger.warning(msg)
+        warnings.append(msg)
+        return None, False
+
     lag = _busday_lag(file_date, expected_date)
     if not allow_stale:
         msg = (
@@ -269,7 +445,7 @@ def resolve_artifact(
         warnings.append(msg)
         return None, False
 
-    if lag is None or lag > max_lag_days:
+    if lag is None or lag < 0 or lag > max_lag_days:
         msg = (
             f"{kind}: fallback {newest.name} lag={lag} trading days exceeds "
             f"max_lag={max_lag_days} trading days vs expected {expected_date}; refusing."
@@ -748,19 +924,23 @@ def ensure_shock(
 
 
 def _busday_lag(as_of: str, expected: str) -> Optional[int]:
+    """Trading-day lag of as_of behind expected.
+
+    Positive => as_of is stale (behind expected).
+    Zero => same session.
+    Negative => as_of is AFTER expected (lookahead — callers must reject).
+    """
     try:
         t_day = dt.date.fromisoformat(str(as_of)[:10])
         e_day = dt.date.fromisoformat(str(expected)[:10])
     except Exception:
         return None
-    if e_day < t_day:
-        t_day, e_day = e_day, t_day
     try:
         import numpy as np
 
         return int(np.busday_count(t_day, e_day))
     except Exception:
-        return max(0, (e_day - t_day).days)
+        return (e_day - t_day).days
 
 
 def _infer_theme_quality(theme: Dict[str, Any], theme_date: str, report_date: str) -> Dict[str, Any]:
@@ -771,6 +951,17 @@ def _infer_theme_quality(theme: Dict[str, Any], theme_date: str, report_date: st
     lag = _busday_lag(as_of, report_date)
     if lag is None:
         return {}
+    if lag < 0:
+        return {
+            "as_of": as_of,
+            "expected_as_of": str(report_date)[:10],
+            "lag_days": lag,
+            "stale": False,
+            "degraded": True,
+            "lookahead": True,
+            "data_quality": "lookahead",
+            "inferred": True,
+        }
     stale = lag > 1
     return {
         "as_of": as_of,
@@ -1949,6 +2140,19 @@ def build_report(
         f"- **alignment / bias / 数据质量**: "
         f"{synth.get('alignment', '—')} / {synth.get('bias', '—')} / {synth.get('data_quality', '—')}"
     )
+    L.append(
+        f"- **actionable / incomplete_bar**: "
+        f"{'是' if synth.get('actionable') else '否'} / "
+        f"{'是' if synth.get('incomplete_bar') else '否'}"
+        + (
+            f" ｜ reason={synth.get('actionability_reason') or synth.get('degraded_reason') or '—'}"
+        )
+    )
+    if synth.get("non_actionable") or synth.get("incomplete_bar"):
+        L.append(
+            "> ⚠️ **non_actionable**：本报告仅观察写盘；GYbot/执行端不得把未来 as_of 腿或未收盘 bar "
+            "当作当日可执行信号（含板块 Top3）。"
+        )
     if warnings:
         L.append("")
         L.append("## ⚠ 运行警告")
@@ -2415,6 +2619,12 @@ def build_json(
             "nq_state": synth.get("nq_state"),
             "nq_quality": synth.get("nq_quality"),
             "shock_absorption": synth.get("shock_absorption"),
+            "incomplete_bar": synth.get("incomplete_bar"),
+            "actionable": synth.get("actionable"),
+            "non_actionable": synth.get("non_actionable"),
+            "actionability_reason": synth.get("actionability_reason"),
+            "degraded_reason": synth.get("degraded_reason"),
+            "missing_legs": synth.get("missing_legs"),
         },
         "combined_risk_budget": combined,
         "rates_stress": rates,
@@ -2437,7 +2647,13 @@ def main(argv: Optional[list] = None) -> int:
             f"Default --report-dir: {DEFAULT_REPORT_DIR}"
         )
     )
-    parser.add_argument("--date", default=dt.date.today().isoformat(), help="YYYY-MM-DD")
+    parser.add_argument(
+        "--date",
+        default=None,
+        help="YYYY-MM-DD completed US cash session (America/New_York). "
+             "Omit for auto: pre-16:00 ET -> prior BD; post-close -> that BD. "
+             "CJK/Chinese date strings are refused.",
+    )
     parser.add_argument(
         "--report-dir",
         default=str(DEFAULT_REPORT_DIR),
@@ -2480,12 +2696,29 @@ def main(argv: Optional[list] = None) -> int:
 
     report_dir = Path(args.report_dir)
     report_dir.mkdir(parents=True, exist_ok=True)
-    date_str = args.date
+    try:
+        session_meta = resolve_completed_us_cash_session(args.date)
+    except ValueError as exc:
+        logger.error("DATE resolution failed: %s", exc)
+        errors.append(str(exc))
+        print(f"[error] DATE resolution failed: {exc}")
+        return 2
+    date_str = session_meta["date"]
+    warnings.extend(session_meta.get("warnings") or [])
+    if session_meta.get("incomplete_bar") or session_meta.get("non_actionable"):
+        warnings.append(
+            f"session actionability: incomplete_bar={session_meta.get('incomplete_bar')} "
+            f"non_actionable={session_meta.get('non_actionable')} "
+            f"reason={session_meta.get('actionability_reason')}"
+        )
     logger.info(
-        "Date: %s | Report dir: %s | allow_stale=%s",
+        "Date: %s | Report dir: %s | allow_stale=%s | actionable=%s | incomplete_bar=%s | reason=%s",
         date_str,
         report_dir,
         args.allow_stale,
+        session_meta.get("actionable"),
+        session_meta.get("incomplete_bar"),
+        session_meta.get("actionability_reason"),
     )
 
     denom = ensure_denominator(
@@ -2541,10 +2774,17 @@ def main(argv: Optional[list] = None) -> int:
         errors=errors,
     )
 
+    denom = reject_lookahead_artifact(denom, date_str, kind="denominator", warnings=warnings)
+    tech = reject_lookahead_artifact(tech, date_str, kind="tech_dampener", warnings=warnings)
+    theme = reject_lookahead_artifact(theme, date_str, kind="theme", warnings=warnings)
+    nq = reject_lookahead_artifact(nq, date_str, kind="nq_driver", warnings=warnings)
+    sector = reject_lookahead_artifact(sector, date_str, kind="sector_rotation", warnings=warnings)
+    shock = reject_lookahead_artifact(shock, date_str, kind="shock_absorption", warnings=warnings)
+
     denom_date = (denom or {}).get("date")
-    tech_date = (tech or {}).get("date", date_str)
-    theme_date = (theme or {}).get("date", date_str)
-    nq_date = (nq or {}).get("date", date_str)
+    tech_date = (tech or {}).get("date", date_str) if tech else None
+    theme_date = (theme or {}).get("date", date_str) if theme else None
+    nq_date = (nq or {}).get("date", date_str) if nq else None
 
     synth = synthesize(
         theme,
@@ -2600,6 +2840,38 @@ def main(argv: Optional[list] = None) -> int:
     advice = build_plain_advice(theme, tech, denom, nq, synth, combined)
     synth = dict(synth)
     synth["plain_advice"] = advice
+    # Actionability / incomplete session flags for GYbot (observation writes still OK).
+    synth["incomplete_bar"] = bool(session_meta.get("incomplete_bar"))
+    synth["actionable"] = bool(session_meta.get("actionable")) and not bool(session_meta.get("incomplete_bar"))
+    synth["non_actionable"] = not bool(synth["actionable"])
+    synth["actionability_reason"] = session_meta.get("actionability_reason")
+    if session_meta.get("incomplete_bar"):
+        synth["degraded_reason"] = session_meta.get("actionability_reason") or "incomplete_bar"
+        # Force tone note so operators do not treat as execution-grade.
+        prev_tone = synth.get("tone") or ""
+        flag = "【非可执行·incomplete_bar】盘中/未收盘会话，仅观察勿当执行信号。"
+        if flag not in str(prev_tone):
+            synth["tone"] = f"{flag} {prev_tone}".strip()
+    # Lagged/missing legs also degrade actionability for execution desks.
+    missing_legs = [
+        name
+        for name, obj in (
+            ("theme", theme),
+            ("tech", tech),
+            ("denom", denom),
+            ("nq", nq),
+            ("sector", sector),
+        )
+        if obj is None
+    ]
+    if missing_legs:
+        warnings.append(f"missing/lagged legs (post lookahead filter): {', '.join(missing_legs)}")
+        synth["missing_legs"] = missing_legs
+        if synth.get("actionable"):
+            synth["actionable"] = False
+            synth["non_actionable"] = True
+            synth["degraded_reason"] = synth.get("degraded_reason") or f"missing_legs:{','.join(missing_legs)}"
+            synth["actionability_reason"] = synth["degraded_reason"]
 
     md = build_report(
         date_str,

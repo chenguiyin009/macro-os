@@ -39,14 +39,18 @@ cd macro-os
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install numpy pandas yfinance akshare
 
-# 计算最新美国交易日（纽约时区前一 BD，自动跳过周末/假日）
-DATE=$(python -c "import pandas as pd; from pandas.tseries.offsets import BDay; print((pd.Timestamp.today(tz='America/New_York')-BDay(1)).strftime('%Y-%m-%d'))")
+# 推荐：省略 --date，让脚本按 NY 现金时段自动解析已收盘日
+# （16:00 ET 前→上一 BD；收盘后→当日 BD；周末/假日→再往前）
+# 也可显式传 YYYY-MM-DD；不要传中文「今天」。
 
 # 运行（关掉本机代理默认值；--report-dir 指定输出落点）
-SECTOR_PROXY=off python scripts/daily_macro_consolidated.py --date "$DATE" --report-dir ./output
+SECTOR_PROXY=off unset HTTPS_PROXY HTTP_PROXY
+SECTOR_PROXY=off python scripts/daily_macro_consolidated.py --report-dir ./output
+# 或：SECTOR_PROXY=off python scripts/daily_macro_consolidated.py --date 2026-09-08 --report-dir ./output
 ```
 - 失败只报错误、不要重试超过一次（子脚本 yfinance 已内置 3 次退避重试）。
-- 退出码 `0` = 成功（即使某腿 stale 回退，只要四腿齐全即为 0）。
+- 退出码 `0` = 成功写观察文件；但若 JSON 中 `synthesis.non_actionable` / `incomplete_bar` 为 true，**不可当执行信号**。
+- 退出码 `2` = DATE 非法（含中文日期）或其它硬失败。
 
 ## 5. 输出文件
 - `output/daily_macro_<date>.md` + `.json`（主报告，含四腿明细与合成上限）
@@ -62,7 +66,12 @@ SECTOR_PROXY=off python scripts/daily_macro_consolidated.py --date "$DATE" --rep
 > ⚠️ 文末必须附：**「教学/数据参考，不构成投资建议。四工具交叉验证，非交易信号。」**
 
 ## 7. 解读注意事项（避免误读）
-- `as_of` = 最新美国交易日。`--date` 必须传**真实日期**（不要传中文「今天」字面量，否则会写进文件名导致下游全部错位）。
+- `as_of` = **已收盘的美国现金交易日**（`America/New_York`）。规则：
+  - 未传 `--date`：16:00 ET 前 → 上一美国交易日；收盘后若当天是交易日 → 当天；周末/假日 → 再往前一个交易日。
+  - 显式 `--date` 必须是 `YYYY-MM-DD`；**禁止中文日期**（如「今天」）——脚本会直接报错退出。
+  - 若显式日期仍是「当日未收盘」或未来日：仍可写观察文件，但 JSON/MD 会标 `incomplete_bar=true` / `non_actionable=true`，GYbot **不得当执行级信号**。
+- **禁止未来回退（no lookahead）**：theme/sector/shock/denom/nq 等腿的 stale fallback，若文件 `as_of` **晚于**报告日，一律拒绝；缺失/滞后腿写入 warnings，并可能把整份报告标为 `non_actionable` / `degraded_reason`。不得把未来日期的板块 Top3 当作「今日信号」。
+- **板块轮动 close/volume 对齐**：`sector_rotation_daily.py` 已与 tech_rotation 同款修复——先对齐公共 index 再 `tail(HISTORY_BARS)`，`vol` reindex 到 close；打分用 `Series.mask`，避免 yfinance 401 vs 400 长度崩溃。硬错误大声失败，不静默写出错误读数。
 - 分母经 FRED last-print 语义，常比主题/减震器/NQ **滞后 1 个交易日**（良性软回退，非故障）。
 - 主题若落后 >1 交易日会被判 `missing` 不参与合成上限（数据滞后，非脚本故障）。
 - **动量主角 z 是 5 日动量异常度**，箭头只按 z 符号画；走平日也可显示「↑」，与当日涨跌是两回事，汇报须区分。
