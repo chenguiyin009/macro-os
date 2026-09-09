@@ -610,24 +610,39 @@ def main(argv: Optional[list] = None) -> int:
     df_close = df_close.loc[common].tail(HISTORY_BARS)
     df_vol = df_vol.reindex(df_close.index).ffill().fillna(0.0)
 
-    # as_of = 最新交易日
-    as_of = df_close.index[-1].date()
+    # as_of：默认最新交易日；若传 --date 则钳制到 <= 请求日（绝不可跳到未来 bar）
+    latest = df_close.index[-1].date()
+    as_of = latest
+    requested = None
     if args.date:
         try:
-            as_of = dt.datetime.strptime(args.date, "%Y-%m-%d").date()
+            requested = dt.datetime.strptime(args.date, "%Y-%m-%d").date()
+            as_of = requested
         except Exception:
-            logger.warning("无效 --date，回退到最新交易日 %s", as_of)
+            logger.warning("无效 --date，回退到最新交易日 %s", latest)
+            requested = None
 
-    # 取 as_of 位置的末行索引
-    if as_of not in set(d.date() for d in df_close.index):
-        logger.warning("指定 as_of=%s 无数据，使用最新 %s", as_of, df_close.index[-1].date())
-        as_of = df_close.index[-1].date()
-    else:
-        # 历史回看：截断到 as_of，末行即该交易日（rolling 仍保留其前的历史）
-        if args.date:
-            ts = pd.Timestamp(as_of)
-            df_close = df_close[df_close.index <= ts]
-            df_vol = df_vol[df_vol.index <= ts]
+    available = sorted({d.date() for d in df_close.index})
+    if as_of not in set(available):
+        # 缺日：只允许回退到 <= 请求日的最近交易日；禁止前跳到最新（lookahead）
+        if requested is not None:
+            prior = [d for d in available if d <= requested]
+            if not prior:
+                logger.error("指定 as_of=%s 及之前均无数据，拒绝写出。", requested)
+                return 2
+            snapped = prior[-1]
+            logger.warning("指定 as_of=%s 无数据，回退到 <= 请求日的最近交易日 %s", requested, snapped)
+            as_of = snapped
+        else:
+            as_of = latest
+
+    # 历史回看：截断到 as_of（含盘中已出现的次日 bar 也不进入计算）
+    ts = pd.Timestamp(as_of)
+    df_close = df_close[df_close.index <= ts]
+    df_vol = df_vol[df_vol.index <= ts]
+    if df_close.empty:
+        logger.error("截断到 as_of=%s 后无数据，拒绝写出。", as_of)
+        return 2
 
     c_spy = df_close["spy"]
 

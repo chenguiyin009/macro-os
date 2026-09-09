@@ -185,8 +185,23 @@ def resolve_completed_us_cash_session(
 
 
 def _artifact_as_of(obj: Optional[Dict[str, Any]], fallback: str = "") -> str:
+    """Session date of an artifact (YYYY-MM-DD).
+
+    Prefer a real date field when ``as_of`` is a wall-clock timestamp
+    (e.g. shock historically wrote ``as_of=2026-09-09T14:22:30`` while
+    ``date`` held the US session day). Truncating that timestamp to [:10]
+    falsely looks like a next-calendar-day lookahead.
+    """
     if not obj:
         return str(fallback or "")[:10]
+
+    as_of = obj.get("as_of")
+    date_v = obj.get("date") or obj.get("report_date")
+    # wall-clock as_of → prefer date/report_date
+    if as_of is not None and "T" in str(as_of):
+        if date_v:
+            return str(date_v)[:10]
+        return str(as_of)[:10]
     for key in ("as_of", "date", "report_date"):
         v = obj.get(key)
         if v:
@@ -797,8 +812,8 @@ def ensure_sector(
 ) -> Optional[Dict[str, Any]]:
     """Load/run 标普板块资金轮动复刻 (Pine v1.3m) artifact.
 
-    该读数锚定标普最新可用交易日（盘后跑即上一美国交易日），文件名按 as_of 计，
-    与 report 日历日可能差 1 个交易日；故缺失时走 allow_stale 兜底（按交易日滞后）。
+    子脚本必须带 --date=report_date，强制 as_of <= 报告日（美东盘中勿写成次日 bar）。
+    文件名按 as_of 计；若数据仅有更早交易日则走 allow_stale 软兜底（按交易日滞后）。
     板块轮动是美股比价视角的**互补观测**，不参与合成预算 min。
     """
     exact = report_dir / f"sector_rotation_{date_str}.json"
@@ -833,7 +848,7 @@ def ensure_sector(
         if SECTOR_SCRIPT.exists():
             _run_script(
                 SECTOR_SCRIPT,
-                ["--report-dir", str(report_dir)],
+                ["--date", date_str, "--report-dir", str(report_dir)],
                 errors,
             )
         else:
@@ -869,7 +884,7 @@ def ensure_shock(
     """Load/run 市场冲击消化能力评判 日频端口 artifact (denominator 旁证交叉校验).
 
     该读数定位为分母压力的**旁证**——只观察+报警，不进主状态机，不参与合成预算 min。
-    文件名按数据对齐后的最新可得日计，常与 report 日历日差 <=1 交易日，故缺失时走
+    子脚本带 --date=report_date，锚定 <= 报告日的最后一根核心腿齐备 bar；更早日走
     allow_stale 软兜底（记录警告，不阻断），与板块轮动同策略。
     """
     exact = report_dir / f"shock_absorption_{date_str}.json"
@@ -902,7 +917,7 @@ def ensure_shock(
         if SHOCK_SCRIPT.exists():
             _run_script(
                 SHOCK_SCRIPT,
-                ["--report-dir", str(report_dir)],
+                ["--date", date_str, "--report-dir", str(report_dir)],
                 errors,
             )
         else:

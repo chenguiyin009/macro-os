@@ -383,6 +383,7 @@ def compute_state(closes: Dict[str, pd.Series], args) -> dict:
     # 收盘=昨收"的空 bar，导致 pct_change 全 0。Pine 的图是 QQQ 日线，
     # 最后一根必然是美股交易日（利率/美元/信用/波动/股指全部有数据）。
     # 故锚定到这些核心腿全部非 NaN 的最后一行，否则状态机/评分读到空值。
+    # 若 CLI 传了 --date，再钳制到 <= 该日（美东盘中勿写成次日 bar / lookahead）。
     def _notna(s: Optional[pd.Series]) -> pd.Series:
         return s.notna() if s is not None else pd.Series(False, index=idx)
 
@@ -391,9 +392,31 @@ def compute_state(closes: Dict[str, pd.Series], args) -> dict:
         & (_notna(es_z) | _notna(nq_z))
     )
     valid_dates = core_mask[core_mask].index
+    requested = None
+    raw_date = getattr(args, "date", None)
+    if raw_date:
+        try:
+            requested = dt.date.fromisoformat(str(raw_date)[:10])
+        except Exception:
+            logger.warning("invalid --date %r; ignoring clamp", raw_date)
+            requested = None
+    if requested is not None and len(valid_dates) > 0:
+        valid_dates = valid_dates[valid_dates.date <= requested]
+        if len(valid_dates) == 0:
+            raise ValueError(
+                f"no core-complete bar on or before --date={requested.isoformat()}"
+            )
     if len(valid_dates) == 0:
         logger.warning("no core-complete bar found; falling back to last row")
         i = -1
+        if requested is not None:
+            # still refuse writing a bar after the requested report date
+            last_ts = idx[-1]
+            last_d = last_ts.date() if hasattr(last_ts, "date") else last_ts
+            if last_d > requested:
+                raise ValueError(
+                    f"fallback last bar {last_d} > --date={requested.isoformat()}; refuse lookahead"
+                )
     else:
         i = int(idx.get_loc(valid_dates[-1]))
 
@@ -454,7 +477,8 @@ def compute_state(closes: Dict[str, pd.Series], args) -> dict:
 
     payload = {
         "date": date_str,
-        "as_of": dt.datetime.now().isoformat(timespec="seconds"),
+        "as_of": date_str,  # data session date (YYYY-MM-DD); do not put wall-clock here
+        "generated_at": dt.datetime.now().isoformat(timespec="seconds"),
         "script": "市场冲击消化能力评判 v2.2 (Python headless port)",
         "source": "yfinance daily (MOVE abstained: TV-only)",
         "params": {
@@ -560,7 +584,7 @@ def compute_state(closes: Dict[str, pd.Series], args) -> dict:
 def build_report(p: dict) -> str:
     L = []
     L.append(f"# 市场冲击消化能力评判 · 每日读数（Python Headless 复刻 · {p['date']}）\n")
-    L.append(f"- **生成时间**: {p['as_of']}")
+    L.append(f"- **生成时间**: {p.get('generated_at') or p.get('as_of')}")
     L.append(f"- **脚本**: {p['script']}")
     L.append(f"- **数据**: {p['source']}")
     L.append("")
@@ -621,7 +645,7 @@ def write_outputs(report_dir: Path, p: dict) -> None:
 def main(argv: Optional[list] = None) -> int:
     ap = argparse.ArgumentParser(description="Shock Absorption daily port (denominator cross-check)")
     ap.add_argument("--date", default=dt.date.today().isoformat(),
-                    help="(kept for CLI symmetry; output uses latest aligned data date)")
+                    help="clamp as_of to <= this YYYY-MM-DD (US session); default today")
     ap.add_argument("--report-dir", default=str(DEFAULT_REPORT_DIR))
     ap.add_argument("--period", default="3y", help="yfinance history window")
     # --- Pine 输入映射（初值，未标定 SA-1） ---
