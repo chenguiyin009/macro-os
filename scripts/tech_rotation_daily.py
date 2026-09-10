@@ -19,7 +19,7 @@
 输出：
   output/tech_rotation_<as_of>.md   (人类阅读，对齐 TV 快照三节)
   output/tech_rotation_<as_of>.json (机器解析)
-  as_of = 最新可用美国交易日
+  as_of = 美东已收盘现金会话（盘前/缓存滞后时标 stale，优先复用已有 expected 产物）
 
 用法：
   python tech_rotation_daily.py
@@ -35,7 +35,8 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+from zoneinfo import ZoneInfo
 
 import numpy as np
 import pandas as pd
@@ -110,7 +111,84 @@ BASKET_KEYS = [t[1] for t in THEME_ORDER if t[1] in BASKETS]
 ETF_KEYS = [t[1] for t in THEME_ORDER if t[1] in ETF_MAP]
 DEFAULT_SELECTED = "semi"  # Pine input 默认「半导体」
 
+
 selected_name_map = {t[1]: t[2] for t in THEME_ORDER}
+
+# ---- 美东已收盘会话（与 daily_macro as_of 合同对齐）----
+_NY_TZ = ZoneInfo("America/New_York")
+_US_CASH_CLOSE_HOUR = 16
+# 轻量 NYSE 假日代理（与四腿同集）；缺漏时最坏是多退一天
+_US_FED_HOLIDAYS = {
+    dt.date(2026, 1, 1), dt.date(2026, 1, 19), dt.date(2026, 2, 16),
+    dt.date(2026, 4, 3), dt.date(2026, 5, 25), dt.date(2026, 6, 19),
+    dt.date(2026, 7, 3), dt.date(2026, 9, 7), dt.date(2026, 11, 26),
+    dt.date(2026, 12, 25),
+}
+
+
+def _is_us_business_day(d: dt.date) -> bool:
+    return d.weekday() < 5 and d not in _US_FED_HOLIDAYS
+
+
+def _prior_us_business_day(d: dt.date) -> dt.date:
+    x = d - dt.timedelta(days=1)
+    while not _is_us_business_day(x):
+        x -= dt.timedelta(days=1)
+    return x
+
+
+def _busday_lag(as_of: dt.date, expected: dt.date) -> int:
+    """Trading-day lag of as_of behind expected (positive => stale)."""
+    if as_of >= expected:
+        return 0
+    n = 0
+    x = as_of
+    while x < expected:
+        x += dt.timedelta(days=1)
+        if _is_us_business_day(x):
+            n += 1
+    return n
+
+
+def resolve_completed_us_cash_session(explicit: Optional[str] = None) -> Dict[str, Any]:
+    """Auto: post-16:00 ET on a US BD -> that day; else prior US BD."""
+    now_ny = dt.datetime.now(_NY_TZ)
+    today_ny = now_ny.date()
+    session_closed = now_ny.hour >= _US_CASH_CLOSE_HOUR
+    incomplete_bar = False
+    actionable = True
+    reason = "completed_us_cash_session"
+    if explicit is None or str(explicit).strip() == "" or str(explicit).strip().lower() in ("auto", "latest"):
+        if session_closed and _is_us_business_day(today_ny):
+            as_of = today_ny
+            reason = "post_close_same_bd"
+        else:
+            as_of = _prior_us_business_day(today_ny)
+            reason = "pre_close_or_non_bd_prior"
+    else:
+        as_of = dt.date.fromisoformat(str(explicit)[:10])
+        if as_of > today_ny:
+            incomplete_bar = True
+            actionable = False
+            reason = "future_date_non_actionable"
+        elif as_of == today_ny and not session_closed:
+            incomplete_bar = True
+            actionable = False
+            reason = "pre_close_incomplete_bar"
+        elif not _is_us_business_day(as_of):
+            as_of = _prior_us_business_day(as_of)
+            reason = "snapped_prior_bd"
+        else:
+            reason = "explicit_completed_or_historical"
+    return {
+        "as_of": as_of,
+        "expected_as_of": as_of,
+        "incomplete_bar": incomplete_bar,
+        "actionable": actionable,
+        "non_actionable": not actionable,
+        "actionability_reason": reason,
+        "now_ny": now_ny.isoformat(timespec="minutes"),
+    }
 
 
 # ===================== 代理注入 =====================
@@ -517,25 +595,101 @@ def main(argv: Optional[list] = None) -> int:
     df_close = df_close.loc[common].tail(HISTORY_BARS)
     df_vol = df_vol.reindex(df_close.index).ffill().fillna(0.0)
 
-    as_of = df_close.index[-1].date()
-    if args.date:
-        try:
-            as_of = dt.datetime.strptime(args.date, "%Y-%m-%d").date()
-        except Exception:
-            logger.warning("无效 --date，回退到最新交易日 %s", as_of)
-    if as_of not in set(d.date() for d in df_close.index):
-        logger.warning("指定 as_of=%s 无数据，使用最新 %s", as_of, df_close.index[-1].date())
-        as_of = df_close.index[-1].date()
+    session = resolve_completed_us_cash_session(args.date)
+    expected = session["as_of"]
+    data_last = df_close.index[-1].date()
+
+    # 数据落后于美东已收盘日：强制再拉一次（缓存/429 常见）
+    if data_last < expected and not args.force_refresh:
+        logger.warning(
+            "data last=%s < expected completed session=%s; retry force_refresh once",
+            data_last, expected,
+        )
+        data, missing, from_cache = load_data(force_refresh=True)
+        all_close = {code: v["close"] for code, v in data.items()}
+        all_vol = {code: v["vol"] for code, v in data.items()}
+        df_close = pd.DataFrame(all_close).ffill().bfill()
+        df_vol = pd.DataFrame(all_vol).ffill().fillna(0.0)
+        common = df_close.index.intersection(df_vol.index)
+        df_close = df_close.loc[common].tail(HISTORY_BARS)
+        df_vol = df_vol.reindex(df_close.index).ffill().fillna(0.0)
+        data_last = df_close.index[-1].date()
+
+    # 目标 as_of：默认=expected；显式 --date 已在 session 解析
+    # 禁止前跳到 > expected 的盘中/次日 bar；缺日只回退到 <= expected
+    available = sorted({d.date() for d in df_close.index})
+    if expected in set(available):
+        as_of = expected
     else:
-        if args.date:
-            ts = pd.Timestamp(as_of)
-            df_close = df_close[df_close.index <= ts]
-            df_vol = df_vol[df_vol.index <= ts]
+        prior = [d for d in available if d <= expected]
+        if not prior:
+            logger.error("无 <= expected=%s 的交易日数据，拒绝写出。", expected)
+            return 2
+        as_of = prior[-1]
+        logger.warning("expected=%s 无数据，回退到 <=expected 的最近日 %s（禁止前跳）", expected, as_of)
+
+    # 若仍落后 expected：优先复用已有完整产物，避免晨报把 as_of 写回更旧文件
+    lag_days = _busday_lag(as_of, expected)
+    stale = lag_days >= 1 or bool(from_cache)
+    reused_artifact = False
+    if lag_days >= 1:
+        exact_json = report_dir / f"tech_rotation_{expected.isoformat()}.json"
+        exact_md = report_dir / f"tech_rotation_{expected.isoformat()}.md"
+        if exact_json.exists():
+            logger.warning(
+                "as_of=%s lags expected=%s by %d TD; reusing existing %s (will not overwrite older regress)",
+                as_of, expected, lag_days, exact_json.name,
+            )
+            try:
+                reused = json.loads(exact_json.read_text(encoding="utf-8"))
+                q = dict(reused.get("quality") or {})
+                q.update({
+                    "expected_as_of": expected.isoformat(),
+                    "lag_days": lag_days,
+                    "stale": True,
+                    "reused_artifact": True,
+                    "data_last_attempt": as_of.isoformat(),
+                    "incomplete_bar": bool(session.get("incomplete_bar")),
+                    "actionable": False,
+                    "non_actionable": True,
+                    "actionability_reason": "stale_reused_prior_artifact",
+                    "session_reason": session.get("actionability_reason"),
+                })
+                reused["quality"] = q
+                reused["run_date"] = dt.date.today().isoformat()
+                exact_json.write_text(json.dumps(reused, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+                if exact_md.exists():
+                    md_old = exact_md.read_text(encoding="utf-8")
+                    banner = (
+                        f"> ⚠️ **stale reuse**：本次拉取仅到 {as_of}，已复用 expected={expected} 产物；"
+                        f"lag_days={lag_days}。\n\n"
+                    )
+                    if "stale reuse" not in md_old:
+                        exact_md.write_text(banner + md_old, encoding="utf-8")
+                print(
+                    f"OK as_of={expected} (reused; fetch_lag={as_of} lag_td={lag_days}) "
+                    f"-> {exact_json.name}"
+                )
+                return 0
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("reuse expected artifact failed: %s; will write stale panel", exc)
+        else:
+            logger.warning(
+                "as_of=%s lags expected=%s by %d TD and no %s; writing stale panel",
+                as_of, expected, lag_days, exact_json.name,
+            )
+
+    ts = pd.Timestamp(as_of)
+    df_close = df_close[df_close.index <= ts]
+    df_vol = df_vol[df_vol.index <= ts]
+    if df_close.empty:
+        logger.error("截断到 as_of=%s 后无数据，拒绝写出。", as_of)
+        return 2
 
     c_qqq = df_close[QQQ_CODE]
-    stale_days = (dt.date.today() - as_of).days
-    if stale_days > 4:
-        logger.warning("数据偏旧：最新交易日 %s 距今天 %d 天（可能遇休市或数据未更新）", as_of, stale_days)
+    calendar_stale_days = (dt.date.today() - as_of).days
+    if calendar_stale_days > 4:
+        logger.warning("数据偏旧：最新交易日 %s 距今天 %d 天（可能遇休市或数据未更新）", as_of, calendar_stale_days)
 
     # ---- 构建每个主题的 idx(价格序列) / dv(美元成交额序列) / breadth(系列) ----
     theme_series: Dict[str, dict] = {}
@@ -776,6 +930,23 @@ def main(argv: Optional[list] = None) -> int:
         {"name": "科技内部降风险", "score": round(float(de_risk_score), 2), "hint": f"转弱主题: {weak_count}/13"},
     ]
 
+    quality = {
+        "as_of": as_of.isoformat(),
+        "expected_as_of": expected.isoformat(),
+        "lag_days": lag_days,
+        "stale": bool(lag_days >= 1 or from_cache or session.get("incomplete_bar")),
+        "incomplete_bar": bool(session.get("incomplete_bar")),
+        # Date alignment gates actionability; cache alone is a freshness warning (stale) not a date miss.
+        "actionable": bool(session.get("actionable")) and lag_days == 0 and not bool(session.get("incomplete_bar")),
+        "non_actionable": not (bool(session.get("actionable")) and lag_days == 0 and not bool(session.get("incomplete_bar"))),
+        "actionability_reason": (
+            "stale_lag" if lag_days >= 1
+            else ("cache_fallback" if from_cache and session.get("actionable") else session.get("actionability_reason"))
+        ),
+        "reused_artifact": reused_artifact,
+        "session_reason": session.get("actionability_reason"),
+        "now_ny": session.get("now_ny"),
+    }
     payload = {
         "as_of": as_of.isoformat(),
         "run_date": dt.date.today().isoformat(),
@@ -790,6 +961,7 @@ def main(argv: Optional[list] = None) -> int:
         "attribution": attribution,
         "counts": {"weak": weak_count, "abs_down": abs_down_count},
         "data_source": {"from_cache": from_cache, "cache_used": bool(from_cache), "missing": missing},
+        "quality": quality,
     }
 
     json_path = report_dir / f"tech_rotation_{as_of.isoformat()}.json"
@@ -799,7 +971,11 @@ def main(argv: Optional[list] = None) -> int:
     md_path = report_dir / f"tech_rotation_{as_of.isoformat()}.md"
     md_path.write_text(md, encoding="utf-8")
     logger.info("wrote %s", md_path)
-    print(f"OK as_of={as_of} selected={sel['name']}({selected_score:.0f}) avg={avg_score:.1f} themes={len(themes_out)} -> {md_path.name}")
+    print(
+        f"OK as_of={as_of} expected={expected} lag_td={lag_days} stale={quality['stale']} "
+        f"actionable={quality['actionable']} selected={sel['name']}({selected_score:.0f}) "
+        f"avg={avg_score:.1f} themes={len(themes_out)} -> {md_path.name}"
+    )
     return 0
 
 
@@ -809,7 +985,20 @@ def build_markdown(p: dict, days_left: int, expired: bool) -> str:
     L.append(f"# 科技板块资金轮动观测机 v2.6.1r — 每日快照（headless 复刻）")
     L.append("")
     L.append(f"- 版本：{p['version']}（本地日频复刻，配方/阈值与 TV Pine 原版逐字一致）")
-    L.append(f"- 生成：{p['run_date']} · 数据锚点：{p['as_of']}（最新美国交易日）")
+    q = p.get("quality") or {}
+    exp = q.get("expected_as_of") or p.get("as_of")
+    lag = q.get("lag_days")
+    L.append(
+        f"- 生成：{p['run_date']} · 数据锚点：{p['as_of']}"
+        f" · expected：{exp} · lag_days：{lag if lag is not None else '—'}"
+        f" · stale：{'是' if q.get('stale') else '否'}"
+        f" · actionable：{'是' if q.get('actionable') else '否'}"
+    )
+    if q.get("non_actionable") or q.get("stale"):
+        L.append(
+            f"- ⚠️ **non_actionable/stale**：reason=`{q.get('actionability_reason')}`；"
+            "勿把陈旧 as_of 当最新可执行读数。"
+        )
     if expired:
         L.append(f"- ⚠️ **已过期**（有效期至 {EXP_TXT}）。")
     elif days_left <= 14:
