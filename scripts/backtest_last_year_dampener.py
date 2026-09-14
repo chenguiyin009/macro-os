@@ -11,14 +11,19 @@ real ``core.decision_kernel.decide`` TWICE per trading day:
   * dampened  : features WITH the real SOXX 20-day peak-to-trough drawdown -> the
                 merged C-grade microstructural dampener fires (== newest code live path)
 
-It then builds SOXX- and QQQ-proxy equity curves (budget = gross exposure to the
-daily return) and reports total return / max drawdown for both, plus dampener
-trigger counts. The 60-day warmup (ROC / z-score) is preserved by computing
-features on the FULL frame and slicing to the last year afterwards.
+It then builds SOXX- and QQQ-proxy equity curves. Default proxy is
+``budget * equity_ret`` with the residual (1-budget) earning **0%** — fine for
+relative baseline-vs-dampened comparisons, but it overstates absolute timing cost
+vs buy-and-hold (same issue as idle-cash=0% benchmarks). Pass ``--cash-ret bil``
+to put residual into a short-rate / BIL proxy so absolute metrics are fairer.
+
+The 60-day warmup (ROC / z-score) is preserved by computing features on the FULL
+frame and slicing to the last year afterwards.
 
 Window: 2025-07-18 .. 2026-07-17 (last ~1 year of trading days).
 
 Run:  python scripts/backtest_last_year_dampener.py
+      python scripts/backtest_last_year_dampener.py --cash-ret bil
 """
 from __future__ import annotations
 
@@ -130,7 +135,17 @@ def max_dd(nav: np.ndarray) -> float:
 
 
 def proxy_curve(budget: np.ndarray, ret: np.ndarray) -> np.ndarray:
+    """Residual (1-budget) earns 0% — relative dampener delta only."""
     return np.cumprod(1.0 + budget * ret)
+
+
+def proxy_curve_with_cash(
+    budget: np.ndarray, ret: np.ndarray, cash_ret: np.ndarray
+) -> np.ndarray:
+    """Blended: equity*budget + cash*(1-budget). Fairer for absolute vs buy-hold."""
+    b = np.asarray(budget, dtype=float)
+    daily = b * ret + (1.0 - b) * cash_ret
+    return np.cumprod(1.0 + daily)
 
 
 # Round-trip transaction cost per unit of portfolio turned over (bps). Applied to
@@ -141,19 +156,32 @@ def proxy_curve(budget: np.ndarray, ret: np.ndarray) -> np.ndarray:
 COST_BPS = 10.0
 
 
-def cost_adjusted_curve(budget: np.ndarray, ret: np.ndarray, cost_bps: float = COST_BPS) -> np.ndarray:
+def cost_adjusted_curve(
+    budget: np.ndarray,
+    ret: np.ndarray,
+    cost_bps: float = COST_BPS,
+    cash_ret=None,
+) -> np.ndarray:
     """Net NAV after per-day turnover cost. Turnover_t = |budget_t - budget_{t-1}|."""
     cost_rate = cost_bps / 10_000.0
     nav = np.empty(len(budget))
     nav[0] = 1.0
-    for t in range(1, len(budget)):
-        turnover = abs(budget[t] - budget[t - 1])
-        daily = budget[t] * ret[t] - turnover * cost_rate
-        nav[t] = nav[t - 1] * (1.0 + daily)
+    for i in range(1, len(budget)):
+        turnover = abs(budget[i] - budget[i - 1])
+        if cash_ret is None:
+            daily = budget[i] * ret[i] - turnover * cost_rate
+        else:
+            daily = (
+                budget[i] * ret[i]
+                + (1.0 - budget[i]) * cash_ret[i]
+                - turnover * cost_rate
+            )
+        nav[i] = nav[i - 1] * (1.0 + daily)
     return nav
 
 
-def main() -> None:
+def main(cash_ret_mode: str = "zero") -> None:
+    """cash_ret_mode: zero (default residual=0%) | bil (residual earns BIL-like short rate)."""
     # 1) Full feature frame (2024-10 -> 2026-07-17) preserves 60d warmup.
     frame = build_daily_feature_frame()
 
@@ -197,18 +225,51 @@ def main() -> None:
     # 4) Slice to the last year.
     ly = df[(df["_ts"] >= LAST_YEAR_START) & (df["_ts"] <= LAST_YEAR_END)].reset_index(drop=True)
 
-    # 5) Proxy equity curves (budget = gross exposure to the daily return).
+    # 5) Proxy equity curves.
+    # Default: residual (1-budget) earns 0% (relative dampener delta only).
+    # --cash-ret bil: residual earns BIL daily return (fairer absolute vs buy-hold).
     soxx_r = ly["soxx_ret"].values
     qqq_r = ly["qqq_ret"].values
-    base_soxx = proxy_curve(ly["base_budget"].values, soxx_r)
-    damp_soxx = proxy_curve(ly["damp_budget"].values, soxx_r)
-    base_qqq = proxy_curve(ly["base_budget"].values, qqq_r)
-    damp_qqq = proxy_curve(ly["damp_budget"].values, qqq_r)
-    # Cost-adjusted (apples-to-apples: both curves pay turnover on every budget change)
-    base_soxx_c = cost_adjusted_curve(ly["base_budget"].values, soxx_r)
-    damp_soxx_c = cost_adjusted_curve(ly["damp_budget"].values, soxx_r)
-    base_qqq_c = cost_adjusted_curve(ly["base_budget"].values, qqq_r)
-    damp_qqq_c = cost_adjusted_curve(ly["damp_budget"].values, qqq_r)
+    cash_r = None
+    if cash_ret_mode == "bil":
+        try:
+            import yfinance as yf
+            bil = yf.download(
+                "BIL",
+                start=str(ly["_ts"].iloc[0].date()),
+                end=str(ly["_ts"].iloc[-1].date() + pd.Timedelta(days=5)),
+                auto_adjust=True, progress=False, threads=False,
+            )
+            if isinstance(bil.columns, pd.MultiIndex):
+                bil = bil["Close"]
+            bil = bil.squeeze().reindex(ly["_ts"]).ffill().pct_change().fillna(0.0)
+            cash_r = bil.to_numpy(dtype=float)
+            print(f"[cash-ret] BIL residual enabled; mean daily={float(np.nanmean(cash_r)):.6f}")
+        except Exception as exc:  # noqa: BLE001
+            print(f"[cash-ret] BIL fetch failed ({exc}); falling back to zero residual")
+            cash_ret_mode = "zero"
+            cash_r = None
+
+    bb = ly["base_budget"].values
+    db = ly["damp_budget"].values
+    if cash_r is None:
+        base_soxx = proxy_curve(bb, soxx_r)
+        damp_soxx = proxy_curve(db, soxx_r)
+        base_qqq = proxy_curve(bb, qqq_r)
+        damp_qqq = proxy_curve(db, qqq_r)
+        base_soxx_c = cost_adjusted_curve(bb, soxx_r)
+        damp_soxx_c = cost_adjusted_curve(db, soxx_r)
+        base_qqq_c = cost_adjusted_curve(bb, qqq_r)
+        damp_qqq_c = cost_adjusted_curve(db, qqq_r)
+    else:
+        base_soxx = proxy_curve_with_cash(bb, soxx_r, cash_r)
+        damp_soxx = proxy_curve_with_cash(db, soxx_r, cash_r)
+        base_qqq = proxy_curve_with_cash(bb, qqq_r, cash_r)
+        damp_qqq = proxy_curve_with_cash(db, qqq_r, cash_r)
+        base_soxx_c = cost_adjusted_curve(bb, soxx_r, cash_ret=cash_r)
+        damp_soxx_c = cost_adjusted_curve(db, soxx_r, cash_ret=cash_r)
+        base_qqq_c = cost_adjusted_curve(bb, qqq_r, cash_ret=cash_r)
+        damp_qqq_c = cost_adjusted_curve(db, qqq_r, cash_ret=cash_r)
 
     def block(base_nav, damp_nav, base_nav_c, damp_nav_c):
         return {
@@ -239,6 +300,11 @@ def main() -> None:
         "trading_days": n,
         "code_version": "live kernel + C-grade tech dampener (-0.13/-0.10/-0.07 -> 0.35/0.50/0.65)",
         "cost_bps": COST_BPS,
+        "cash_ret_mode": cash_ret_mode,
+        "cash_ret_note": (
+            "residual (1-budget) earns 0%" if cash_ret_mode == "zero"
+            else "residual earns BIL daily return (blended absolute metrics)"
+        ),
         "risk_on_days": risk_on_days,
         "dampener_active_days": trig_days,
         "dampener_active_pct": round(100.0 * trig_days / max(1, n), 1),
@@ -327,4 +393,11 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument(
+        "--cash-ret", choices=("zero", "bil"), default="zero",
+        help="Residual (1-budget) return: zero (default) or bil short-rate proxy",
+    )
+    args = ap.parse_args()
+    main(cash_ret_mode=args.cash_ret)
