@@ -26,6 +26,8 @@ import datetime as dt
 import json
 import logging
 import os
+import random
+import time
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -65,7 +67,11 @@ HISTORY_BARS = 400  # 取足 350+ 以便所有 lookback（rel60/ma50/accel）稳
 # 本地行情缓存：加速 + 网络不可用时降级出报告
 CACHE_DIR = Path(__file__).resolve().parents[1] / "data" / "sector_price_cache"
 CACHE_MAX_BARS = 800          # 每标的缓存保留的最大条数
-FETCH_ATTEMPTS = 2            # 单标的拉取尝试次数（yfinance 偶发抖动）
+FETCH_ATTEMPTS = 2            # 单标的普通拉取尝试次数（yfinance 偶发抖动）
+FETCH_ATTEMPTS_FORCE = 5      # --force-refresh / 滞后重拉：更多次 + 退避
+FETCH_BACKOFF_BASE_SEC = 1.5  # 空结果/异常后指数退避起点
+FETCH_BACKOFF_CAP_SEC = 20.0
+FETCH_TICKER_GAP_SEC = 0.35   # 标的间间隔，降低 Yahoo 429 连撞
 # 诊断：连续广度影子分（仅对照，不进入主分数/状态判定）
 BREADTH_CONT_MAX = 25.0
 # 诊断：广度-流动背离告警阈值
@@ -118,24 +124,52 @@ def _ensure_proxy() -> None:
 
 
 # ===================== 阶段二：数据获取 =====================
+
+def _is_rate_limit_error(exc: BaseException) -> bool:
+    msg = str(exc).lower()
+    return any(tok in msg for tok in ("429", "rate limit", "too many requests", "quota"))
+
+
+def _backoff_sleep(attempt_idx: int, *, rateish: bool, code: str, attempts: int) -> None:
+    delay = min(FETCH_BACKOFF_CAP_SEC, FETCH_BACKOFF_BASE_SEC * (2 ** attempt_idx))
+    delay *= 0.8 + 0.4 * random.random()
+    if rateish:
+        logger.warning(
+            "download %s empty/throttled (attempt %d/%d), backoff %.1fs",
+            code, attempt_idx + 1, attempts, delay,
+        )
+    else:
+        logger.warning(
+            "download %s retry (attempt %d/%d), backoff %.1fs",
+            code, attempt_idx + 1, attempts, delay,
+        )
+    time.sleep(delay)
+
 def _download_close_vol(code: str, period: str = "2y",
                         attempts: int = FETCH_ATTEMPTS) -> Optional[Tuple[pd.Series, pd.Series]]:
-    """拉取单标的日线。yfinance 偶发失败（"possibly delisted" 误报 / 静默空数据），
-    因此默认重试一次；全部失败返回 None，由调用方决定降级或报错。"""
+    """拉取单标的日线。对空结果/429 做指数退避重试；全部失败返回 None。"""
     import yfinance as yf
     _ensure_proxy()
     raw = None
-    for i in range(max(1, attempts)):
+    last_exc: Optional[BaseException] = None
+    n = max(1, int(attempts))
+    for i in range(n):
+        last_exc = None
         try:
             raw = yf.download(code, period=period, auto_adjust=True, progress=False, threads=False)
         except Exception as exc:  # noqa: BLE001
-            logger.warning("download %s failed (attempt %d/%d): %s", code, i + 1, attempts, exc)
+            last_exc = exc
+            logger.warning("download %s failed (attempt %d/%d): %s", code, i + 1, n, exc)
             raw = None
         if raw is not None and not getattr(raw, "empty", True):
             break
-        if i + 1 < attempts:
-            logger.warning("download %s returned empty (attempt %d/%d), retrying", code, i + 1, attempts)
-            raw = None
+        if i + 1 >= n:
+            break
+        rateish = (last_exc is not None and _is_rate_limit_error(last_exc)) or (
+            raw is None or getattr(raw, "empty", True)
+        )
+        _backoff_sleep(i, rateish=rateish, code=code, attempts=n)
+        raw = None
     if raw is None or getattr(raw, "empty", True):
         return None
     cols = raw.columns
@@ -206,15 +240,18 @@ def _cache_write(key: str, close: pd.Series, vol: pd.Series) -> None:
 def load_data(force_refresh: bool = False) -> Tuple[Dict[str, Dict[str, pd.Series]], List[str], List[str]]:
     """返回 (data, missing_keys, from_cache_keys)。
 
-    - 每个标的先联网拉取（单次失败自动重试）；成功后回写本地缓存。
+    - 每个标的先联网拉取（失败退避重试）；成功后回写本地缓存。
+    - force_refresh=True 时用更多次尝试（历史 bug：曾误写成跳过联网）。
     - 拉取失败则回退本地缓存并计入 from_cache_keys；缓存也不可用才计入 missing_keys。
-    - 缓存仅用于加速与断网降级；联网成功时数据完全来自网络，读数不受缓存影响。
     """
     out: Dict[str, Dict[str, pd.Series]] = {}
     missing: List[str] = []
     from_cache: List[str] = []
-    for key, code in TICKERS.items():
-        res = None if force_refresh else _download_close_vol(code)
+    attempts = FETCH_ATTEMPTS_FORCE if force_refresh else FETCH_ATTEMPTS
+    for i, (key, code) in enumerate(TICKERS.items()):
+        if i:
+            time.sleep(FETCH_TICKER_GAP_SEC)
+        res = _download_close_vol(code, attempts=attempts)
         if res is None:
             cached = _cache_read(key)
             if cached is not None and len(cached) >= 60:
