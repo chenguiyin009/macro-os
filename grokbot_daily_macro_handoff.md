@@ -19,7 +19,8 @@
 | Python 3.10+ | 建 venv 即可 |
 | numpy / pandas / yfinance / akshare | `pip install numpy pandas yfinance akshare` |
 | cme-fedwatch（可选） | 思路观测旁证 Fed 腿：`pip install cme-fedwatch`；缺则 Fed 段 degraded，不编造 bp |
-| 网络 | FRED 直连（无需代理）；yfinance 需能访问 Yahoo 数据 |
+| TradingView 对照（默认） | 思路观测旁证自动拉 `CBOT:ZQU2027` close（scanner HTTP）；也可用 `ARTICLE_TV_PRICE=95.2` 或 `--tv-price` 注入 MCP 报价；`--no-tv-fetch` 可关网络 |
+| 网络 | FRED 直连（无需代理）；yfinance 需能访问 Yahoo 数据；TV scanner 直连（失败则 TV 列弃权） |
 | 工作目录 | 必须在仓库根（`macro-os/`）下运行；脚本靠 `parents[1]` 定位 `output/` 与 `config/` |
 
 ## 3. 代理开关（关键，避免卡死）
