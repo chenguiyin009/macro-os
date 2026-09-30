@@ -24,6 +24,15 @@ Fed 一年累计加息定价 bp：
 WTI / 10Y / T10YIE：复用 yfinance + FRED 公开 CSV，少加依赖。
 MOVE：TV-only，无开源代理 → null + abstain_reason（与冲击吸收同口径）。
 
+TV 对照（默认列，不进 min）：
+  对 ~1y Fed Funds 期货 `CBOT:ZQU2027` 做 TradingView 报价交叉校验。
+  优先 `--tv-price` / 环境变量 `ARTICLE_TV_PRICE`；否则轻量 HTTP 拉
+  `scanner.tradingview.com/futures/scan` close；失败则 status=
+  unavailable / rate_limited，字段置 null，**不阻断**主 CME 旁证。
+  公式：implied_rate = 100 - tv_price；
+  tv_1y_hike_bp = (implied - current_mid) * 100；
+  delta_bp = tv_1y_hike_bp - CME自算 bp。
+
 OUTPUT: output/article_macro_watch_<as_of>.{md,json}
 门槛文案（作者叙事线，未标定）：Fed 70/100/110 bp；油 90。
 --------------------------------------------------------------------------------
@@ -63,6 +72,11 @@ THRESHOLDS = {
     "wti_narrative_line": 90.0,
     "t10yie_mean_lookback_calendar_days": 1095,  # ~3y
 }
+
+# TradingView 1y Fed Funds future cross-check (旁证对照列；不进 combined min)
+TV_FF_SYMBOL_DEFAULT = "CBOT:ZQU2027"
+TV_SCANNER_URL = "https://scanner.tradingview.com/futures/scan"
+TV_SCANNER_TIMEOUT_SEC = 12
 
 
 def _ensure_proxy() -> None:
@@ -424,6 +438,170 @@ def move_abstain() -> Dict[str, Any]:
     }
 
 
+def _tv_empty(
+    *,
+    symbol: str,
+    status: str,
+    reason: Optional[str] = None,
+    source: Optional[str] = None,
+) -> Dict[str, Any]:
+    return {
+        "tv_symbol": symbol,
+        "tv_price": None,
+        "tv_implied_rate": None,
+        "tv_1y_hike_bp": None,
+        "delta_bp": None,
+        "cme_1y_hike_bp": None,
+        "current_mid_used": None,
+        "source": source,
+        "status": status,
+        "degraded_reason": reason,
+        "note": (
+            "TV 对照：implied=100-price；tv_1y_hike_bp=(implied-current_mid)*100；"
+            "delta_bp=tv−CME自算。不进合成 min。"
+        ),
+    }
+
+
+def _tv_compute_from_price(
+    *,
+    symbol: str,
+    price: float,
+    current_mid: Optional[float],
+    cme_bp: Optional[float],
+    source: str,
+) -> Dict[str, Any]:
+    """Build TV cross-check fields from a futures mid/close price."""
+    out = _tv_empty(symbol=symbol, status="ok", source=source)
+    out["tv_price"] = round(float(price), 4)
+    implied = 100.0 - float(price)
+    out["tv_implied_rate"] = round(implied, 4)
+    mid = float(current_mid) if current_mid is not None else None
+    out["current_mid_used"] = round(mid, 4) if mid is not None else None
+    out["cme_1y_hike_bp"] = (
+        round(float(cme_bp), 1) if isinstance(cme_bp, (int, float)) else None
+    )
+    if mid is None:
+        out["status"] = "unavailable"
+        out["degraded_reason"] = "current_mid missing; cannot convert TV price to hike bp"
+        return out
+    tv_bp = (implied - mid) * 100.0
+    out["tv_1y_hike_bp"] = round(tv_bp, 1)
+    if out["cme_1y_hike_bp"] is not None:
+        out["delta_bp"] = round(out["tv_1y_hike_bp"] - out["cme_1y_hike_bp"], 1)
+    return out
+
+
+def fetch_tv_scanner_close(symbol: str) -> Tuple[Optional[float], str, Optional[str]]:
+    """Lightweight TradingView futures scanner HTTP → (close, status, reason).
+
+    status: ok | unavailable | rate_limited
+    Never raises; never fabricates a price.
+    """
+    import urllib.error
+    import urllib.request
+
+    _ensure_proxy()
+    payload = json.dumps(
+        {
+            "symbols": {"tickers": [symbol], "query": {"types": []}},
+            "columns": ["close", "name", "description"],
+        }
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        TV_SCANNER_URL,
+        data=payload,
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": "macro-os-article-watch/1.0",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=TV_SCANNER_TIMEOUT_SEC) as resp:
+            body = resp.read().decode("utf-8", errors="replace")
+            code = getattr(resp, "status", 200) or 200
+    except urllib.error.HTTPError as exc:
+        if exc.code == 429:
+            return None, "rate_limited", f"TV scanner HTTP 429 for {symbol}"
+        return None, "unavailable", f"TV scanner HTTP {exc.code} for {symbol}: {exc.reason}"
+    except Exception as exc:  # noqa: BLE001
+        return None, "unavailable", f"TV scanner fetch failed: {exc}"
+
+    if code == 429:
+        return None, "rate_limited", f"TV scanner HTTP 429 for {symbol}"
+    try:
+        data = json.loads(body)
+    except Exception as exc:  # noqa: BLE001
+        return None, "unavailable", f"TV scanner JSON parse failed: {exc}"
+
+    rows = data.get("data") if isinstance(data, dict) else None
+    if not rows:
+        return None, "unavailable", f"TV scanner empty for {symbol}"
+    row = rows[0]
+    try:
+        close = row["d"][0]
+        if close is None:
+            return None, "unavailable", f"TV scanner close=null for {symbol}"
+        return float(close), "ok", None
+    except Exception as exc:  # noqa: BLE001
+        return None, "unavailable", f"TV scanner row parse failed: {exc}"
+
+
+def resolve_tv_crosscheck(
+    *,
+    symbol: str,
+    current_mid: Optional[float],
+    cme_bp: Optional[float],
+    tv_price_override: Optional[float] = None,
+    fetch_enabled: bool = True,
+) -> Dict[str, Any]:
+    """Resolve TV Fed Funds cross-check: CLI/env override → scanner HTTP → abstain."""
+    # 1) explicit override (CLI / env) — preferred for Grok Bot MCP handoff
+    if tv_price_override is not None:
+        try:
+            px = float(tv_price_override)
+        except (TypeError, ValueError):
+            return _tv_empty(
+                symbol=symbol,
+                status="unavailable",
+                reason=f"invalid tv_price override: {tv_price_override!r}",
+                source="cli:--tv-price",
+            )
+        return _tv_compute_from_price(
+            symbol=symbol,
+            price=px,
+            current_mid=current_mid,
+            cme_bp=cme_bp,
+            source="cli:--tv-price",
+        )
+
+    # 2) lightweight public scanner (default; no MCP required)
+    if fetch_enabled:
+        close, status, reason = fetch_tv_scanner_close(symbol)
+        if status == "ok" and close is not None:
+            return _tv_compute_from_price(
+                symbol=symbol,
+                price=close,
+                current_mid=current_mid,
+                cme_bp=cme_bp,
+                source="tradingview_scanner_http",
+            )
+        return _tv_empty(
+            symbol=symbol,
+            status=status,
+            reason=reason,
+            source="tradingview_scanner_http",
+        )
+
+    return _tv_empty(
+        symbol=symbol,
+        status="unavailable",
+        reason="TV fetch disabled (--no-tv-fetch) and no --tv-price",
+        source=None,
+    )
+
+
 def fed_alert_level(bp: Optional[float]) -> str:
     if bp is None:
         return "unavailable"
@@ -437,12 +615,25 @@ def fed_alert_level(bp: Optional[float]) -> str:
     return "calm"
 
 
-def build_payload(as_of: dt.date) -> Dict[str, Any]:
+def build_payload(
+    as_of: dt.date,
+    *,
+    tv_price: Optional[float] = None,
+    tv_symbol: str = TV_FF_SYMBOL_DEFAULT,
+    tv_fetch: bool = True,
+) -> Dict[str, Any]:
     fed = compute_fed_1y_hike_bp(as_of=as_of)
     wti = fetch_wti(as_of)
     dgs = fetch_dgs10(as_of)
     bei = fetch_t10yie(as_of)
     move = move_abstain()
+    tv = resolve_tv_crosscheck(
+        symbol=tv_symbol or TV_FF_SYMBOL_DEFAULT,
+        current_mid=fed.get("current_mid"),
+        cme_bp=fed.get("fed_1y_hike_bp"),
+        tv_price_override=tv_price,
+        fetch_enabled=tv_fetch,
+    )
 
     legs_ok = [
         fed.get("quality") == "ok",
@@ -538,6 +729,13 @@ def build_payload(as_of: dt.date) -> Dict[str, Any]:
         "move": move.get("move"),
         "move_detail": move,
         "abstain_reason": move.get("abstain_reason"),
+        # TV 对照列（默认字段；status=unavailable/rate_limited 时数值为 null）
+        "tv_symbol": tv.get("tv_symbol"),
+        "tv_price": tv.get("tv_price"),
+        "tv_implied_rate": tv.get("tv_implied_rate"),
+        "tv_1y_hike_bp": tv.get("tv_1y_hike_bp"),
+        "tv_delta_bp": tv.get("delta_bp"),
+        "tv_crosscheck": tv,
         "thresholds": thr,
         "fed_alert_level": lvl,
         "alerts": alerts,
@@ -582,6 +780,41 @@ def build_report(p: Dict[str, Any]) -> str:
         f"- **算法**: `{fed.get('algo_version')}` ｜ source=`{fed.get('source')}`"
     )
     L.append(f"- **偏差声明**: {fed.get('disclaimer')}")
+    L.append("")
+    L.append("## TV 对照（CBOT Fed Funds 期货）")
+    L.append("")
+    tv = p.get("tv_crosscheck") or {}
+    st = tv.get("status") or "unavailable"
+    L.append(f"- **tv_symbol**: `{tv.get('tv_symbol') or p.get('tv_symbol')}`")
+    if st == "ok" and tv.get("tv_price") is not None:
+        delta = tv.get("delta_bp")
+        delta_s = f"{delta:+.1f}" if isinstance(delta, (int, float)) else "n/a"
+        L.append(
+            f"- **tv_price**: {tv.get('tv_price')} ｜ "
+            f"implied={tv.get('tv_implied_rate')}% ｜ "
+            f"**tv_1y_hike_bp={tv.get('tv_1y_hike_bp')} bp** ｜ "
+            f"Δ vs CME自算 = **{delta_s} bp**"
+        )
+        L.append(
+            f"- **对照口径**: current_mid={tv.get('current_mid_used')}；"
+            f"CME自算={tv.get('cme_1y_hike_bp')} bp；"
+            f"source=`{tv.get('source')}`；status={st}"
+        )
+    else:
+        L.append(
+            f"- **tv_price / tv_1y_hike_bp**: null（status={st}"
+            + (f"；{tv.get('degraded_reason')}" if tv.get("degraded_reason") else "")
+            + "）"
+        )
+        L.append(
+            f"- **说明**: TV 对照失败不阻断 CME 旁证；"
+            f"可由 `--tv-price` / `ARTICLE_TV_PRICE` 注入，或依赖 scanner HTTP。"
+        )
+    L.append(
+        f"- **公式**: implied=100−price；"
+        f"tv_1y_hike_bp=(implied−current_mid)×100；delta=tv−CME。"
+        "本列不进合成 min。"
+    )
     L.append("")
     L.append("## WTI / 10Y / BEI / MOVE")
     L.append("")
@@ -640,6 +873,22 @@ def main(argv: Optional[list] = None) -> int:
         help="as_of YYYY-MM-DD (US session clamp); default=today UTC date",
     )
     ap.add_argument("--report-dir", default=str(DEFAULT_REPORT_DIR))
+    ap.add_argument(
+        "--tv-symbol",
+        default=os.environ.get("ARTICLE_TV_SYMBOL", TV_FF_SYMBOL_DEFAULT),
+        help=f"TV Fed Funds future symbol (default {TV_FF_SYMBOL_DEFAULT})",
+    )
+    ap.add_argument(
+        "--tv-price",
+        default=None,
+        help="Optional TV close/mid override (also ARTICLE_TV_PRICE). "
+        "When set, skips scanner HTTP. Typical handoff from TradingView MCP.",
+    )
+    ap.add_argument(
+        "--no-tv-fetch",
+        action="store_true",
+        help="Skip TradingView scanner HTTP (still accepts --tv-price / ARTICLE_TV_PRICE)",
+    )
     args = ap.parse_args(argv)
 
     if args.date:
@@ -651,8 +900,22 @@ def main(argv: Optional[list] = None) -> int:
     else:
         as_of = dt.datetime.now(dt.timezone.utc).date()
 
+    tv_price = None
+    raw_tv = args.tv_price if args.tv_price is not None else os.environ.get("ARTICLE_TV_PRICE")
+    if raw_tv is not None and str(raw_tv).strip() != "":
+        try:
+            tv_price = float(str(raw_tv).strip())
+        except ValueError:
+            logger.error("invalid --tv-price / ARTICLE_TV_PRICE %r", raw_tv)
+            return 2
+
     try:
-        payload = build_payload(as_of)
+        payload = build_payload(
+            as_of,
+            tv_price=tv_price,
+            tv_symbol=str(args.tv_symbol or TV_FF_SYMBOL_DEFAULT),
+            tv_fetch=not bool(args.no_tv_fetch),
+        )
     except Exception as exc:  # noqa: BLE001
         logger.error("build_payload failed: %s", exc)
         return 1

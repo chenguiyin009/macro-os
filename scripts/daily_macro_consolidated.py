@@ -1266,9 +1266,15 @@ def synthesize(
     # --- 思路观测旁证（文章叙事线，只报警，不进合成预算 / 不改 bias） ---
     article_cross = None
     if article:
+        tv = article.get("tv_crosscheck") or {}
         article_cross = {
             "fed_1y_hike_bp": article.get("fed_1y_hike_bp"),
             "fed_alert_level": article.get("fed_alert_level"),
+            "tv_symbol": article.get("tv_symbol") or tv.get("tv_symbol"),
+            "tv_price": article.get("tv_price") if article.get("tv_price") is not None else tv.get("tv_price"),
+            "tv_1y_hike_bp": article.get("tv_1y_hike_bp") if article.get("tv_1y_hike_bp") is not None else tv.get("tv_1y_hike_bp"),
+            "tv_delta_bp": article.get("tv_delta_bp") if article.get("tv_delta_bp") is not None else tv.get("delta_bp"),
+            "tv_status": tv.get("status"),
             "wti_last": article.get("wti_last"),
             "dgs10": article.get("dgs10"),
             "t10yie": article.get("t10yie"),
@@ -2387,6 +2393,30 @@ def build_report(
         )
         if fed.get("degraded"):
             L.append(f"- **Fed degraded**: {fed.get('degraded_reason')}")
+        tv = article.get("tv_crosscheck") or {}
+        tv_st = tv.get("status") or article.get("tv_status")
+        if tv or article.get("tv_symbol"):
+            if tv_st == "ok" and (tv.get("tv_price") is not None or article.get("tv_price") is not None):
+                delta = (
+                    article.get("tv_delta_bp")
+                    if article.get("tv_delta_bp") is not None
+                    else tv.get("delta_bp")
+                )
+                delta_s = f"{delta:+.1f}" if isinstance(delta, (int, float)) else "n/a"
+                L.append(
+                    f"- **TV对照**: `{tv.get('tv_symbol') or article.get('tv_symbol')}` "
+                    f"price={tv.get('tv_price') if tv.get('tv_price') is not None else article.get('tv_price')} → "
+                    f"tv_1y_hike_bp="
+                    f"{tv.get('tv_1y_hike_bp') if tv.get('tv_1y_hike_bp') is not None else article.get('tv_1y_hike_bp')} bp "
+                    f"（Δ vs CME自算 {delta_s} bp；source=`{tv.get('source')}`；status={tv_st}）"
+                )
+            else:
+                L.append(
+                    f"- **TV对照**: `{tv.get('tv_symbol') or article.get('tv_symbol') or 'CBOT:ZQU2027'}` "
+                    f"unavailable（status={tv_st or 'unavailable'}"
+                    + (f"；{tv.get('degraded_reason')}" if tv.get("degraded_reason") else "")
+                    + "）— 不阻断 CME 旁证"
+                )
         L.append(
             f"- **WTI**: {article.get('wti_last')} "
             f"（叙事线 {thr.get('wti_narrative_line', 90)}；"
