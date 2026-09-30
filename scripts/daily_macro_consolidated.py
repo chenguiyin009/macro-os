@@ -54,6 +54,7 @@ DENOM_SCRIPT = REPO_ROOT / "scripts" / "denominator_state_daily.py"
 NQ_SCRIPT = REPO_ROOT / "scripts" / "nq_driver_daily.py"
 SECTOR_SCRIPT = REPO_ROOT / "scripts" / "sector_rotation_daily.py"
 SHOCK_SCRIPT = REPO_ROOT / "scripts" / "shock_absorption_daily.py"
+ARTICLE_WATCH_SCRIPT = REPO_ROOT / "scripts" / "article_macro_watch_daily.py"
 
 _DATE_RE = re.compile(r"(20\d{2}-\d{2}-\d{2})")
 _CJK_RE = re.compile(r"[\u4e00-\u9fff]")
@@ -938,6 +939,72 @@ def ensure_shock(
     return None
 
 
+
+def ensure_article_watch(
+    report_dir: Path,
+    date_str: str,
+    no_run: bool,
+    allow_stale: bool,
+    max_lag_days: int,
+    warnings: List[str],
+    errors: List[str],
+) -> Optional[Dict[str, Any]]:
+    """Load/run 文章思路观测旁证 artifact (narrative cross-check).
+
+    只观察+报警，不进主状态机，**不参与** compute_combined_budget / 不改 denom_policy。
+    子脚本带 --date=report_date；更早日走 allow_stale 软兜底（与冲击吸收同策略）。
+    """
+    exact = report_dir / f"article_macro_watch_{date_str}.json"
+
+    def _load(path: Path) -> Optional[Dict[str, Any]]:
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"article_macro_watch json parse failed ({path.name}): {exc}")
+            return None
+
+    def _resolve(soft: bool) -> Optional[Path]:
+        p, _fb = resolve_artifact(
+            report_dir,
+            exact.name,
+            "article_macro_watch_*.json",
+            date_str,
+            allow_stale=soft,
+            max_lag_days=max_lag_days,
+            kind="article_macro_watch",
+            warnings=warnings,
+        )
+        return p
+
+    if no_run:
+        path = _resolve(allow_stale)
+        if path:
+            return _load(path)
+    else:
+        if ARTICLE_WATCH_SCRIPT.exists():
+            _run_script(
+                ARTICLE_WATCH_SCRIPT,
+                ["--date", date_str, "--report-dir", str(report_dir)],
+                errors,
+            )
+        else:
+            warnings.append("article_macro_watch script missing; load existing artifact only")
+        if exact.exists():
+            return _load(exact)
+        path = _resolve(allow_stale)
+        if path:
+            return _load(path)
+
+    soft_path = _resolve(True)
+    if soft_path is not None:
+        return _load(soft_path)
+
+    msg = "article_macro_watch unavailable"
+    logger.warning(msg)
+    warnings.append(msg)
+    return None
+
+
 def _busday_lag(as_of: str, expected: str) -> Optional[int]:
     """Trading-day lag of as_of behind expected.
 
@@ -1036,6 +1103,7 @@ def synthesize(
     nq: Optional[Dict] = None,
     nq_date: Optional[str] = None,
     shock: Optional[Dict] = None,
+    article: Optional[Dict] = None,
 ) -> Dict[str, Any]:
     cfg = cfg or _DEFAULT_CFG
     bands = cfg.get("tech_stress_bands") or _DEFAULT_CFG["tech_stress_bands"]
@@ -1195,6 +1263,23 @@ def synthesize(
         elif (s_frag >= 1 and denom_bias == "risk_off") or (s_frag == 0 and denom_bias in ("none", "risk_on")):
             shock_cross["agree"] = True
 
+    # --- 思路观测旁证（文章叙事线，只报警，不进合成预算 / 不改 bias） ---
+    article_cross = None
+    if article:
+        article_cross = {
+            "fed_1y_hike_bp": article.get("fed_1y_hike_bp"),
+            "fed_alert_level": article.get("fed_alert_level"),
+            "wti_last": article.get("wti_last"),
+            "dgs10": article.get("dgs10"),
+            "t10yie": article.get("t10yie"),
+            "move": article.get("move"),
+            "quality": article.get("quality"),
+            "alerts": list(article.get("alerts") or []),
+            "bound_to_combined_min": False,
+        }
+        for a in (article.get("alerts") or []):
+            divergences.append(f"思路观测旁证：{a}")
+
     if alignment == "数据降级":
         consistency, tone = "数据降级（方向未确认）", "数据不完整或主题陈旧：只陈述分工具读数，不合成一致叙事。"
     elif alignment == "共振":
@@ -1244,6 +1329,7 @@ def synthesize(
         "nq_dont_do": (nq_driver.get("dont_do") or (nq or {}).get("dont_do") if nq else ""),
         "nq_driver_mod": (nq_driver.get("driver_mod") if nq else None),
         "shock_absorption": shock_cross,
+        "article_macro_watch": article_cross,
     }
 
 
@@ -2136,6 +2222,7 @@ def build_report(
     nq: Optional[Dict[str, Any]] = None,
     sector: Optional[Dict[str, Any]] = None,
     shock: Optional[Dict[str, Any]] = None,
+    article: Optional[Dict[str, Any]] = None,
     advice: Optional[Dict[str, Any]] = None,
 ) -> str:
     L: List[str] = []
@@ -2281,6 +2368,55 @@ def build_report(
         )
     else:
         L.append("> 冲击吸收旁证未运行/不可用。")
+    L.append("")
+
+
+    # ②-c 思路观测旁证（文章叙事线 · 观察+报警 · 不进合成 min）
+    L.append("## ②-c 思路观测旁证（文章叙事线 · 观察+报警）")
+    L.append("")
+    if article:
+        fed = (article.get("fed") or {})
+        wti = (article.get("wti") or {})
+        vs = (article.get("t10yie_vs_mean") or {})
+        thr = (article.get("thresholds") or {})
+        L.append(
+            f"- **Fed 1y 加息定价**: {article.get('fed_1y_hike_bp')} bp "
+            f"（alert={article.get('fed_alert_level')}；"
+            f"锚点={(fed.get('meeting_anchor') or {}).get('date')}；"
+            f"algo=`{fed.get('algo_version')}`；quality={fed.get('quality')}）"
+        )
+        if fed.get("degraded"):
+            L.append(f"- **Fed degraded**: {fed.get('degraded_reason')}")
+        L.append(
+            f"- **WTI**: {article.get('wti_last')} "
+            f"（叙事线 {thr.get('wti_narrative_line', 90)}；"
+            f"{'过线' if wti.get('above_narrative_line') else '未过线'}；"
+            f"as_of={wti.get('as_of')}）"
+        )
+        L.append(
+            f"- **10Y (DGS10)**: {article.get('dgs10')}% "
+            f"（source={(article.get('rates_10y') or {}).get('source')}）"
+        )
+        L.append(
+            f"- **T10YIE**: {article.get('t10yie')}% ｜ vs 近年均值偏离 "
+            f"{vs.get('deviation_bp')} bp（mean={vs.get('mean')}）"
+        )
+        L.append(
+            f"- **MOVE**: null — 弃权 "
+            f"（{(article.get('move_detail') or {}).get('abstain_reason', 'TV-only')}）"
+        )
+        if article.get("alerts"):
+            L.append("- **报警**:")
+            for a in article["alerts"]:
+                L.append(f"  - ⚠ {a}")
+        L.append("")
+        L.append(
+            f"> 详见 `article_macro_watch_{article.get('as_of') or article.get('date')}.md` + `.json`。"
+            "本段为文章思路观测旁证，**不进**合成预算 min，不改 denom_policy / tight→0.35，不做第六腿。"
+            f"门槛：{(thr.get('copy') or '')}"
+        )
+    else:
+        L.append("> 思路观测旁证未运行/不可用。")
     L.append("")
 
     L.append("## ③ 主题状态机")
@@ -2595,6 +2731,7 @@ def build_json(
     nq: Optional[Dict[str, Any]] = None,
     sector: Optional[Dict[str, Any]] = None,
     shock: Optional[Dict[str, Any]] = None,
+    article: Optional[Dict[str, Any]] = None,
     rates: Optional[Dict[str, Any]] = None,
     ppo: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
@@ -2608,6 +2745,7 @@ def build_json(
             "nq_driver": synth.get("nq_date"),
             "sector_rotation": (sector or {}).get("as_of"),
             "shock_absorption": (shock or {}).get("date"),
+            "article_macro_watch": (article or {}).get("as_of") or (article or {}).get("date"),
         },
         "warnings": list(warnings or []),
         "errors": list(errors or []),
@@ -2634,6 +2772,7 @@ def build_json(
             "nq_state": synth.get("nq_state"),
             "nq_quality": synth.get("nq_quality"),
             "shock_absorption": synth.get("shock_absorption"),
+            "article_macro_watch": synth.get("article_macro_watch"),
             "incomplete_bar": synth.get("incomplete_bar"),
             "actionable": synth.get("actionable"),
             "non_actionable": synth.get("non_actionable"),
@@ -2652,6 +2791,7 @@ def build_json(
         "sentiment_shadow": sentiment,
         "sector_rotation": sector,
         "shock_absorption": shock,
+        "article_macro_watch": article,
     }
 
 
@@ -2685,6 +2825,7 @@ def main(argv: Optional[list] = None) -> int:
     parser.add_argument("--no-run-nq", action="store_true")
     parser.add_argument("--no-run-sector", action="store_true")
     parser.add_argument("--no-run-shock", action="store_true", help="skip 冲击吸收旁证脚本运行")
+    parser.add_argument("--no-run-article", action="store_true", help="skip 思路观测旁证脚本运行")
     parser.add_argument("--force-refresh", action="store_true", help="force re-run all observers")
     parser.add_argument(
         "--allow-stale",
@@ -2788,6 +2929,15 @@ def main(argv: Optional[list] = None) -> int:
         warnings=warnings,
         errors=errors,
     )
+    article = ensure_article_watch(
+        report_dir,
+        date_str,
+        args.no_run_article,
+        allow_stale=args.allow_stale,
+        max_lag_days=max_lag,
+        warnings=warnings,
+        errors=errors,
+    )
 
     denom = reject_lookahead_artifact(denom, date_str, kind="denominator", warnings=warnings)
     tech = reject_lookahead_artifact(tech, date_str, kind="tech_dampener", warnings=warnings)
@@ -2795,6 +2945,7 @@ def main(argv: Optional[list] = None) -> int:
     nq = reject_lookahead_artifact(nq, date_str, kind="nq_driver", warnings=warnings)
     sector = reject_lookahead_artifact(sector, date_str, kind="sector_rotation", warnings=warnings)
     shock = reject_lookahead_artifact(shock, date_str, kind="shock_absorption", warnings=warnings)
+    article = reject_lookahead_artifact(article, date_str, kind="article_macro_watch", warnings=warnings)
 
     denom_date = (denom or {}).get("date")
     tech_date = (tech or {}).get("date", date_str) if tech else None
@@ -2813,6 +2964,7 @@ def main(argv: Optional[list] = None) -> int:
         nq=nq,
         nq_date=nq_date,
         shock=shock,
+        article=article,
     )
     rates = build_rates_stress_from_denom(denom, cfg=cfg, warnings=warnings)
     prev_combined = _load_prev_combined(report_dir, date_str)
@@ -2900,6 +3052,7 @@ def main(argv: Optional[list] = None) -> int:
         nq=nq,
         sector=sector,
         shock=shock,
+        article=article,
         advice=advice,
     )
     payload = build_json(
@@ -2915,6 +3068,7 @@ def main(argv: Optional[list] = None) -> int:
         nq=nq,
         sector=sector,
         shock=shock,
+        article=article,
         rates=rates,
         ppo=ppo,
     )

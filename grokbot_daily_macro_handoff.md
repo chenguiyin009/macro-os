@@ -11,13 +11,14 @@
 4. **NQ 第四腿动因**（nq driver）— 纳指/日元/美元/比特币多空博弈
 → 合成四腿的**合成上限（combined_budget）**与**约束项（binding leg）**，输出 `output/daily_macro_<date>.{md,json}`。
 
-`daily_macro_consolidated.py` 会自动以 subprocess 调用上面四个子脚本（并可选跑板块轮动/冲击吸收旁证），统一汇总。
+`daily_macro_consolidated.py` 会自动以 subprocess 调用上面四个子脚本（并可选跑板块轮动/冲击吸收旁证/思路观测旁证 `article_macro_watch`），统一汇总。思路观测旁证只观察+报警，**永不**进入合成 min。
 
 ## 2. 前置依赖（grokbot 环境必须满足）
 | 依赖 | 说明 |
 |---|---|
 | Python 3.10+ | 建 venv 即可 |
 | numpy / pandas / yfinance / akshare | `pip install numpy pandas yfinance akshare` |
+| cme-fedwatch（可选） | 思路观测旁证 Fed 腿：`pip install cme-fedwatch`；缺则 Fed 段 degraded，不编造 bp |
 | 网络 | FRED 直连（无需代理）；yfinance 需能访问 Yahoo 数据 |
 | 工作目录 | 必须在仓库根（`macro-os/`）下运行；脚本靠 `parents[1]` 定位 `output/` 与 `config/` |
 
@@ -55,6 +56,7 @@ SECTOR_PROXY=off python scripts/daily_macro_consolidated.py --report-dir ./outpu
 ## 5. 输出文件
 - `output/daily_macro_<date>.md` + `.json`（主报告，含四腿明细与合成上限）
 - 子产物：`denominator_state_<date>.{md,json}` / `tech_drawdown_<date>.json` / `theme_state_machine_<date>.{md,json}` / `nq_driver_<date>.{md,json}`
+- 旁证：`shock_absorption_<date>.{md,json}` / `article_macro_watch_<date>.{md,json}`（不进合成 min）
 
 ## 6. 汇报口径（grokbot 跑完按此向用户汇报）
 读 `output/daily_macro_<date>.md` 与 `.json`，汇报：

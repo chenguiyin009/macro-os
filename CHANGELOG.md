@@ -1,5 +1,11 @@
 # Changelog
 
+
+## Unreleased
+
+### Added
+- `scripts/article_macro_watch_daily.py`：文章思路观测旁证（Fed 1y 加息定价开源自算 CME 结算、WTI/DGS10/T10YIE、MOVE 弃权）；晨报 `②-c` 挂载；**不进** `compute_combined_budget` / 不改 `denom_policy`。
+
 All notable changes to Macro OS are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),

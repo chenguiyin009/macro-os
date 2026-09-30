@@ -18,3 +18,6 @@ uvicorn>=0.22.0   # runtime/macro_core.py `__main__`: lazy import only when laun
 
 # --- test / verification ---
 pytest>=8.0,<10.0
+
+# --- optional daily observers (article_macro_watch Fed leg) ---
+cme-fedwatch>=0.2  # scripts/article_macro_watch_daily.py; degrade if absent (no fabricated bp)
