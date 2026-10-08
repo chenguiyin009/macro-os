@@ -230,50 +230,51 @@ def refresh_akshare_rates():
 
 
 def refresh_vix_yahoo():
-    """尾部补位 VIX：yfinance ^VIX 是 CBOE VIX 收盘指数的同口径源（实测
-    07-28/07-29 与 FRED VIXCLS 逐一吻合），通常比 FRED VIXCLS 早 1 天发布。
-    仅接受已收盘确认的交易日（date < today，排除今天的盘前/实时快照），
-    仅当 yfinance 末日 > FRED 缓存末日时合并写入 _vix_daily.csv（值列 VIXCLS）。
-    FRED 后续刷新会按日期去重 keep_last 覆盖，故 yahoo 只是抢先 1 天的过渡源。"""
-    try:
-        import yfinance as yf
-    except Exception:
-        logger.info("yfinance not installed -> skip VIX tail-fill")
-        return
-    try:
-        t = yf.Ticker("^VIX")
-        hist = t.history(period="14d", auto_adjust=False)
-        if hist is None or "Close" not in hist.columns:
-            logger.warning("yfinance ^VIX: no data"); return
-        s = hist["Close"].dropna()
-        if getattr(s.index, "tz", None) is not None:
-            s.index = s.index.tz_localize(None)
-        s.index = s.index.normalize()
-        today = datetime.now(timezone.utc).date()
-        s = s[s.index.date < today]  # 排除今天的实时/盘前快照，只用收盘确认日
-        if s.empty:
-            return
-        sub = s.rename("VIXCLS").reset_index()
-        sub.columns = ["observation_date", "VIXCLS"]
-        path = DATA_DIR / "_vix_daily.csv"
-        yf_last = sub["observation_date"].max().date()
-        cache_last = _last_date_in_cache(path)
-        if cache_last is not None and yf_last <= cache_last:
-            logger.info("vix yahoo cache fresh (last %s): skip", cache_last); return
-        if path.exists():
+    """尾部补位 VIX。只补 FRED 缓存还没有的完整收盘日，不改写更早的 VIXCLS。
+
+    yfinance 限流时走 30/60/120 退避，然后 TradingView、Stooq。失败只记日志。
+    """
+    path = DATA_DIR / "_vix_daily.csv"
+    existing = None
+    if path.exists():
+        try:
             old = pd.read_csv(path)
             old["observation_date"] = pd.to_datetime(old["observation_date"])
-            old_val = old.set_index("observation_date").iloc[:, 0].rename("VIXCLS")
-            merged = pd.concat([old_val.reset_index(), sub])
-            merged = merged.drop_duplicates(subset=["observation_date"], keep="last").sort_values("observation_date")
-            merged.columns = ["observation_date", "VIXCLS"]
-        else:
-            merged = sub.copy()
-            merged.columns = ["observation_date", "VIXCLS"]
-        merged.to_csv(path, index=False)
-        logger.info("vix yahoo tail-fill: _vix_daily.csv -> last %s", merged["observation_date"].iloc[-1].date())
+            old = old.set_index("observation_date").sort_index()
+            existing = pd.DataFrame({"Close": pd.to_numeric(old.iloc[:, 0], errors="coerce")})
+            existing["Volume"] = float("nan")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("vix cache read failed: %s", exc)
+            existing = None
+    try:
+        bs = _bar_sources()
+        merged, notes, source = bs.fetch_with_fallback(
+            "^VIX",
+            existing,
+            full_period="1mo",
+            min_bars=30,
+            overlap_days=14,
+            cached_mtime=(path.stat().st_mtime if path.exists() else None),
+        )
     except Exception as exc:  # noqa: BLE001
-        logger.warning("vix yahoo fetch failed: %s (skip)", exc)
+        logger.warning("vix tail-fill failed: %s (skip)", exc)
+        return
+    for note in notes:
+        logger.warning("vix: %s", note)
+    if merged is None or merged.empty:
+        return
+    if source in ("cache", "cache-stale") or existing is None and source == "none":
+        if source == "cache":
+            logger.info("vix cache fresh (last %s): skip", merged.index[-1].date())
+        return
+    if existing is not None and len(merged) == len(existing.dropna(subset=["Close"])):
+        # same length and cache-cover already returned earlier; a tail refresh of the
+        # same completed date still rewrites that one bar, which is intended.
+        pass
+    saved = merged["Close"].dropna().rename("VIXCLS").reset_index()
+    saved.columns = ["observation_date", "VIXCLS"]
+    saved.to_csv(path, index=False)
+    logger.info("vix tail-fill via %s: _vix_daily.csv -> last %s", source, saved["observation_date"].iloc[-1].date())
 
 
 def backfill_tips_via_spread():
@@ -330,38 +331,59 @@ def _load(csv_name, value_col):
     return df[value_col]
 
 
+def _bar_sources():
+    try:
+        import bar_sources as bs
+    except ImportError:
+        from scripts import bar_sources as bs
+    return bs
+
+
 def _fetch_yf(ticker, col, start, end):
+    """Confirmation equity series. Existing history is kept; only the recent gap is filled."""
     path = DATA_DIR / f"_eq_{col}.csv"
+    existing = None
     if path.exists():
         try:
             s = pd.read_csv(path)
             s["observation_date"] = pd.to_datetime(s["observation_date"])
             if getattr(s["observation_date"].dt, "tz", None) is not None:
                 s["observation_date"] = s["observation_date"].dt.tz_localize(None)
-            last = s["observation_date"].max().date()
-            age = (datetime.now(timezone.utc).date() - last).days
-            if age <= 7:
-                logger.info("yf cache fresh (last %s, %dd): %s", last, age, ticker)
-                return s.set_index("observation_date")["close"]
+            s = s.set_index("observation_date").sort_index()
+            value_col = "close" if "close" in s.columns else s.columns[0]
+            existing = pd.DataFrame({"Close": pd.to_numeric(s[value_col], errors="coerce")})
+            existing["Volume"] = float("nan")
         except Exception:  # noqa: BLE001
-            pass
+            existing = None
+    bs = _bar_sources()
+    hist_start = None
     try:
-        import yfinance as yf
-        t = yf.Ticker(ticker)
-        hist = t.history(start=start, end=end, auto_adjust=True)
-        if hist is None or "Close" not in hist.columns or hist["Close"].dropna().empty:
-            logger.warning("yfinance %s: no data", ticker)
-            return None
-        close = hist["Close"]
-        if getattr(close.index, "tz", None) is not None:
-            close = close.tz_localize(None)
-        saved = close.rename("close").reset_index()
+        hist_start = dt.date.fromisoformat(str(start)[:10])
+    except Exception:  # noqa: BLE001
+        hist_start = None
+    merged, notes, source = bs.fetch_with_fallback(
+        ticker,
+        existing,
+        history_start=hist_start,
+        full_period="5y",
+        min_bars=60,
+        overlap_days=10,
+        cached_mtime=(path.stat().st_mtime if path.exists() else None),
+    )
+    for note in notes:
+        logger.warning("yf %s: %s", ticker, note)
+    if merged is None or merged.empty:
+        if existing is not None and len(existing):
+            return existing["Close"].dropna()
+        return None
+    if source not in ("cache", "cache-stale"):
+        saved = merged["Close"].dropna().rename("close").reset_index()
         saved.columns = ["observation_date", "close"]
         saved.to_csv(path, index=False)
-        return close
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("yfinance fetch %s failed: %s", ticker, exc)
-        return None
+        logger.info("yf %s via %s -> last %s", ticker, source, saved["observation_date"].iloc[-1].date())
+    else:
+        logger.info("yf cache %s (%s)", source, ticker)
+    return merged["Close"].dropna()
 
 
 def build_frame(prepend_start: str, equity_end: str):

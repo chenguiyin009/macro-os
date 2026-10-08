@@ -184,87 +184,36 @@ def _ensure_proxy() -> None:
         pass
 
 
-def _download_close(ticker: str, period: str = "2y", retries: int = 3) -> Optional[pd.Series]:
+
+def _bar_sources():
     try:
-        import yfinance as yf
-    except Exception as exc:
-        logger.warning("yfinance import failed: %s", exc)
+        import bar_sources as bs
+    except ImportError:
+        from scripts import bar_sources as bs
+    return bs
+
+
+def _cache_frame(series):
+    if series is None or len(series) == 0:
         return None
-    last_err: Any = None
-    for attempt in range(1, retries + 1):
-        try:
-            _ensure_proxy()
-            raw = yf.download(ticker, period=period, auto_adjust=True, progress=False, threads=False)
-        except Exception as exc:  # transient network / rate-limit
-            last_err = exc
-            logger.warning("download %s attempt %d/%d failed: %s", ticker, attempt, retries, exc)
-            if attempt < retries:
-                time.sleep(2 * attempt)
-            continue
-        if raw is None or getattr(raw, "empty", True):
-            last_err = "empty payload"
-            logger.warning("download %s attempt %d/%d returned empty", ticker, attempt, retries)
-            if attempt < retries:
-                time.sleep(2 * attempt)
-            continue
-        try:
-            cols = raw.columns
-            if getattr(cols, "nlevels", 1) > 1:
-                # yfinance 1.x: MultiIndex (field=level0, ticker=level1)
-                if ("Close", ticker) in cols:
-                    close = raw[("Close", ticker)]
-                elif (ticker, "Close") in cols:
-                    close = raw[(ticker, "Close")]
-                elif "Close" in cols.get_level_values(0):
-                    cd = raw.xs("Close", axis=1, level=0)
-                    close = cd[ticker] if ticker in cd.columns else cd.iloc[:, 0]
-                else:
-                    close = None
-            else:
-                close = raw["Close"] if "Close" in cols else (raw[ticker] if ticker in cols else None)
-            if close is None:
-                last_err = "no Close column"
-                if attempt < retries:
-                    time.sleep(2 * attempt)
-                continue
-            s = pd.to_numeric(close, errors="coerce").dropna()
-            if len(s) < 30:
-                last_err = f"too short ({len(s)})"
-                if attempt < retries:
-                    time.sleep(2 * attempt)
-                continue
-            return s
-        except Exception as exc:  # noqa: BLE001
-            last_err = exc
-            logger.warning("parse %s attempt %d/%d failed: %s", ticker, attempt, retries, exc)
-            if attempt < retries:
-                time.sleep(2 * attempt)
-            continue
-    if last_err is not None:
-        logger.warning("download %s all %d attempts failed: %s", ticker, retries, last_err)
-    return None
+    df = pd.DataFrame({"Close": pd.to_numeric(series, errors="coerce")})
+    df["Volume"] = float("nan")
+    return df
 
 
-def _read_cache(ticker: str, max_age_seconds: int):
-    """返回 (series, last_date)，仅当缓存文件在 max_age_seconds 之内。
-
-    调用方用 last_date 判断缓存是否已覆盖「最新已完成美股会话」——而非仅看
-    文件 mtime。否则会出现「今天写的文件、但数据是 T-2」被当成新鲜而永不刷新。
-    """
+def _read_any_cache(ticker: str):
+    """Read the close cache regardless of mtime so a later run can append, not replace."""
     p = CACHE_DIR / f"{ticker}.csv"
     if not p.exists():
         return None
     try:
-        if dt.datetime.now().timestamp() - p.stat().st_mtime > max_age_seconds:
-            return None
         df = pd.read_csv(p, index_col=0, parse_dates=True)
         if "Close" not in df.columns:
             return None
         s = pd.to_numeric(df["Close"], errors="coerce").dropna()
         if len(s) < 30:
             return None
-        last_date = pd.Timestamp(s.index[-1]).date()
-        return s, last_date
+        return s
     except Exception:
         return None
 
@@ -283,40 +232,42 @@ def load_closes(
 ) -> Dict[str, pd.Series]:
     """抓取收盘价。
 
-    健壮性策略（防止盘前自动化因 yfinance 瞬态失败而整体缺失主题腿）：
-      1) 优先用覆盖「最新已完成美股会话」的鲜活缓存（按数据日期判定，非文件 mtime）；
-      2) 否则实时抓取（含重试）；
-      3) 实时仍失败 → 用 <=3天 的陈旧缓存兜底（总比整腿 missing 好）；
-      4) 都失败 → 该品种缺失，记 warning。
+    已有历史只补最近几天。缓存覆盖完整收盘日则不联网。
+    yfinance 限流后退避 30/60/120，再试 TradingView、Stooq，只填缺口。
+    全部失败时才用磁盘上的旧序列，避免整腿缺失。TV 429 不阻断。
     """
+    bs = _bar_sources()
+    bs.reset_yf_circuit()
     closes: Dict[str, pd.Series] = {}
-    completed = last_completed_equity_session()
     for key, yf_tkr, _, label in SYMBOLS:
+        cached = _read_any_cache(yf_tkr)
+        cpath = CACHE_DIR / f"{yf_tkr}.csv"
+        merged, notes, source = bs.fetch_with_fallback(
+            yf_tkr,
+            _cache_frame(cached),
+            full_period="2y",
+            min_bars=30,
+            force_refresh=force_refresh,
+            cached_mtime=(cpath.stat().st_mtime if cpath.exists() else None),
+        )
+        for note in notes:
+            logger.warning("%s (%s): %s", label, yf_tkr, note)
         s = None
-        if not force_refresh:
-            cached = _read_cache(yf_tkr, max_age_seconds=86400)
-            if cached is not None:
-                cs, cdate = cached
-                # 缓存须覆盖最新已完成美股会话才算新鲜；否则仍去实时抓取。
-                # 修复：旧逻辑只看文件 mtime(<1天)，会让「今天写但数据是 T-2」的
-                # 缓存被当成新鲜而永远不刷新，导致盘前自动化卡在 T-2、主题腿缺失。
-                if cdate >= completed:
-                    s = cs
-        if s is None:
-            s = _download_close(yf_tkr)
-            if s is not None:
+        if merged is not None and len(merged) >= 30:
+            s = merged["Close"].dropna()
+            s.name = yf_tkr
+            if source not in ("cache", "cache-stale"):
                 _write_cache(yf_tkr, s)
-        if s is None and not force_refresh:
-            # 实时抓取失败 → 陈旧缓存兜底（<=3天），避免整腿 missing
-            cached = _read_cache(yf_tkr, max_age_seconds=stale_cache_max_age)
-            if cached is not None:
-                s = cached[0]
-                logger.warning("实时抓取失败，使用陈旧缓存(<=3天)兜底: %s (%s)", label, yf_tkr)
+            elif source == "cache-stale":
+                logger.warning("实时抓取失败，使用已有缓存兜底: %s (%s)", label, yf_tkr)
+        elif cached is not None and not force_refresh:
+            s = cached
+            logger.warning("实时抓取失败，使用陈旧缓存兜底: %s (%s)", label, yf_tkr)
         if s is None:
             logger.warning("无数据: %s (%s)", label, yf_tkr)
         else:
             closes[key] = s
-            logger.info("已获取 %s (%s): %d 根", label, yf_tkr, len(s))
+            logger.info("已获取 %s (%s) via %s: %d 根", label, yf_tkr, source, len(s))
     if len(closes) < len(SYMBOLS):
         logger.warning("部分品种缺失数据（%d/%d），结果可能偏差", len(closes), len(SYMBOLS))
     return closes

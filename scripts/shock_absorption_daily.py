@@ -109,55 +109,84 @@ def _ensure_proxy() -> None:
         pass
 
 
-def _download_close(ticker: str, period: str = "3y") -> Optional[pd.Series]:
-    """拉取单标的日线收盘，防御式 MultiIndex 解析 + 数值清洗 + 最少样本门槛。"""
-    import yfinance as yf
-    _ensure_proxy()
+
+SHOCK_CACHE_DIR = REPO_ROOT / "data" / "cache" / "shock_absorption"
+
+
+def _bar_sources():
     try:
-        raw = yf.download(ticker, period=period, auto_adjust=True,
-                          progress=False, threads=False)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("yfinance download failed %s: %s", ticker, exc)
+        import bar_sources as bs
+    except ImportError:
+        from scripts import bar_sources as bs
+    return bs
+
+
+def _shock_cache_path(ticker: str) -> Path:
+    safe = ticker.replace("=", "_").replace("^", "")
+    return SHOCK_CACHE_DIR / f"{safe}.csv"
+
+
+def _read_shock_cache(ticker: str) -> Optional[pd.DataFrame]:
+    p = _shock_cache_path(ticker)
+    if not p.exists():
         return None
-    if raw is None or getattr(raw, "empty", True):
-        logger.warning("yfinance empty: %s", ticker)
-        return None
-    cols = raw.columns
-    close = None
-    if getattr(cols, "nlevels", 1) > 1:
-        if ("Close", ticker) in cols:
-            close = raw[("Close", ticker)]
-        elif (ticker, "Close") in cols:
-            close = raw[(ticker, "Close")]
-        elif "Close" in cols.get_level_values(0):
-            cd = raw.xs("Close", axis=1, level=0)
-            close = cd[ticker] if ticker in cd.columns else cd.iloc[:, 0]
-        else:
+    try:
+        df = pd.read_csv(p, parse_dates=["Date"])
+        if df.empty or "Close" not in df.columns:
             return None
-    else:
-        close = raw["Close"] if "Close" in cols else (raw[ticker] if ticker in cols else None)
-    if close is None:
+        df = df.set_index("Date").sort_index()
+        if "Volume" not in df.columns:
+            df["Volume"] = float("nan")
+        return df[["Close", "Volume"]]
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("shock cache read %s failed: %s", ticker, exc)
         return None
-    s = pd.to_numeric(close, errors="coerce").dropna()
-    s.index = pd.to_datetime(s.index).normalize()
-    return s if len(s) >= 60 else None
+
+
+def _write_shock_cache(ticker: str, frame: pd.DataFrame) -> None:
+    try:
+        SHOCK_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        out = frame[["Close"]].copy()
+        out = out[out["Close"].notna()].sort_index()
+        out.index.name = "Date"
+        target = _shock_cache_path(ticker)
+        tmp = target.with_suffix(".csv.tmp")
+        out.to_csv(tmp, encoding="utf-8")
+        tmp.replace(target)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("shock cache write %s failed: %s", ticker, exc)
 
 
 def fetch_closes(period: str = "3y") -> Dict[str, pd.Series]:
+    """已有缓存只补最近几天。失败则 TV -> Stooq，不覆盖更早的好数据。"""
+    bs = _bar_sources()
+    bs.reset_yf_circuit()
     closes: Dict[str, pd.Series] = {}
     for key, code in SYMBOL_MAP.items():
-        s = _download_close(code, period=period)
-        if s is not None:
-            closes[key] = s
-            logger.info("fetched %s (%s): %d bars", key, code, len(s))
-        else:
+        cached = _read_shock_cache(code)
+        cpath = _shock_cache_path(code)
+        merged, notes, source = bs.fetch_with_fallback(
+            code,
+            cached,
+            full_period=period,
+            min_bars=60,
+            force_refresh=False,
+            cached_mtime=(cpath.stat().st_mtime if cpath.exists() else None),
+        )
+        for note in notes:
+            logger.warning("%s (%s): %s", key, code, note)
+        if merged is None or len(merged) < 60:
             logger.warning("skip %s (%s): no data", key, code)
+            continue
+        if source not in ("cache", "cache-stale"):
+            _write_shock_cache(code, merged)
+        s = merged["Close"].dropna()
+        s.index = pd.to_datetime(s.index).normalize()
+        closes[key] = s
+        logger.info("fetched %s (%s) via %s: %d bars", key, code, source, len(s))
     return closes
 
 
-# --------------------------------------------------------------------------- #
-# 阶段三：向量化指标 (Pine -> Pandas)
-# --------------------------------------------------------------------------- #
 def chg_z(close: pd.Series, lb: int, z_len: int) -> Tuple[pd.Series, pd.Series]:
     """f_chgZ: 零心 z = roc / stdev(roc). 不减均值(防趋势期均值漂移误标)."""
     ret = close.pct_change(lb)

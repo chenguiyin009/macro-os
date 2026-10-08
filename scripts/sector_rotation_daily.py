@@ -118,122 +118,77 @@ def _ensure_proxy() -> None:
 
 
 # ===================== 阶段二：数据获取 =====================
-def _download_close_vol(code: str, period: str = "2y",
-                        attempts: int = FETCH_ATTEMPTS) -> Optional[Tuple[pd.Series, pd.Series]]:
-    """拉取单标的日线。yfinance 偶发失败（"possibly delisted" 误报 / 静默空数据），
-    因此默认重试一次；全部失败返回 None，由调用方决定降级或报错。"""
-    import yfinance as yf
-    _ensure_proxy()
-    raw = None
-    for i in range(max(1, attempts)):
-        try:
-            raw = yf.download(code, period=period, auto_adjust=True, progress=False, threads=False)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("download %s failed (attempt %d/%d): %s", code, i + 1, attempts, exc)
-            raw = None
-        if raw is not None and not getattr(raw, "empty", True):
-            break
-        if i + 1 < attempts:
-            logger.warning("download %s returned empty (attempt %d/%d), retrying", code, i + 1, attempts)
-            raw = None
-    if raw is None or getattr(raw, "empty", True):
-        return None
-    cols = raw.columns
-
-    def _field(field: str):
-        if getattr(cols, "nlevels", 1) > 1:
-            if (field, code) in cols:
-                return raw[(field, code)]
-            if (code, field) in cols:
-                return raw[(code, field)]
-            if field in cols.get_level_values(0):
-                cd = raw.xs(field, axis=1, level=0)
-                return cd[code] if code in cd.columns else (cd.iloc[:, 0] if not cd.empty else None)
-            return None
-        return raw[field] if field in cols else None
-
-    close = _field("Close")
-    vol = _field("Volume")
-    if close is None:
-        return None
-    close = pd.to_numeric(close, errors="coerce").dropna()
-    vol = pd.to_numeric(vol, errors="coerce") if vol is not None else pd.Series(dtype=float)
-    if len(close) < 60:
-        return None
-    return close, vol
 
 
-def _cache_path(key: str) -> Path:
-    return CACHE_DIR / f"{key}.csv"
-
-
-def _cache_read(key: str) -> Optional[pd.DataFrame]:
-    """读取本地缓存；返回 Date 索引、含 Close/Volume 的 DataFrame，不可用返回 None。"""
-    p = _cache_path(key)
-    if not p.exists():
-        return None
+def _bar_sources():
     try:
-        df = pd.read_csv(p, parse_dates=["Date"])
-        if df.empty or "Close" not in df.columns:
-            return None
-        df = df.set_index("Date").sort_index()
-        if "Volume" not in df.columns:
-            df["Volume"] = np.nan
-        return df[["Close", "Volume"]].astype(float)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("cache read %s failed: %s", key, exc)
-        return None
+        import bar_sources as bs
+    except ImportError:
+        from scripts import bar_sources as bs
+    return bs
 
 
-def _cache_write(key: str, close: pd.Series, vol: pd.Series) -> None:
-    """回写缓存（原子替换）。缓存失败不影响主流程，仅告警。"""
-    try:
-        CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        df = pd.DataFrame({"Close": pd.to_numeric(close, errors="coerce"),
-                           "Volume": pd.to_numeric(vol, errors="coerce")})
-        df = df[df["Close"].notna()].sort_index().tail(CACHE_MAX_BARS)
-        if df.empty:
-            return
-        df.index.name = "Date"
-        target = _cache_path(key)
-        tmp = target.with_suffix(".csv.tmp")
-        df.to_csv(tmp, encoding="utf-8")
-        tmp.replace(target)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("cache write %s failed: %s", key, exc)
+def load_data(force_refresh: bool = False):
+    """返回 (data, missing, from_cache)。
 
-
-def load_data(force_refresh: bool = False) -> Tuple[Dict[str, Dict[str, pd.Series]], List[str], List[str]]:
-    """返回 (data, missing_keys, from_cache_keys)。
-
-    - 每个标的先联网拉取（单次失败自动重试）；成功后回写本地缓存。
-    - 拉取失败则回退本地缓存并计入 from_cache_keys；缓存也不可用才计入 missing_keys。
-    - 缓存仅用于加速与断网降级；联网成功时数据完全来自网络，读数不受缓存影响。
+    缓存已覆盖最近一个完整美股收盘日则不再联网。
+    否则只补最近窗口（已有历史不整段重拉）：yfinance -> TradingView -> Stooq。
+    限流退避 30/60/120 秒，见 bar_sources。已有更早日期不被覆盖。
+    from_cache 只表示联网失败后的降级，不表示正常缓存命中。
     """
-    out: Dict[str, Dict[str, pd.Series]] = {}
-    missing: List[str] = []
-    from_cache: List[str] = []
+    bs = _bar_sources()
+    bs.reset_yf_circuit()
+    out = {}
+    missing = []
+    from_cache = []
     for key, code in TICKERS.items():
-        res = None if force_refresh else _download_close_vol(code)
-        if res is None:
-            cached = _cache_read(key)
+        cached = _cache_read(key)
+        cpath = _cache_path(key)
+        merged, notes, source = bs.fetch_with_fallback(
+            code,
+            cached,
+            full_period="2y",
+            min_bars=60,
+            force_refresh=force_refresh,
+            cached_mtime=(cpath.stat().st_mtime if cpath.exists() else None),
+        )
+        for note in notes:
+            logger.warning("%s (%s): %s", key, code, note)
+        usable = merged if (merged is not None and len(merged) >= 60) else None
+        if usable is None:
             if cached is not None and len(cached) >= 60:
                 out[key] = {"close": cached["Close"], "vol": cached["Volume"]}
                 from_cache.append(key)
-                logger.warning("network failed for %s (%s) — falling back to cache (%d bars, last %s)",
-                               key, code, len(cached), cached.index[-1].date())
+                logger.warning(
+                    "network failed for %s (%s) — falling back to cache (%d bars, last %s)",
+                    key, code, len(cached), cached.index[-1].date(),
+                )
             else:
                 missing.append(key)
                 logger.error("no data for %s (%s): network failed and no usable cache", key, code)
             continue
-        close, vol = res
-        _cache_write(key, close, vol)
-        out[key] = {"close": close, "vol": vol}
-        logger.info("fetched %s (%s): %d bars", key, code, len(close))
+        if source in ("cache", "cache-stale"):
+            out[key] = {"close": usable["Close"], "vol": usable["Volume"]}
+            if source == "cache-stale":
+                from_cache.append(key)
+                logger.warning(
+                    "stale cache %s (%s): %d bars, last %s",
+                    key, code, len(usable), usable.index[-1].date(),
+                )
+            else:
+                logger.info(
+                    "cache hit %s (%s): %d bars, last %s",
+                    key, code, len(usable), usable.index[-1].date(),
+                )
+            continue
+        _cache_write(key, usable["Close"], usable["Volume"])
+        out[key] = {"close": usable["Close"], "vol": usable["Volume"]}
+        logger.info(
+            "fetched %s (%s) via %s: %d bars, last %s",
+            key, code, source, len(usable), usable.index[-1].date(),
+        )
     return out, missing, from_cache
 
-
-# ===================== 阶段三：向量化指标 =====================
 def sma(s: pd.Series, n: int) -> pd.Series:
     return s.rolling(n).mean()
 

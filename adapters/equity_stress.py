@@ -143,6 +143,52 @@ def _write_cache(cache_path: Path, closes: List[float]) -> None:
         logger.warning("tech_drawdown cache write failed: %s", exc)
 
 
+def _dated_path_for(ticker: str) -> Path:
+    if ticker == DEFAULT_QQQ_TICKER:
+        return Path(__file__).resolve().parents[1] / "data" / "_tech_drawdown_qqq_dated.csv"
+    if ticker == DEFAULT_SOX_TICKER:
+        return DEFAULT_CACHE_DATED_PATH
+    safe = ticker.replace("=", "_").replace("^", "")
+    return Path(__file__).resolve().parents[1] / "data" / f"_yf_dated_{safe}.csv"
+
+
+def _yf_resilient_dated(ticker: str) -> Optional[List[tuple]]:
+    """Incremental yfinance, then TV, then Stooq. Does not replace older dated rows.
+
+    Used only when no test downloader is injected. Failures are logged and return None.
+    """
+    try:
+        from scripts import bar_sources as bs
+    except Exception as exc:  # pragma: no cover
+        logger.warning("bar_sources import failed: %s", exc)
+        return None
+    path = _dated_path_for(ticker)
+    existing = None
+    if path.exists():
+        series = _read_dated_cache(path, max_age_seconds=10 * 365 * 86400)
+        if series:
+            idx = pd.to_datetime([d for d, _ in series])
+            existing = pd.DataFrame(
+                {"Close": [c for _, c in series], "Volume": float("nan")},
+                index=idx,
+            )
+    merged, notes, source = bs.fetch_with_fallback(
+        ticker,
+        existing,
+        full_period="3mo",
+        min_bars=30,
+        cached_mtime=(path.stat().st_mtime if path.exists() else None),
+    )
+    for note in notes:
+        logger.warning("%s", note)
+    if merged is None or merged.empty:
+        return None
+    out = [(str(pd.Timestamp(i).date()), float(v)) for i, v in merged["Close"].dropna().items()]
+    if source not in ("cache", "cache-stale") and out:
+        _write_dated_cache(path, out)
+    return out or None
+
+
 def _yf_download(
     ticker: str,
     downloader: Optional[Callable[[Any], Any]] = None,
@@ -152,23 +198,11 @@ def _yf_download(
     yfinance is only imported on the real-download path (``downloader is None``);
     an injected downloader must work without yfinance installed (CI has no yfinance).
     """
+    if downloader is None:
+        series = _yf_resilient_dated(ticker)
+        return [c for _, c in series] if series else None
     try:
-        if downloader is not None:
-            raw = downloader(ticker)
-        else:
-            try:
-                import yfinance as yf  # local import keeps module light
-            except Exception as exc:  # pragma: no cover
-                logger.warning("yfinance import failed: %s", exc)
-                return None
-            _ensure_proxy()
-            raw = yf.download(
-                ticker,
-                period="3mo",
-                auto_adjust=True,
-                progress=False,
-                threads=False,
-            )
+        raw = downloader(ticker)
     except Exception as exc:
         logger.warning("SOXX yfinance download failed: %s", exc)
         return None
@@ -284,23 +318,10 @@ def _yf_download_dated(
     Mirrors ``_yf_download`` but preserves the date axis so callers can locate the
     drawdown trough and measure recovery/slope. Returns None on any failure.
     """
+    if downloader is None:
+        return _yf_resilient_dated(ticker)
     try:
-        if downloader is not None:
-            raw = downloader(ticker)
-        else:
-            try:
-                import yfinance as yf  # local import keeps module light
-            except Exception as exc:  # pragma: no cover
-                logger.warning("yfinance import failed: %s", exc)
-                return None
-            _ensure_proxy()
-            raw = yf.download(
-                ticker,
-                period="3mo",
-                auto_adjust=True,
-                progress=False,
-                threads=False,
-            )
+        raw = downloader(ticker)
     except Exception as exc:  # pragma: no cover
         logger.warning("SOXX dated yfinance download failed: %s", exc)
         return None

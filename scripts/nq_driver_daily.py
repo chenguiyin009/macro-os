@@ -167,54 +167,26 @@ def _ensure_proxy() -> None:
         os.environ.setdefault("HTTP_PROXY", DEFAULT_PROXY)
 
 
-def _download_close(ticker: str, period: str = "2y"):
+
+def _bar_sources():
     try:
-        import yfinance as yf
-        import pandas as pd
-    except Exception as exc:
-        logger.warning("yfinance/pandas import failed: %s", exc)
-        return None
-    _ensure_proxy()
-    try:
-        raw = yf.download(ticker, period=period, auto_adjust=True, progress=False, threads=False)
-    except Exception as exc:
-        logger.warning("download %s failed: %s", ticker, exc)
-        return None
-    if raw is None or getattr(raw, "empty", True):
-        return None
-    try:
-        cols = raw.columns
-        if getattr(cols, "nlevels", 1) > 1:
-            if ("Close", ticker) in cols:
-                close = raw[("Close", ticker)]
-            elif (ticker, "Close") in cols:
-                close = raw[(ticker, "Close")]
-            elif "Close" in cols.get_level_values(0):
-                cd = raw.xs("Close", axis=1, level=0)
-                close = cd[ticker] if ticker in cd.columns else cd.iloc[:, 0]
-            else:
-                return None
-        else:
-            close = raw["Close"] if "Close" in cols else None
-        if close is None:
-            return None
-        s = pd.to_numeric(close, errors="coerce").dropna()
-        s.name = ticker
-        return s if len(s) >= 40 else None
-    except Exception as exc:
-        logger.warning("parse %s failed: %s", ticker, exc)
-        return None
+        import bar_sources as bs
+    except ImportError:
+        from scripts import bar_sources as bs
+    return bs
 
 
-def _read_cache(ticker: str, max_age_seconds: int = 86400):
+def _safe_ticker(ticker: str) -> str:
+    return ticker.replace("=", "_").replace("^", "")
+
+
+def _read_any_cache(ticker: str):
     import pandas as pd
 
-    p = CACHE_DIR / f"{ticker.replace('=', '_').replace('^', '')}.csv"
+    p = CACHE_DIR / f"{_safe_ticker(ticker)}.csv"
     if not p.exists():
         return None
     try:
-        if dt.datetime.now().timestamp() - p.stat().st_mtime > max_age_seconds:
-            return None
         df = pd.read_csv(p, index_col=0, parse_dates=True)
         if "Close" not in df.columns:
             return None
@@ -224,30 +196,58 @@ def _read_cache(ticker: str, max_age_seconds: int = 86400):
         return None
 
 
+def _cache_frame(series):
+    import pandas as pd
+    if series is None or len(series) == 0:
+        return None
+    df = pd.DataFrame({"Close": pd.to_numeric(series, errors="coerce")})
+    df["Volume"] = float("nan")
+    return df
+
+
 def _write_cache(ticker: str, s) -> None:
     try:
         import pandas as pd
 
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        safe = ticker.replace("=", "_").replace("^", "")
-        pd.DataFrame({"Close": s}).to_csv(CACHE_DIR / f"{safe}.csv")
+        pd.DataFrame({"Close": s}).to_csv(CACHE_DIR / f"{_safe_ticker(ticker)}.csv")
     except Exception as exc:
         logger.warning("cache write %s failed: %s", ticker, exc)
 
 
 def load_closes(force_refresh: bool = False) -> Dict[str, Any]:
+    bs = _bar_sources()
+    bs.reset_yf_circuit()
     closes: Dict[str, Any] = {}
     for key, (tkr, label) in SYMBOLS.items():
-        s = None if force_refresh else _read_cache(tkr)
-        if s is None:
-            s = _download_close(tkr)
-            if s is not None:
+        cached = _read_any_cache(tkr)
+        cpath = CACHE_DIR / f"{_safe_ticker(tkr)}.csv"
+        merged, notes, source = bs.fetch_with_fallback(
+            tkr,
+            _cache_frame(cached),
+            full_period="2y",
+            min_bars=40,
+            force_refresh=force_refresh,
+            cached_mtime=(cpath.stat().st_mtime if cpath.exists() else None),
+        )
+        for note in notes:
+            logger.warning("%s (%s): %s", label, tkr, note)
+        s = None
+        if merged is not None and len(merged) >= 40:
+            s = merged["Close"].dropna()
+            s.name = tkr
+            if source not in ("cache", "cache-stale"):
                 _write_cache(tkr, s)
+            elif source == "cache-stale":
+                logger.warning("无新数据，使用已有缓存: %s (%s)", label, tkr)
+        elif cached is not None:
+            s = cached
+            logger.warning("抓取失败，使用已有缓存: %s (%s)", label, tkr)
         if s is None:
             logger.warning("无数据: %s (%s)", label, tkr)
         else:
             closes[key] = s
-            logger.info("已获取 %s (%s): %d 根", label, tkr, len(s))
+            logger.info("已获取 %s (%s) via %s: %d 根", label, tkr, source, len(s))
     return closes
 
 
