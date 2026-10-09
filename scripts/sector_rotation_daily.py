@@ -125,6 +125,47 @@ def _ensure_proxy() -> None:
 
 
 
+
+def _cache_path(key: str) -> Path:
+    return CACHE_DIR / f"{key}.csv"
+
+
+def _cache_read(key: str) -> Optional[pd.DataFrame]:
+    """读取本地缓存；返回 Date 索引、含 Close/Volume 的 DataFrame，不可用返回 None。"""
+    p = _cache_path(key)
+    if not p.exists():
+        return None
+    try:
+        df = pd.read_csv(p, parse_dates=["Date"])
+        if df.empty or "Close" not in df.columns:
+            return None
+        df = df.set_index("Date").sort_index()
+        if "Volume" not in df.columns:
+            df["Volume"] = np.nan
+        return df[["Close", "Volume"]].astype(float)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("cache read %s failed: %s", key, exc)
+        return None
+
+
+def _cache_write(key: str, close: pd.Series, vol: pd.Series) -> None:
+    """回写缓存（原子替换）。缓存失败不影响主流程，仅告警。"""
+    try:
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        df = pd.DataFrame({"Close": pd.to_numeric(close, errors="coerce"),
+                           "Volume": pd.to_numeric(vol, errors="coerce")})
+        df = df[df["Close"].notna()].sort_index().tail(CACHE_MAX_BARS)
+        if df.empty:
+            return
+        df.index.name = "Date"
+        target = _cache_path(key)
+        tmp = target.with_suffix(".csv.tmp")
+        df.to_csv(tmp, encoding="utf-8")
+        tmp.replace(target)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("cache write %s failed: %s", key, exc)
+
+
 def _bar_sources():
     try:
         import bar_sources as bs
