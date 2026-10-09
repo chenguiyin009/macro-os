@@ -34,7 +34,6 @@ import datetime as dt
 import json
 import logging
 import os
-import random
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -214,76 +213,7 @@ def _ensure_proxy() -> None:
 
 # ===================== 数据获取 =====================
 
-def _is_rate_limit_error(exc: BaseException) -> bool:
-    msg = str(exc).lower()
-    return any(tok in msg for tok in ("429", "rate limit", "too many requests", "quota"))
 
-
-def _backoff_sleep(attempt_idx: int, *, rateish: bool, code: str, attempts: int) -> None:
-    delay = min(FETCH_BACKOFF_CAP_SEC, FETCH_BACKOFF_BASE_SEC * (2 ** attempt_idx))
-    delay *= 0.8 + 0.4 * random.random()
-    if rateish:
-        logger.warning(
-            "download %s empty/throttled (attempt %d/%d), backoff %.1fs",
-            code, attempt_idx + 1, attempts, delay,
-        )
-    else:
-        logger.warning(
-            "download %s retry (attempt %d/%d), backoff %.1fs",
-            code, attempt_idx + 1, attempts, delay,
-        )
-    time.sleep(delay)
-
-def _download_close_vol(code: str, period: str = "2y",
-                        attempts: int = FETCH_ATTEMPTS) -> Optional[Tuple[pd.Series, pd.Series]]:
-    """拉取单标的日线。对空结果/429 做指数退避重试；全部失败返回 None。"""
-    import yfinance as yf
-    _ensure_proxy()
-    raw = None
-    last_exc: Optional[BaseException] = None
-    n = max(1, int(attempts))
-    for i in range(n):
-        last_exc = None
-        try:
-            raw = yf.download(code, period=period, auto_adjust=True, progress=False, threads=False)
-        except Exception as exc:  # noqa: BLE001
-            last_exc = exc
-            logger.warning("download %s failed (attempt %d/%d): %s", code, i + 1, n, exc)
-            raw = None
-        if raw is not None and not getattr(raw, "empty", True):
-            break
-        if i + 1 >= n:
-            break
-        rateish = (last_exc is not None and _is_rate_limit_error(last_exc)) or (
-            raw is None or getattr(raw, "empty", True)
-        )
-        _backoff_sleep(i, rateish=rateish, code=code, attempts=n)
-        raw = None
-    if raw is None or getattr(raw, "empty", True):
-        return None
-    cols = raw.columns
-
-    def _field(field: str):
-        if getattr(cols, "nlevels", 1) > 1:
-            if (field, code) in cols:
-                return raw[(field, code)]
-            if (code, field) in cols:
-                return raw[(code, field)]
-            if field in cols.get_level_values(0):
-                cd = raw.xs(field, axis=1, level=0)
-                return cd[code] if code in cd.columns else (cd.iloc[:, 0] if not cd.empty else None)
-            return None
-        return raw[field] if field in cols else None
-
-    close = _field("Close")
-    vol = _field("Volume")
-    if close is None:
-        return None
-    close = pd.to_numeric(close, errors="coerce").dropna()
-    vol = pd.to_numeric(vol, errors="coerce") if vol is not None else pd.Series(dtype=float)
-    if len(close) < 60:
-        return None
-    return close, vol
 
 
 def _cache_path(key: str) -> Path:
@@ -324,39 +254,80 @@ def _cache_write(key: str, close: pd.Series, vol: pd.Series) -> None:
         logger.warning("cache write %s failed: %s", key, exc)
 
 
-def load_data(force_refresh: bool = False):
-    """返回 (data_code: Dict[code, {close,vol}], missing: List[code], from_cache: List[code])。
+def _bar_sources():
+    try:
+        import bar_sources as bs
+    except ImportError:
+        from scripts import bar_sources as bs
+    return bs
 
-    force_refresh=True 用更多次退避重试强制联网（勿再跳过 download）。
+
+def load_data(force_refresh: bool = False):
+    """返回 (data, missing, from_cache)。
+
+    缓存已覆盖最近一个完整美股收盘日则不再联网。
+    否则只补最近窗口（已有历史不整段重拉）：yfinance -> TradingView -> Stooq。
+    限流退避 30/60/120 秒，见 bar_sources。已有更早日期不被覆盖。
+    from_cache 只表示联网失败后的降级，不表示正常缓存命中。
     """
+    bs = _bar_sources()
+    bs.reset_yf_circuit()
+    out = {}
+    missing = []
+    from_cache = []
     needed = [QQQ_CODE] + list(ETF_MAP.values()) + [c for v in BASKETS.values() for c in v]
-    out: Dict[str, Dict[str, pd.Series]] = {}
-    missing: List[str] = []
-    from_cache: List[str] = []
-    attempts = FETCH_ATTEMPTS_FORCE if force_refresh else FETCH_ATTEMPTS
-    for i, code in enumerate(needed):
-        if i:
-            time.sleep(FETCH_TICKER_GAP_SEC)
-        res = _download_close_vol(code, attempts=attempts)
-        if res is None:
-            cached = _cache_read(code)
+    seen = []
+    for code in needed:
+        if code in seen:
+            continue
+        seen.append(code)
+        cached = _cache_read(code)
+        cpath = _cache_path(code)
+        merged, notes, source = bs.fetch_with_fallback(
+            code,
+            cached,
+            full_period="2y",
+            min_bars=60,
+            force_refresh=force_refresh,
+            cached_mtime=(cpath.stat().st_mtime if cpath.exists() else None),
+        )
+        for note in notes:
+            logger.warning("%s: %s", code, note)
+        usable = merged if (merged is not None and len(merged) >= 60) else None
+        if usable is None:
             if cached is not None and len(cached) >= 60:
                 out[code] = {"close": cached["Close"], "vol": cached["Volume"]}
                 from_cache.append(code)
-                logger.warning("network failed for %s — fallback cache (%d bars, last %s)",
-                               code, len(cached), cached.index[-1].date())
+                logger.warning(
+                    "network failed for %s — falling back to cache (%d bars, last %s)",
+                    code, len(cached), cached.index[-1].date(),
+                )
             else:
                 missing.append(code)
                 logger.error("no data for %s: network failed and no usable cache", code)
             continue
-        close, vol = res
-        _cache_write(code, close, vol)
-        out[code] = {"close": close, "vol": vol}
-        logger.info("fetched %s: %d bars", code, len(close))
+        if source in ("cache", "cache-stale"):
+            out[code] = {"close": usable["Close"], "vol": usable["Volume"]}
+            if source == "cache-stale":
+                from_cache.append(code)
+                logger.warning(
+                    "stale cache %s: %d bars, last %s",
+                    code, len(usable), usable.index[-1].date(),
+                )
+            else:
+                logger.info(
+                    "cache hit %s: %d bars, last %s",
+                    code, len(usable), usable.index[-1].date(),
+                )
+            continue
+        _cache_write(code, usable["Close"], usable["Volume"])
+        out[code] = {"close": usable["Close"], "vol": usable["Volume"]}
+        logger.info(
+            "fetched %s via %s: %d bars, last %s",
+            code, source, len(usable), usable.index[-1].date(),
+        )
     return out, missing, from_cache
 
-
-# ===================== 向量化指标 =====================
 def sma(s: pd.Series, n: int) -> pd.Series:
     return s.rolling(n).mean()
 
