@@ -49,7 +49,7 @@ TZ = ZoneInfo("Asia/Shanghai")
 
 CORE_TICKERS = [
     "SPY", "QQQ", "SMH", "IGV", "SKYY", "CIBR",
-    "XLE", "XLP", "XLU", "XLK", "SOXX",
+    "XLE", "XLP", "XLU", "XLK",
 ]
 
 
