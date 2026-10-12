@@ -503,8 +503,8 @@ def trend_text(code: int) -> str:
 
 
 def state_text(state: int) -> str:
-    return {3: "拥挤主升", 2: "确认进入", 1: "早期轮动", 0: "中性观察",
-            -1: "资金撤出", -2: "派发/撤出", 9: "无数据"}.get(state, "中性")
+    return {3: "拥挤主升", 2: "确认进入", 1: "早期轮动", 4: "分数够、动能不足",
+            0: "中性观察", -1: "资金撤出", -2: "派发/撤出", 9: "无数据"}.get(state, "中性")
 
 
 def reason_text(code: int) -> str:
@@ -513,18 +513,51 @@ def reason_text(code: int) -> str:
             11: "内部降风险", 12: "月/季再平衡", 13: "AI应用追赶", 99: "无数据"}.get(code, "中性")
 
 
-def state_from_score(score, over_ext, distribution, rel5, rel20) -> int:
-    if score is None or np.isnan(score):
+# 报告侧状态机阈值（Python 为准；少动 Pine）
+EARLY_SCORE_LO = 60.0          # 早期轮动分数下沿（含）
+EARLY_SCORE_HI = 75.0          # 确认进入下沿（含）；早期带为 [60, 75)
+REL5_EARLY_MIN = -0.02         # score∈[60,75) 时 rel5 须 >= 此值才标早期；更弱 → 态 4
+STATE_SCORE_OK_MOMENTUM_WEAK = 4  # 「分数够、动能不足」
+
+
+def state_from_score(score, over_ext, distribution, rel5, rel20, prev_score=None) -> int:
+    """主题状态机（报告权威口径）。
+
+    升档滞回（选实现简单且可测的一种，写进注释）：
+      - 升入「早期轮动」(1)：今日 score∈[60,75) 且 上一交易日 score>=60（连续 ≥2 日）。
+      - 从早期跌出：score<60 当日即降（不用降侧 55 滞回，便于单测）。
+    早期相对收益门控：score∈[60,75) 且 rel5 < -2% → 态 4「分数够、动能不足」，不标早期。
+    未满足 2 日连续升档时同归态 4（分数够、动能不足），而非静默中性。
+    保留：确认进入 score>=75；拥挤主升 over_ext∧score>=60（优先于早期门控）；
+          撤出 score<45 且 rel5<0 且 rel20<0。不改 trend/flow/vol 分数公式。
+    """
+    if score is None or (isinstance(score, float) and np.isnan(score)):
         return 9
     if distribution:
         return -2
-    if over_ext and score >= 60:
-        return 3
-    if score >= 75:
+    if over_ext and score >= EARLY_SCORE_LO:
+        return 3  # 拥挤主升优先级保留
+    if score >= EARLY_SCORE_HI:
         return 2
-    if score >= 60:
+    if score >= EARLY_SCORE_LO:
+        rel5_weak = (
+            rel5 is not None
+            and not (isinstance(rel5, float) and np.isnan(rel5))
+            and rel5 < REL5_EARLY_MIN
+        )
+        prev_ok = (
+            prev_score is not None
+            and not (isinstance(prev_score, float) and np.isnan(prev_score))
+            and prev_score >= EARLY_SCORE_LO
+        )
+        if rel5_weak or not prev_ok:
+            return STATE_SCORE_OK_MOMENTUM_WEAK
         return 1
-    if score < 45 and (rel5 is not None and not np.isnan(rel5) and rel5 < 0) and (rel20 is not None and not np.isnan(rel20) and rel20 < 0):
+    if (
+        score < 45
+        and (rel5 is not None and not (isinstance(rel5, float) and np.isnan(rel5)) and rel5 < 0)
+        and (rel20 is not None and not (isinstance(rel20, float) and np.isnan(rel20)) and rel20 < 0)
+    ):
         return -1
     return 0
 
@@ -554,9 +587,11 @@ def theme_reason(idv, state, score, rel5, rel20, abs5, beta_lift,
         return 7
     if state == 3:
         return 6
+    if state == STATE_SCORE_OK_MOMENTUM_WEAK:
+        return 0  # 分数够但未达早期（rel5/滞回门控）— 不作「早期轮动」原因
     if score is not None and not np.isnan(score) and score >= 75:
         return 1
-    if score is not None and not np.isnan(score) and score >= 60:
+    if score is not None and not np.isnan(score) and score >= 60 and state == 1:
         return 2
     if (abs5 is not None and not np.isnan(abs5) and abs5 < 0) and (rel5 is not None and not np.isnan(rel5) and rel5 > 0):
         return 10
@@ -877,7 +912,14 @@ def main(argv: Optional[list] = None) -> int:
     for idv, key, name, proxy in THEME_ORDER:
         s_ = sc[key]
         score = boost_score(s_["base_score"], boosts[key])
-        state = state_from_score(score, s_["over_ext"], s_["distribution"], s_["rel5"], s_["rel20"])
+        # 升档滞回用上一交易日同口径分数（base+今日 boost 近似；boost 为截面标量）
+        bs = theme_metrics[key]["base_score"]
+        prev_base = sval(bs.iloc[-2]) if len(bs) >= 2 else None
+        prev_score = boost_score(prev_base, boosts[key])
+        state = state_from_score(
+            score, s_["over_ext"], s_["distribution"], s_["rel5"], s_["rel20"],
+            prev_score=prev_score,
+        )
         seg = {"opt": opt_score, "net": net_score, "mem": mem_score, "infra": infra_score}.get(key, 0.0)
         reason = theme_reason(idv, state, score, s_["rel5"], s_["rel20"], s_["abs5"], s_["beta_lift"],
                               de_risk_score, pair_score, ai_app_score,
@@ -885,7 +927,7 @@ def main(argv: Optional[list] = None) -> int:
         final[key] = dict(id=idv, name=name, proxy=proxy, score=score, state=state, reason=reason,
                           rel5=s_["rel5"], rel20=s_["rel20"], rel60=s_["rel60"], abs5=s_["abs5"],
                           vol_r=s_["vol_r"], breadth=s_["breadth"], trend_code=s_["trend_code"],
-                          base_score=s_["base_score"])
+                          base_score=s_["base_score"], prev_score=prev_score)
 
     # ---- 整体状态（派生，仅用于汇报标题）----
     valid_scores = [final[k]["score"] for k in THEME_KEYS if final[k]["score"] is not None and not np.isnan(final[k]["score"])]
@@ -893,7 +935,8 @@ def main(argv: Optional[list] = None) -> int:
     n_confirm = sum(1 for k in THEME_KEYS if final[k]["state"] == 2)
     n_crowd = sum(1 for k in THEME_KEYS if final[k]["state"] == 3)
     n_withdraw = sum(1 for k in THEME_KEYS if final[k]["state"] == -1)
-    n_neutral = sum(1 for k in THEME_KEYS if final[k]["state"] == 0)
+    # 态 4「分数够、动能不足」计入中性观察桶（表内仍显示本态文案）
+    n_neutral = sum(1 for k in THEME_KEYS if final[k]["state"] in (0, STATE_SCORE_OK_MOMENTUM_WEAK))
     if avg_score >= 70:
         overall = "强势/确认轮动区"
     elif avg_score >= 60:
@@ -975,6 +1018,13 @@ def main(argv: Optional[list] = None) -> int:
         "counts": {"weak": weak_count, "abs_down": abs_down_count},
         "data_source": {"from_cache": from_cache, "cache_used": bool(from_cache), "missing": missing},
         "quality": quality,
+        "a_share_mapping": a_share_mapping_from_selected(
+            None if (selected_score is None or (isinstance(selected_score, float) and np.isnan(selected_score)))
+            else float(selected_score),
+            None if np.isnan(avg_score) else float(avg_score),
+            sel["rel5"],
+            int(sel["state"]),
+        ),
     }
 
     json_path = report_dir / f"tech_rotation_{as_of.isoformat()}.json"
@@ -990,6 +1040,68 @@ def main(argv: Optional[list] = None) -> int:
         f"avg={avg_score:.1f} themes={len(themes_out)} -> {md_path.name}"
     )
     return 0
+
+
+
+# ===================== 对A映射硬规则（报告稳定小节）=====================
+A_SHARE_AVG_LAG = 15.0  # selected_score <= avg - 15 → 半导强制降预期
+A_SHARE_FORBID_WHEN_LAGGING = ("重回中性", "可对照加仓")
+
+
+def a_share_mapping_from_selected(
+    selected_score,
+    avg_score,
+    selected_rel5,
+    selected_state_code,
+) -> dict:
+    """对A映射硬规则（以所选主题默认 SMH/半导体为准）。
+
+    - selected score <= avg-15 或 rel5<0 → 对A半导/芯片强制「降预期/谨慎」；
+      禁止「重回中性」「可对照加仓」；软件/云仍可写强，半导必须降级。
+    - 对A半导偏多：至少确认进入(state==2) 且 rel5>=0。
+    """
+    score_lag = (
+        selected_score is not None
+        and avg_score is not None
+        and not (isinstance(selected_score, float) and np.isnan(selected_score))
+        and not (isinstance(avg_score, float) and np.isnan(avg_score))
+        and selected_score <= (avg_score - A_SHARE_AVG_LAG)
+    )
+    rel5_neg = (
+        selected_rel5 is not None
+        and not (isinstance(selected_rel5, float) and np.isnan(selected_rel5))
+        and selected_rel5 < 0
+    )
+    force_downgrade = bool(score_lag or rel5_neg)
+    semi_bullish_ok = (
+        selected_state_code == 2
+        and selected_rel5 is not None
+        and not (isinstance(selected_rel5, float) and np.isnan(selected_rel5))
+        and selected_rel5 >= 0
+    )
+    if force_downgrade:
+        semi_stance = "降预期/谨慎"
+    elif semi_bullish_ok:
+        semi_stance = "可偏多（确认进入且 rel5>=0）"
+    else:
+        semi_stance = "中性对照（未达偏多门槛）"
+    triggers = []
+    if score_lag:
+        triggers.append(f"score<=avg-{A_SHARE_AVG_LAG:.0f}")
+    if rel5_neg:
+        triggers.append("rel5<0")
+    return {
+        "force_semi_downgrade": force_downgrade,
+        "semi_chip_stance": semi_stance,
+        "semi_bullish_ok": bool(semi_bullish_ok),
+        "triggers": triggers,
+        "forbid_phrases": list(A_SHARE_FORBID_WHEN_LAGGING) if force_downgrade else [],
+        "software_cloud_ok": True,  # 软件/云不因半导落后而强制降级
+        "rule_note": (
+            "所选主题落后均分≥15 或 5D相对为负 → 对A半导/芯片强制降预期/谨慎；"
+            "禁止「重回中性」「可对照加仓」；软件/云仍可写强。半导偏多须确认进入且 rel5>=0。"
+        ),
+    }
 
 
 def build_markdown(p: dict, days_left: int, expired: bool) -> str:
@@ -1065,6 +1177,34 @@ def build_markdown(p: dict, days_left: int, expired: bool) -> str:
     L.append(f"整体{ov['status']}：主题均分 ≈ {ov['avg_score']}；所选主题 {p['selected_theme']} {fmt_score(p['selected_theme_score'])} 为"
              + ("落后腿" if (p['selected_theme_score'] is not None and ov['avg_score'] is not None and p['selected_theme_score'] < ov['avg_score']) else "领先腿")
              + "，不宜视作全局轮动强度。")
+    L.append("")
+
+    # 四、对A映射（硬规则，稳定小节）
+    am = p.get("a_share_mapping")
+    if am is None:
+        ss = next(t for t in p["themes"] if t["name"] == p["selected_theme"])
+        am = a_share_mapping_from_selected(
+            p.get("selected_theme_score"), ov.get("avg_score"),
+            ss.get("rel5_pct"), ss.get("state_code"),
+        )
+    L.append("## 四、对A映射（硬规则）")
+    L.append("")
+    L.append(f"- **规则**：{am.get('rule_note', '')}")
+    L.append(
+        f"- **触发**：{'；'.join(am['triggers']) if am.get('triggers') else '无（未触发落后/负相对门控）'}"
+    )
+    L.append(f"- **对A半导/芯片**：{am['semi_chip_stance']}")
+    if am.get("force_semi_downgrade"):
+        L.append(
+            f"- **禁止措辞**：{'、'.join(am.get('forbid_phrases') or A_SHARE_FORBID_WHEN_LAGGING)}"
+            "（本小节已强制降预期，不得写「重回中性」或「可对照加仓」）。"
+        )
+        L.append("- **软件/云**：仍可写强；**半导必须降级**。")
+    else:
+        L.append(
+            f"- **半导偏多门槛**：确认进入且 rel5>=0 — 今日："
+            + ("满足" if am.get("semi_bullish_ok") else "不满足")
+        )
     L.append("")
     L.append("---")
     L.append("")
