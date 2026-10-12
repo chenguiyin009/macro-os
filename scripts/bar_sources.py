@@ -1,0 +1,1 @@
+/workspace/macro-os/scripts/bar_sources.py
