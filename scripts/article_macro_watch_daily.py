@@ -87,6 +87,17 @@ def _ensure_proxy() -> None:
         return
     try:
         proxy = sp if (sp and str(sp).strip()) else DEFAULT_PROXY
+        if not (sp and str(sp).strip()):
+            # Default local proxy only if it is actually listening; otherwise
+            # direct egress (cloud runner without 127.0.0.1:7890).
+            import socket
+            from urllib.parse import urlparse
+
+            u = urlparse(proxy)
+            try:
+                socket.create_connection((u.hostname, u.port or 80), timeout=1).close()
+            except OSError:
+                return
         os.environ.setdefault("HTTPS_PROXY", proxy)
         os.environ.setdefault("HTTP_PROXY", proxy)
     except Exception:
@@ -316,7 +327,34 @@ def fetch_wti(as_of: dt.date) -> Dict[str, Any]:
     s = _download_close("CL=F", period="6mo")
     val, d = _clamp_series_last(s, as_of)
     if val is None:
-        out["degraded_reason"] = "WTI CL=F unavailable"
+        # Fallback 1: shared bar_sources chain (yfinance w/ backoff -> TV -> Stooq).
+        try:
+            sys.path.insert(0, str(REPO_ROOT / "scripts"))
+            import bar_sources as bs
+
+            frame, notes, src = bs.fetch_with_fallback("CL=F", None, full_period="6mo", min_bars=1)
+            if frame is not None and len(frame):
+                val, d = _clamp_series_last(frame["Close"].dropna(), as_of)
+                if val is not None:
+                    out["source"] = f"bar_sources:{src}"
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("WTI bar_sources fallback failed: %s", exc)
+    if val is None:
+        # Fallback 2: FRED DCOILWTICO (spot, ~1-2 day publication lag).
+        try:
+            sys.path.insert(0, str(REPO_ROOT))
+            from adapters.fred import fetch_fred_series
+
+            pts = [p for p in fetch_fred_series("DCOILWTICO", lookback_days=60, timeout_seconds=20)
+                   if p.date <= as_of.isoformat()]
+            if pts:
+                val, d = float(pts[-1].value), pts[-1].date
+                out["source"] = "FRED:DCOILWTICO"
+                out["ticker"] = "DCOILWTICO"
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("WTI FRED fallback failed: %s", exc)
+    if val is None:
+        out["degraded_reason"] = "WTI CL=F/TV/Stooq/FRED all unavailable"
         return out
     out.update(
         {

@@ -45,6 +45,9 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger("daily-macro-consolidated")
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+# core/ and adapters/ live at repo root; script is run as scripts/xxx.py so add root.
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 DEFAULT_REPORT_DIR = REPO_ROOT.parent / "output"
 DEFAULT_CONFIG = REPO_ROOT / "config" / "daily_macro_consolidated.yaml"
 

@@ -103,6 +103,17 @@ def _ensure_proxy() -> None:
         return
     try:
         proxy = sp if (sp and str(sp).strip()) else DEFAULT_PROXY
+        if not (sp and str(sp).strip()):
+            # Default local proxy only if it is actually listening; otherwise
+            # direct egress (cloud runner without 127.0.0.1:7890).
+            import socket
+            from urllib.parse import urlparse
+
+            u = urlparse(proxy)
+            try:
+                socket.create_connection((u.hostname, u.port or 80), timeout=1).close()
+            except OSError:
+                return
         os.environ.setdefault("HTTPS_PROXY", proxy)
         os.environ.setdefault("HTTP_PROXY", proxy)
     except Exception:
@@ -157,7 +168,7 @@ def _write_shock_cache(ticker: str, frame: pd.DataFrame) -> None:
         logger.warning("shock cache write %s failed: %s", ticker, exc)
 
 
-def fetch_closes(period: str = "3y") -> Dict[str, pd.Series]:
+def fetch_closes(period: str = "3y", min_bars: int = 60) -> Dict[str, pd.Series]:
     """已有缓存只补最近几天。失败则 TV -> Stooq，不覆盖更早的好数据。"""
     bs = _bar_sources()
     bs.reset_yf_circuit()
@@ -169,7 +180,7 @@ def fetch_closes(period: str = "3y") -> Dict[str, pd.Series]:
             code,
             cached,
             full_period=period,
-            min_bars=60,
+            min_bars=min_bars,
             force_refresh=False,
             cached_mtime=(cpath.stat().st_mtime if cpath.exists() else None),
         )
@@ -691,7 +702,10 @@ def main(argv: Optional[list] = None) -> int:
     ap.add_argument("--dur-ub", type=float, default=22.0, help="UB 久期")
     args = ap.parse_args(argv)
 
-    closes = fetch_closes(period=args.period)
+    # 缓存必须覆盖 z/pct 窗口，否则 rolling(min_periods=z_len) 全为 NaN -> z=None。
+    # 不足时 bar_sources 走 full 回补 (period=args.period)。
+    need_bars = max(args.z_len, args.vix_pct_len) + args.lb + 10
+    closes = fetch_closes(period=args.period, min_bars=need_bars)
     if not closes:
         logger.error("no data fetched; abort")
         return 1

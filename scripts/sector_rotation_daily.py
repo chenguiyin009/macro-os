@@ -111,6 +111,17 @@ def _ensure_proxy() -> None:
         return
     try:
         proxy = sp if (sp and str(sp).strip()) else DEFAULT_PROXY
+        if not (sp and str(sp).strip()):
+            # Default local proxy only if it is actually listening; otherwise
+            # direct egress (cloud runner without 127.0.0.1:7890).
+            import socket
+            from urllib.parse import urlparse
+
+            u = urlparse(proxy)
+            try:
+                socket.create_connection((u.hostname, u.port or 80), timeout=1).close()
+            except OSError:
+                return
         os.environ.setdefault("HTTPS_PROXY", proxy)
         os.environ.setdefault("HTTP_PROXY", proxy)
     except Exception:
