@@ -39,6 +39,10 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
+try:
+    from nyse_calendar import is_trading_day as _nyse_is_trading_day, trading_day_count as _nyse_trading_day_count
+except ImportError:
+    from scripts.nyse_calendar import is_trading_day as _nyse_is_trading_day, trading_day_count as _nyse_trading_day_count
 import pandas as pd
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
@@ -402,11 +406,11 @@ def last_completed_equity_session(now: Optional[dt.datetime] = None) -> dt.date:
 
     def _prev_bday(day: dt.date) -> dt.date:
         d0 = day
-        while d0.weekday() >= 5:
+        while not _nyse_is_trading_day(d0):
             d0 -= dt.timedelta(days=1)
         return d0
 
-    if d.weekday() >= 5:
+    if not _nyse_is_trading_day(d):
         return _prev_bday(d)
     if session_complete_today:
         return d
@@ -422,7 +426,7 @@ def assess_freshness(
     if expected_as_of is None:
         expected_as_of = as_of
     try:
-        lag = int(np.busday_count(as_of, expected_as_of))
+        lag = _nyse_trading_day_count(as_of, expected_as_of)
     except Exception:
         lag = (expected_as_of - as_of).days
     lag = max(0, lag)

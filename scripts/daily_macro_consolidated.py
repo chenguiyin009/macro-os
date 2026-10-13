@@ -58,22 +58,18 @@ ARTICLE_WATCH_SCRIPT = REPO_ROOT / "scripts" / "article_macro_watch_daily.py"
 
 _DATE_RE = re.compile(r"(20\d{2}-\d{2}-\d{2})")
 _CJK_RE = re.compile(r"[\u4e00-\u9fff]")
+try:
+    from nyse_calendar import is_trading_day as _nyse_is_trading_day, trading_day_count as _nyse_trading_day_count
+except ImportError:
+    from scripts.nyse_calendar import is_trading_day as _nyse_is_trading_day, trading_day_count as _nyse_trading_day_count
+
 _NY_TZ = ZoneInfo("America/New_York")
 _US_CASH_CLOSE_HOUR = 16  # 16:00 ET = regular cash session close
 
 
 def _is_us_business_day(d: dt.date) -> bool:
-    """Mon-Fri minus US federal holidays (proxy for NYSE; good enough for as_of)."""
-    if d.weekday() >= 5:
-        return False
-    try:
-        from pandas.tseries.holiday import USFederalHolidayCalendar
-
-        cal = USFederalHolidayCalendar()
-        holidays = set(cal.holidays(start=d - dt.timedelta(days=5), end=d + dt.timedelta(days=5)).date)
-        return d not in holidays
-    except Exception:
-        return True
+    """NYSE trading day (shared rules in nyse_calendar; Columbus/Veterans are open)."""
+    return _nyse_is_trading_day(d)
 
 
 def _prior_us_business_day(d: dt.date) -> dt.date:
@@ -1020,7 +1016,7 @@ def _busday_lag(as_of: str, expected: str) -> Optional[int]:
     try:
         import numpy as np
 
-        return int(np.busday_count(t_day, e_day))
+        return _nyse_trading_day_count(t_day, e_day)
     except Exception:
         return (e_day - t_day).days
 

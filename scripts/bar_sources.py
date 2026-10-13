@@ -43,19 +43,13 @@ EMPTY_RETRY_SEC = 30.0
 TV_TIMEOUT_SEC = 20
 STOOQ_TIMEOUT_SEC = 25
 
+try:
+    from nyse_calendar import is_trading_day as _nyse_is_trading_day
+except ImportError:  # imported as package module
+    from scripts.nyse_calendar import is_trading_day as _nyse_is_trading_day
+
 _NY = ZoneInfo("America/New_York")
 _US_CASH_CLOSE_HOUR = 16
-# Same lightweight NYSE holiday proxy the daily reports already use.
-_US_FED_HOLIDAYS = {
-    date(2026, 1, 1), date(2026, 1, 19), date(2026, 2, 16),
-    date(2026, 4, 3), date(2026, 5, 25), date(2026, 6, 19),
-    date(2026, 7, 3), date(2026, 9, 7), date(2026, 11, 26),
-    date(2026, 12, 25),
-    date(2025, 1, 1), date(2025, 1, 20), date(2025, 2, 17),
-    date(2025, 4, 18), date(2025, 5, 26), date(2025, 6, 19),
-    date(2025, 7, 4), date(2025, 9, 1), date(2025, 11, 27),
-    date(2025, 12, 25),
-}
 
 # yfinance ticker -> TradingView EXCHANGE:TICKER (mcp-tv-get-ohlcv `symbol`)
 TV_SYMBOLS: Dict[str, str] = {
@@ -110,7 +104,7 @@ def yf_circuit_reason() -> str:
 
 
 def is_us_business_day(d: date) -> bool:
-    return d.weekday() < 5 and d not in _US_FED_HOLIDAYS
+    return _nyse_is_trading_day(d)
 
 
 def prior_us_business_day(d: date) -> date:
