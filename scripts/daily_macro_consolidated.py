@@ -947,11 +947,15 @@ def ensure_article_watch(
     max_lag_days: int,
     warnings: List[str],
     errors: List[str],
+    *,
+    tv_price: Optional[float] = None,
+    tv_symbol: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Load/run 文章思路观测旁证 artifact (narrative cross-check).
 
     只观察+报警，不进主状态机，**不参与** compute_combined_budget / 不改 denom_policy。
-    子脚本带 --date=report_date；更早日走 allow_stale 软兜底（与冲击吸收同策略）。
+    正式回退链见 docs/ARTICLE_MACRO_WATCH.md。默认不需 --tv-price（子脚本 scanner 自拉）；
+    可选 tv_price / ARTICLE_TV_PRICE 注入 MCP 精报价。
     """
     exact = report_dir / f"article_macro_watch_{date_str}.json"
 
@@ -981,9 +985,24 @@ def ensure_article_watch(
             return _load(path)
     else:
         if ARTICLE_WATCH_SCRIPT.exists():
+            art_args = ["--date", date_str, "--report-dir", str(report_dir)]
+            sym = (tv_symbol or __import__("os").environ.get("ARTICLE_TV_SYMBOL") or "").strip()
+            if sym:
+                art_args.extend(["--tv-symbol", sym])
+            px = tv_price
+            if px is None:
+                raw = __import__("os").environ.get("ARTICLE_TV_PRICE")
+                if raw is not None and str(raw).strip() != "":
+                    try:
+                        px = float(str(raw).strip())
+                    except ValueError:
+                        warnings.append(f"invalid ARTICLE_TV_PRICE={raw!r}; ignoring")
+                        px = None
+            if px is not None:
+                art_args.extend(["--tv-price", str(px)])
             _run_script(
                 ARTICLE_WATCH_SCRIPT,
-                ["--date", date_str, "--report-dir", str(report_dir)],
+                art_args,
                 errors,
             )
         else:
@@ -2863,6 +2882,17 @@ def main(argv: Optional[list] = None) -> int:
     parser.add_argument("--no-run-sector", action="store_true")
     parser.add_argument("--no-run-shock", action="store_true", help="skip 冲击吸收旁证脚本运行")
     parser.add_argument("--no-run-article", action="store_true", help="skip 思路观测旁证脚本运行")
+    parser.add_argument(
+        "--article-tv-price",
+        default=None,
+        help="Optional CBOT:ZQU mid/close for 思路观测旁证 TV对照 "
+        "(also ARTICLE_TV_PRICE). Omit to use scanner HTTP automatically.",
+    )
+    parser.add_argument(
+        "--article-tv-symbol",
+        default=None,
+        help="TV Fed Funds symbol for 旁证 (default CBOT:ZQU2027 / ARTICLE_TV_SYMBOL)",
+    )
     parser.add_argument("--force-refresh", action="store_true", help="force re-run all observers")
     parser.add_argument(
         "--allow-stale",
@@ -2966,6 +2996,12 @@ def main(argv: Optional[list] = None) -> int:
         warnings=warnings,
         errors=errors,
     )
+    article_tv_price = None
+    if getattr(args, "article_tv_price", None) is not None and str(args.article_tv_price).strip() != "":
+        try:
+            article_tv_price = float(str(args.article_tv_price).strip())
+        except ValueError:
+            warnings.append(f"invalid --article-tv-price {args.article_tv_price!r}; ignoring")
     article = ensure_article_watch(
         report_dir,
         date_str,
@@ -2974,6 +3010,8 @@ def main(argv: Optional[list] = None) -> int:
         max_lag_days=max_lag,
         warnings=warnings,
         errors=errors,
+        tv_price=article_tv_price,
+        tv_symbol=getattr(args, "article_tv_symbol", None),
     )
 
     denom = reject_lookahead_artifact(denom, date_str, kind="denominator", warnings=warnings)

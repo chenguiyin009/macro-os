@@ -233,3 +233,12 @@ python scripts/generate_funding_price_weekly.py --source fred --as-of 2026-07-16
 5. [`docs/research/README.md`](./research/README.md)
 
 这五个位置基本就能把“为什么字段会缺、怎么补、补完写到哪”看清楚。
+
+## 相关：思路观测旁证（日频，不进四腿 min）
+
+日频晨报旁证的 FRED 中断回退（NY Fed EFFR、Treasury BEI、^TNX、TV MOVE/ZQU 等）见独立正式方案：
+
+→ [`ARTICLE_MACRO_WATCH.md`](ARTICLE_MACRO_WATCH.md)
+
+那条链路只服务 `article_macro_watch` 观测 artifact，**不**改写本文件的研究层 FeatureSchema 补齐规则，也**不**进入 `compute_combined_budget`。
+

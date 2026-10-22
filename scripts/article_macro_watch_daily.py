@@ -35,6 +35,7 @@ TV 对照（默认列，不进 min）：
   tv_1y_hike_bp = (implied - current_mid) * 100；
   delta_bp = tv_1y_hike_bp - CME自算 bp。
 
+正式方案：docs/ARTICLE_MACRO_WATCH.md（FRED 中断回退为生产默认链）。
 OUTPUT: output/article_macro_watch_<as_of>.{md,json}
 门槛文案（作者叙事线，未标定）：Fed 70/100/110 bp；油 90。
 --------------------------------------------------------------------------------
@@ -83,6 +84,42 @@ TV_SCANNER_TIMEOUT_SEC = 12
 TV_MOVE_SYMBOL = "TVC:MOVE"
 NYFED_EFFR_URL = "https://markets.newyorkfed.org/api/rates/unsecured/effr/last/1.json"
 BEI_CACHE_CSV = REPO_ROOT / "data" / "_bei_daily.csv"
+TREASURY_NOM10_CSV = (
+    "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/"
+    "daily-treasury-rates.csv/{year}/all?type=daily_treasury_yield_curve"
+    "&field_tdr_date_value={year}&page&_format=csv"
+)
+TREASURY_REAL10_CSV = (
+    "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/"
+    "daily-treasury-rates.csv/{year}/all?type=daily_treasury_real_yield_curve"
+    "&field_tdr_date_value={year}&page&_format=csv"
+)
+
+# Formal production fallback policy (see docs/ARTICLE_MACRO_WATCH.md)
+FALLBACK_POLICY_VERSION = "article_macro_watch_fallback_v1"
+FALLBACK_POLICY = {
+    "version": FALLBACK_POLICY_VERSION,
+    "bound_to_combined_min": False,
+    "doc": "docs/ARTICLE_MACRO_WATCH.md",
+    "legs": {
+        "fed_1y_hike_bp": [
+            "cme-fedwatch+FRED_EFFR",
+            "cme-settlement+NYFed:EFFR",
+            "cme-settlement+ZQ/^IRX",
+            "tv_zqu_implied_v1",
+        ],
+        "tv_crosscheck": ["ARTICLE_TV_PRICE|--tv-price", "tradingview_scanner_http"],
+        "wti": ["yfinance:CL=F", "bar_sources", "FRED:DCOILWTICO"],
+        "dgs10": ["FRED:DGS10", "yfinance:^TNX"],
+        "t10yie": ["FRED:T10YIE", "Treasury:nom10-real10", "cache:_bei_daily.csv"],
+        "move": ["tradingview_cfd_scanner:TVC:MOVE", "abstain"],
+    },
+    "lag_notes": {
+        "t10yie_cache": "data/_bei_daily.csv may lag ~1 US trading day vs live FRED",
+        "t10yie_treasury": "Treasury nom−real ≈ BEI; may differ from FRED T10YIE by a few bp",
+        "fed_settlement": "CME free settlement feed ~last 5 business days",
+    },
+}
 
 
 def _ensure_proxy() -> None:
@@ -700,6 +737,98 @@ def fetch_dgs10(as_of: dt.date) -> Dict[str, Any]:
 
 
 
+
+def _parse_treasury_csv_col(text: str, col_candidates: Tuple[str, ...]) -> List[Tuple[str, float]]:
+    import csv
+
+    rows: List[Tuple[str, float]] = []
+    reader = csv.DictReader(__import__("io").StringIO(text))
+    for row in reader:
+        raw_d = (row.get("Date") or row.get("date") or "").strip()
+        if not raw_d:
+            continue
+        # MM/DD/YYYY → ISO
+        try:
+            parts = raw_d.split("/")
+            if len(parts) == 3:
+                m, d, y = int(parts[0]), int(parts[1]), int(parts[2])
+                iso = f"{y:04d}-{m:02d}-{d:02d}"
+            else:
+                iso = raw_d[:10]
+        except Exception:
+            continue
+        val = None
+        for c in col_candidates:
+            if c in row and str(row[c]).strip() not in {"", "N/A", "null"}:
+                try:
+                    val = float(str(row[c]).strip())
+                    break
+                except ValueError:
+                    continue
+        if val is None:
+            continue
+        rows.append((iso, val))
+    rows.sort(key=lambda x: x[0])
+    return rows
+
+
+def _fetch_bei_treasury(as_of: dt.date, lookback: int) -> Optional[Dict[str, Any]]:
+    """Live BEI proxy: Treasury nominal 10Y − real 10Y (when FRED T10YIE is down)."""
+    import urllib.request
+
+    _ensure_proxy()
+    years = sorted({as_of.year, as_of.year - 1})
+    nom: List[Tuple[str, float]] = []
+    real: List[Tuple[str, float]] = []
+    try:
+        for y in years:
+            for url_t, bucket, cols in (
+                (TREASURY_NOM10_CSV, nom, ("10 Yr", "10 YR", "10Yr")),
+                (TREASURY_REAL10_CSV, real, ("10 YR", "10 Yr", "10Yr")),
+            ):
+                url = url_t.format(year=y)
+                req = urllib.request.Request(
+                    url,
+                    headers={
+                        "User-Agent": "macro-os-article-watch/1.0",
+                        "Accept": "text/csv,text/plain,*/*",
+                    },
+                )
+                with urllib.request.urlopen(req, timeout=20) as resp:
+                    body = resp.read().decode("utf-8", errors="replace")
+                bucket.extend(_parse_treasury_csv_col(body, cols))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Treasury BEI fetch failed: %s", exc)
+        return None
+
+    nom_m = {d: v for d, v in nom if d <= as_of.isoformat()}
+    real_m = {d: v for d, v in real if d <= as_of.isoformat()}
+    common = sorted(set(nom_m) & set(real_m))
+    if not common:
+        return None
+    series = [(d, nom_m[d] - real_m[d]) for d in common]
+    start = (as_of - dt.timedelta(days=lookback)).isoformat()
+    window = [v for d, v in series if d >= start] or [v for _, v in series]
+    last_d, last_v = series[-1]
+    mean = sum(window) / len(window)
+    dev = last_v - mean
+    return {
+        "t10yie": round(last_v, 3),
+        "as_of": last_d,
+        "mean": round(mean, 3),
+        "n_obs": len(window),
+        "deviation": round(dev, 3),
+        "deviation_bp": round(dev * 100.0, 1),
+        "source": "Treasury:nom10-real10",
+        "quality": "ok",
+        "unit": "percent",
+        "note": (
+            "FRED T10YIE unavailable; using Treasury nominal−real 10Y as BEI proxy "
+            "(may differ from FRED T10YIE by a few bp)."
+        ),
+    }
+
+
 def _load_bei_cache(as_of: dt.date, lookback: int) -> Optional[Dict[str, Any]]:
     """Read data/_bei_daily.csv (T10YIE history) when live FRED is down."""
     import csv
@@ -788,18 +917,24 @@ def fetch_t10yie(as_of: dt.date) -> Dict[str, Any]:
                 }
             )
             return out
-        logger.warning("T10YIE FRED empty (maintenance?); trying local cache")
+        logger.warning("T10YIE FRED empty (maintenance?); trying Treasury then cache")
     except Exception as exc:  # noqa: BLE001
         out["degraded_reason"] = f"T10YIE fetch failed: {exc}"
         logger.warning(out["degraded_reason"])
 
-    # Fallback: local FRED cache written by prefetch / prior good runs
+    # Formal fallback 2: Treasury.gov nominal − real 10Y (live when FRED down)
+    live = _fetch_bei_treasury(as_of, lookback)
+    if live is not None:
+        out.update(live)
+        return out
+
+    # Formal fallback 3: local FRED cache (may lag ~1 BD)
     cached = _load_bei_cache(as_of, lookback)
     if cached is not None:
         out.update(cached)
         return out
     if not out.get("degraded_reason"):
-        out["degraded_reason"] = "T10YIE empty (FRED + local cache)"
+        out["degraded_reason"] = "T10YIE empty (FRED + Treasury + local cache)"
     return out
 
 
@@ -1177,6 +1312,7 @@ def build_payload(
         "thresholds": thr,
         "fed_alert_level": lvl,
         "alerts": alerts,
+        "fallback_policy": FALLBACK_POLICY,
     }
 
 

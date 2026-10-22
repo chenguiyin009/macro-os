@@ -17,6 +17,7 @@ tags: [macro-os, index]
 6. [[CDP_BRIDGE]] - Pine Script data integration
 7. [[CONFIGURATION]] - thresholds.yaml & watchlist.yaml reference
 8. [[MACRO_DATA_FALLBACK]] - Missing-field fallback and complement fill spec
+8b. [[ARTICLE_MACRO_WATCH]] - 思路观测旁证正式方案（含 FRED 中断回退，不进四腿 min）
 9. [[WORKBUDDY_HANDOFF]] - Project handoff for WorkBuddy
 10. [[GLOSSARY]] - All terms, enums, state labels
 
