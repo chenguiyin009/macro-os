@@ -14,6 +14,7 @@ sys.path.insert(0, str(ROOT))
 from scripts.tech_rotation_daily import (  # noqa: E402
     A_SHARE_AVG_LAG,
     REL5_EARLY_MIN,
+    REL5_JUST_NEG_FLOOR,
     STATE_SCORE_OK_MOMENTUM_WEAK,
     a_share_mapping_from_selected,
     build_markdown,
@@ -138,3 +139,36 @@ def test_build_markdown_has_stable_a_share_section():
     assert "重回中性" in md
     assert "可对照加仓" in md
     assert "半导必须降级" in md
+
+
+@pytest.mark.unit
+def test_shadow_weak_downgrade_when_mid_score_just_neg_rel5():
+    """分数未落后均分，rel5 仅小幅为负 → 硬降级仍在，影子标弱降级。"""
+    am = a_share_mapping_from_selected(70.0, 70.0, -0.005, 0)
+    assert am["force_semi_downgrade"] is True
+    assert am["shadow_weak_downgrade"] is True
+    assert am["shadow_note"] and "弱降级" in am["shadow_note"]
+    # score 落后时不算「弱」影子（硬落后主导）
+    am_lag = a_share_mapping_from_selected(50.0, 70.0, -0.005, 0)
+    assert am_lag["force_semi_downgrade"] is True
+    assert am_lag["shadow_weak_downgrade"] is False
+    # rel5 深负不算 just-neg
+    am_deep = a_share_mapping_from_selected(70.0, 70.0, REL5_JUST_NEG_FLOOR - 0.001, 0)
+    assert am_deep["force_semi_downgrade"] is True
+    assert am_deep["shadow_weak_downgrade"] is False
+
+
+@pytest.mark.unit
+def test_structure_label_passthrough_observation_only():
+    struct = {
+        "label": "成长杀/红利托底",
+        "cyb_ret": -0.02,
+        "hs300_ret": -0.005,
+        "spread_cyb_minus_hs300": -0.015,
+        "as_of": "2026-10-22",
+        "quality": "ok",
+    }
+    am = a_share_mapping_from_selected(80.0, 70.0, 0.01, 2, structure_obs=struct)
+    assert am["structure_label"] == "成长杀/红利托底"
+    assert am["force_semi_downgrade"] is False  # 结构标签不改硬门控
+

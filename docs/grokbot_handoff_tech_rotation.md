@@ -107,3 +107,10 @@ python scripts/tech_rotation_daily.py --report-dir /path/to/out
 0 5 * * 1-5 cd /path/to/macro-os && python scripts/tech_rotation_daily.py
 ```
 （具体时区按 grokbot 云主机设定；`as_of` 会自动取最新交易日，无需显式 `--date`。）
+
+## 对A映射（硬规则 + 观测扩展）
+
+- 硬门控不变：score≤avg−15 或 rel5<0 → 强制「降预期/谨慎」。
+- **弱降级影子**：分数未落后均分、rel5 仅小幅为负 → 报告影子注记；**不改**硬门控。
+- **结构标签（观测）**：创业板ETF(159915)−沪深300ETF(510300) 日差 → 成长杀/红利托底 vs 全面杀；不改分数。
+

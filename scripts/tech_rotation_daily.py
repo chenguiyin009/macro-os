@@ -1024,6 +1024,7 @@ def main(argv: Optional[list] = None) -> int:
             None if np.isnan(avg_score) else float(avg_score),
             sel["rel5"],
             int(sel["state"]),
+            structure_obs=fetch_a_share_structure_obs(as_of),
         ),
     }
 
@@ -1048,17 +1049,125 @@ A_SHARE_AVG_LAG = 15.0  # selected_score <= avg - 15 → 半导强制降预期
 A_SHARE_FORBID_WHEN_LAGGING = ("重回中性", "可对照加仓")
 
 
+# 弱降级影子：分数未落后均分，但 rel5 仅小幅为负（(-2%, 0)）
+REL5_JUST_NEG_FLOOR = -0.02  # 严格 > 此值且 <0 视为「刚负」
+# 对A结构标签：创业板−沪深300 日差观测门槛（不改分数）
+A_STRUCT_SPREAD_GROWTH_KILL = -0.005  # cyb-hs300 <= -0.5pp 且成长更弱 → 成长杀/红利托底
+A_STRUCT_BOTH_DOWN = -0.01  # 两者日涨跌均 <= -1% → 全面杀
+
+
+def fetch_a_share_structure_obs(as_of: Optional[dt.date] = None) -> dict:
+    """观测标签用：创业板ETF / 沪深300ETF 日涨跌差。失败则 null，不编造。不改分数。
+
+    指数代码 399006.SZ / 000300.SS 在 yfinance 常只返回 1 根 bar；改用
+    159915.SZ（创业板ETF）与 510300.SS（沪深300ETF）作代理。
+    """
+    import yfinance as yf
+
+    as_of = as_of or dt.date.today()
+    out = {
+        "label": None,
+        "cyb_ret": None,
+        "hs300_ret": None,
+        "spread_cyb_minus_hs300": None,
+        "as_of": None,
+        "source": "yfinance:159915.SZ / 510300.SS (ChiNext/HS300 ETF proxies)",
+        "quality": "degraded",
+        "note": "对A结构标签仅观察；不改 score / 不改半导硬门控。指数直链常缺历史，ETF 代理。",
+    }
+
+    def _one(ticker: str):
+        try:
+            raw = yf.download(
+                ticker,
+                period="3mo",
+                auto_adjust=True,
+                progress=False,
+                threads=False,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return None, str(exc)
+        if raw is None or getattr(raw, "empty", True):
+            return None, "empty"
+        cols = raw.columns
+        if getattr(cols, "nlevels", 1) > 1:
+            if ("Close", ticker) in cols:
+                s = raw[("Close", ticker)]
+            elif "Close" in cols.get_level_values(0):
+                cd = raw.xs("Close", axis=1, level=0)
+                s = cd[ticker] if ticker in cd.columns else cd.iloc[:, 0]
+            else:
+                return None, "no close"
+        else:
+            if "Close" not in cols:
+                return None, "no close"
+            s = raw["Close"]
+        s = pd.to_numeric(s, errors="coerce").dropna()
+        s.index = pd.to_datetime(s.index).normalize()
+        return s, None
+
+    cyb, e1 = _one("159915.SZ")
+    hs, e2 = _one("510300.SS")
+    if cyb is None or hs is None or len(cyb) < 2 or len(hs) < 2:
+        out["degraded_reason"] = f"insufficient bars cyb={e1} hs={e2}"
+        return out
+
+    def _ret(s):
+        mask = s.index.date <= as_of
+        sub = s.loc[mask]
+        if len(sub) < 2:
+            return None, None
+        last_i = sub.index[-1]
+        prev = float(sub.iloc[-2])
+        last = float(sub.iloc[-1])
+        if prev <= 0:
+            return None, str(last_i)[:10]
+        return last / prev - 1.0, str(last_i)[:10]
+
+    cyb_r, d1 = _ret(cyb)
+    hs_r, d2 = _ret(hs)
+    if cyb_r is None or hs_r is None:
+        out["degraded_reason"] = "ret unavailable"
+        return out
+    spread = cyb_r - hs_r
+    if cyb_r <= A_STRUCT_BOTH_DOWN and hs_r <= A_STRUCT_BOTH_DOWN:
+        label = "全面杀"
+    elif spread <= A_STRUCT_SPREAD_GROWTH_KILL and cyb_r < hs_r:
+        label = "成长杀/红利托底"
+    elif spread >= -A_STRUCT_SPREAD_GROWTH_KILL and cyb_r > hs_r and hs_r < 0 and cyb_r >= 0:
+        label = "成长相对抗跌（观测）"
+    else:
+        label = "结构中性/混杂（观测）"
+    out.update(
+        {
+            "label": label,
+            "cyb_ret": round(cyb_r, 6),
+            "hs300_ret": round(hs_r, 6),
+            "spread_cyb_minus_hs300": round(spread, 6),
+            "as_of": d1 or d2,
+            "quality": "ok",
+            "degraded_reason": None,
+        }
+    )
+    return out
+
+
 def a_share_mapping_from_selected(
     selected_score,
     avg_score,
     selected_rel5,
     selected_state_code,
+    *,
+    structure_obs: Optional[dict] = None,
 ) -> dict:
     """对A映射硬规则（以所选主题默认 SMH/半导体为准）。
 
     - selected score <= avg-15 或 rel5<0 → 对A半导/芯片强制「降预期/谨慎」；
       禁止「重回中性」「可对照加仓」；软件/云仍可写强，半导必须降级。
     - 对A半导偏多：至少确认进入(state==2) 且 rel5>=0。
+    - 弱降级影子：分数未落后均分，但 rel5 仅小幅为负 → 报告影子注记；
+      **不改**强制降预期硬规则（生产仍 force_downgrade）。
+    - 结构标签：创业板−沪深300 日差观测（成长杀/红利托底 vs 全面杀），不改分数。
     """
     score_lag = (
         selected_score is not None
@@ -1072,7 +1181,14 @@ def a_share_mapping_from_selected(
         and not (isinstance(selected_rel5, float) and np.isnan(selected_rel5))
         and selected_rel5 < 0
     )
+    rel5_just_neg = (
+        rel5_neg
+        and selected_rel5 is not None
+        and selected_rel5 > REL5_JUST_NEG_FLOOR
+    )
     force_downgrade = bool(score_lag or rel5_neg)
+    # 影子：仅因「刚负」rel5 触发硬降级、分数未落后 → 弱降级影子注记
+    shadow_weak_downgrade = bool(force_downgrade and (not score_lag) and rel5_just_neg)
     semi_bullish_ok = (
         selected_state_code == 2
         and selected_rel5 is not None
@@ -1090,6 +1206,7 @@ def a_share_mapping_from_selected(
         triggers.append(f"score<=avg-{A_SHARE_AVG_LAG:.0f}")
     if rel5_neg:
         triggers.append("rel5<0")
+    struct = structure_obs if isinstance(structure_obs, dict) else None
     return {
         "force_semi_downgrade": force_downgrade,
         "semi_chip_stance": semi_stance,
@@ -1097,9 +1214,19 @@ def a_share_mapping_from_selected(
         "triggers": triggers,
         "forbid_phrases": list(A_SHARE_FORBID_WHEN_LAGGING) if force_downgrade else [],
         "software_cloud_ok": True,  # 软件/云不因半导落后而强制降级
+        "shadow_weak_downgrade": shadow_weak_downgrade,
+        "shadow_note": (
+            "弱降级（影子）：分数未落后均分≥15，但 rel5 仅小幅为负"
+            f"（({REL5_JUST_NEG_FLOOR:.0%} , 0)）；硬门控仍强制降预期，软档未改生产。"
+            if shadow_weak_downgrade
+            else None
+        ),
+        "structure_label": (struct or {}).get("label"),
+        "structure_obs": struct,
         "rule_note": (
             "所选主题落后均分≥15 或 5D相对为负 → 对A半导/芯片强制降预期/谨慎；"
             "禁止「重回中性」「可对照加仓」；软件/云仍可写强。半导偏多须确认进入且 rel5>=0。"
+            "弱降级影子仅注记；结构标签（成长杀/红利托底 vs 全面杀）只观察不改分。"
         ),
     }
 
@@ -1205,6 +1332,21 @@ def build_markdown(p: dict, days_left: int, expired: bool) -> str:
             f"- **半导偏多门槛**：确认进入且 rel5>=0 — 今日："
             + ("满足" if am.get("semi_bullish_ok") else "不满足")
         )
+    if am.get("shadow_weak_downgrade"):
+        L.append(
+            f"- **影子注记 · 弱降级**：{am.get('shadow_note')} "
+            "（仅观察，硬门控未改。）"
+        )
+    so = am.get("structure_obs") or {}
+    if am.get("structure_label") or so:
+        bits = [f"标签=`{am.get('structure_label') or '—'}`"]
+        if so.get("cyb_ret") is not None and so.get("hs300_ret") is not None:
+            bits.append(
+                f"创业板 {so['cyb_ret']*100:+.2f}% / 沪深300 {so['hs300_ret']*100:+.2f}%"
+                f"（差 {so.get('spread_cyb_minus_hs300', 0)*100:+.2f}pp；as_of={so.get('as_of')}）"
+            )
+        bits.append("观测标签，不改分数/不改硬门控")
+        L.append("- **对A结构（观测）**：" + "；".join(bits))
     L.append("")
     L.append("---")
     L.append("")
