@@ -172,3 +172,65 @@ def pine_top3_hit(
     )
     sug = None if hit else "pine Top3 次日多数跑输：建议仅作笔记，不改生产 C/pine 默认"
     return HitResult(name, hit, detail, sug)
+
+
+def a_share_column_hit(
+    posture: Optional[str],
+    semi_stance: Optional[str],
+    force_downgrade: bool,
+    cyb_ret: Optional[float],
+    hs300_ret: Optional[float],
+    *,
+    bias: Optional[str] = None,
+) -> HitResult:
+    """对A列校准：前日报对A姿态 vs 下一A股交易日宽基/成长。
+
+    与「美股 defend 偏早」分开；本规则只评 A/港相关实际，不写美股建议。
+    """
+    name = "对A列(姿态vs次日A)"
+    side = map_posture(posture, bias)
+    downgrade = bool(force_downgrade) or (
+        semi_stance is not None and ("降" in str(semi_stance) or "谨慎" in str(semi_stance))
+    )
+    if cyb_ret is None and hs300_ret is None:
+        return HitResult(name, None, "缺次日 A 股收益，跳过", None)
+
+    # 综合：优先沪深300，辅以创业板
+    bench = hs300_ret if hs300_ret is not None else cyb_ret
+    assert bench is not None
+    detail_bits = []
+    if hs300_ret is not None:
+        detail_bits.append(f"沪深300 {_fmt(hs300_ret)}")
+    if cyb_ret is not None:
+        detail_bits.append(f"创业板 {_fmt(cyb_ret)}")
+    stance_txt = f"四腿={posture or '—'}·半导={semi_stance or '—'}·降预期={downgrade}"
+    detail = f"{stance_txt} → 次日 " + " / ".join(detail_bits)
+
+    # 降预期或防守：期望次日 A 不强（<=0 或窄幅）
+    if downgrade or side == "bearish":
+        hit = bench <= WAIT_MISS_1D  # 未大涨即视为方向不矛盾
+        sug = None
+        if not hit:
+            sug = (
+                "对A降预期/防守但次日A偏强：检查是否过早降预期（对A列）；"
+                "勿与「美股defend偏早」混写"
+            )
+        return HitResult(name, hit, detail + (" → 一致" if hit else " → 不一致"), sug)
+
+    if side == "bullish" and not downgrade:
+        hit = bench >= -WAIT_MISS_1D
+        sug = None
+        if not hit:
+            sug = "对A偏多但次日A偏弱：复核对A映射是否应更谨慎（对A列专用建议）"
+        return HitResult(name, hit, detail + (" → 一致" if hit else " → 不一致"), sug)
+
+    # 中性
+    if abs(bench) <= WAIT_MISS_1D:
+        return HitResult(name, True, detail + " → 震荡一致", None)
+    return HitResult(
+        name,
+        False,
+        detail + " → 中性日波动偏大",
+        "对A中性日出现明确方向：考虑在对A结构标签中更早标注（不改美股校准）",
+    )
+

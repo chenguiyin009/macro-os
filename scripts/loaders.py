@@ -53,6 +53,13 @@ TICKER_FILES = {
     "RSP": ["RSP.csv", "rsp.csv"],
     "SOXX": ["SOXX.csv", "soxx.csv"],
     "BOTZ": ["BOTZ.csv", "botz.csv"],
+    "159915.SZ": ["159915.SZ.csv", "159915.sz.csv"],
+    "510300.SS": ["510300.SS.csv", "510300.ss.csv"],
+    "399006.SZ": ["399006.SZ.csv", "399006.sz.csv"],
+    "000300.SS": ["000300.SS.csv", "000300.ss.csv"],
+    "^HSI": ["^HSI.csv", "HSI.csv", "hsi.csv"],
+    "3032.HK": ["3032.HK.csv", "3032.hk.csv"],
+    "2800.HK": ["2800.HK.csv", "2800.hk.csv"],
 }
 
 
@@ -369,3 +376,33 @@ def prior_report_as_of(completed: Optional[date] = None) -> date:
 
     done = completed or bs.completed_us_cash_session()
     return bs.prior_us_business_day(done)
+
+
+def next_session_return(
+    series: pd.Series,
+    as_of: date,
+) -> Tuple[Optional[float], Optional[date]]:
+    """First trading session strictly after as_of: that day's close-to-close return.
+
+    Used for A-share / HK calendars that may not align with US as_of.
+    """
+    if series is None or series.empty:
+        return None, None
+    idx_dates = [pd.Timestamp(ts).date() for ts in series.index]
+    mapping = {d: float(v) for d, v in zip(idx_dates, series.values)}
+    dates = sorted(mapping.keys())
+    after = [d for d in dates if d > as_of]
+    if not after:
+        return None, None
+    tgt_d = after[0]
+    # previous close in series
+    i = dates.index(tgt_d)
+    if i == 0:
+        return None, tgt_d
+    prev_d = dates[i - 1]
+    base = mapping[prev_d]
+    tgt = mapping[tgt_d]
+    if base <= 0 or tgt <= 0:
+        return None, tgt_d
+    return tgt / base - 1.0, tgt_d
+

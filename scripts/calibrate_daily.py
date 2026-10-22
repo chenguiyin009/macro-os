@@ -27,11 +27,13 @@ from loaders import (  # noqa: E402
     load_fourleg,
     load_spx,
     load_tech,
+    next_session_return,
     prior_report_as_of,
     relative_return,
     session_return,
 )
 from rules import (  # noqa: E402
+    a_share_column_hit,
     direction_hit,
     pine_top3_hit,
     relative_strength_hit,
@@ -50,6 +52,12 @@ TZ = ZoneInfo("Asia/Shanghai")
 CORE_TICKERS = [
     "SPY", "QQQ", "SMH", "IGV", "SKYY", "CIBR",
     "XLE", "XLP", "XLU", "XLK",
+]
+A_SHARE_TICKERS = [
+    "159915.SZ",  # 创业板ETF（指数直链常缺历史）
+    "510300.SS",  # 沪深300ETF
+    "^HSI",       # 恒指
+    "3032.HK",    # 恒科 ETF 代理
 ]
 
 
@@ -206,6 +214,55 @@ def run_calibration(
             }
         )
 
+    # --- 对A列（与美股 1D 校准分开；勿混写「美股defend偏早」） ---
+    ensure_bars(list(A_SHARE_TICKERS), force_refresh=force_refresh, need_through=None)
+    cyb_s = load_close_series("159915.SZ")
+    hs_s = load_close_series("510300.SS")
+    hsi_s = load_close_series("^HSI")
+    hstech_s = load_close_series("3032.HK")
+    cyb_1d, cyb_d = (next_session_return(cyb_s, as_of) if cyb_s is not None else (None, None))
+    hs_1d, hs_d = (next_session_return(hs_s, as_of) if hs_s is not None else (None, None))
+    hsi_1d, hsi_d = (next_session_return(hsi_s, as_of) if hsi_s is not None else (None, None))
+    hstech_1d, hstech_d = (
+        next_session_return(hstech_s, as_of) if hstech_s is not None else (None, None)
+    )
+    am = (tech.a_share_mapping if tech else {}) or {}
+    a_col_hit = a_share_column_hit(
+        fl.posture if fl else None,
+        am.get("semi_chip_stance"),
+        bool(am.get("force_semi_downgrade")),
+        cyb_1d,
+        hs_1d,
+        bias=fl.bias if fl else None,
+    ).to_dict()
+    a_share_column = {
+        "prediction_as_of": as_of.isoformat(),
+        "posture": fl.posture if fl else None,
+        "bias": fl.bias if fl else None,
+        "semi_chip_stance": am.get("semi_chip_stance"),
+        "force_semi_downgrade": bool(am.get("force_semi_downgrade")),
+        "structure_label": am.get("structure_label"),
+        "actual_a_date": (
+            (hs_d or cyb_d or hsi_d or hstech_d).isoformat()
+            if (hs_d or cyb_d or hsi_d or hstech_d)
+            else None
+        ),
+        "actuals": {
+            "创业板": cyb_1d,
+            "沪深300": hs_1d,
+            "恒指": hsi_1d,
+            "恒科": hstech_1d,
+        },
+        "actual_dates": {
+            "创业板": cyb_d.isoformat() if cyb_d else None,
+            "沪深300": hs_d.isoformat() if hs_d else None,
+            "恒指": hsi_d.isoformat() if hsi_d else None,
+            "恒科": hstech_d.isoformat() if hstech_d else None,
+        },
+        "hit": a_col_hit,
+        "note": "对A列校准与美股 1D 分开；建议文案勿与「美股defend偏早」混写。",
+    }
+
     # Build 命中 / 落空 / 可改点
     hit_lines = [h for h in hits if h.get("hit") is True]
     miss_lines = [h for h in hits if h.get("hit") is False]
@@ -255,7 +312,8 @@ def run_calibration(
         "hit_summary": [h["detail"] for h in hit_lines[:2]],
         "miss_summary": [h["detail"] for h in miss_lines[:2]],
         "suggestions": suggestions[:4],
-        "disclaimer": "校准只出建议，不改打分；不改生产 C / 四腿 min / pine 默认。教学/数据参考，不构成投资建议。",
+        "a_share_column": a_share_column,
+        "disclaimer": "校准只出建议，不改打分；不改生产 C / 四腿 min / pine 默认。教学/数据参考，不构成投资建议。对A列与美股1D分列。",
     }
     return note
 
@@ -348,9 +406,36 @@ def render_md(note: Dict[str, Any]) -> str:
             lines.append(f"{i}. {s}")
     else:
         lines.append("- 暂无可改点；规则样本偏少时保持观察。")
+    ac = note.get("a_share_column") or {}
+    lines += ["", "## 对A列校准（与美股1D分开）", ""]
+    if ac:
+        act = ac.get("actuals") or {}
+        lines.append(
+            f"- **预判 as_of**：{ac.get('prediction_as_of')} ｜ "
+            f"posture=`{ac.get('posture')}` ｜ 半导=`{ac.get('semi_chip_stance')}` ｜ "
+            f"force_downgrade={ac.get('force_semi_downgrade')}"
+        )
+        if ac.get("structure_label"):
+            lines.append(f"- **结构标签（观测）**：{ac.get('structure_label')}")
+        lines.append(
+            f"- **次日 A/港**（actual≈{ac.get('actual_a_date')}）："
+            f"创业板 {_fmt_pct(act.get('创业板'))} ｜ "
+            f"沪深300 {_fmt_pct(act.get('沪深300'))} ｜ "
+            f"恒指 {_fmt_pct(act.get('恒指'))} ｜ "
+            f"恒科 {_fmt_pct(act.get('恒科'))}"
+        )
+        ah = ac.get("hit") or {}
+        mark = {True: "✅", False: "❌", None: "➖"}.get(ah.get("hit"), "➖")
+        lines.append(f"- {mark} **{ah.get('name') or '对A列'}**：{ah.get('detail')}")
+        if ah.get("suggestion"):
+            lines.append(f"- **对A建议（勿混美股）**：{ah['suggestion']}")
+        lines.append(f"- _{ac.get('note')}_")
+    else:
+        lines.append("- （无对A列数据）")
+
     lines += [
         "",
-        "## 规则明细",
+        "## 规则明细（美股1D等）",
         "",
     ]
     for h in note.get("hits") or []:

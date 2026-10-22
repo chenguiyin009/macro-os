@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from scripts.rules import (
+    a_share_column_hit,
     direction_hit,
     map_posture,
     pine_top3_hit,
@@ -80,3 +81,12 @@ def test_pine_top3_majority_beats():
     r2 = pine_top3_hit([("XLE", -0.01), ("XLP", -0.02), ("XLU", 0.001)], 0.0)
     assert r2.hit is False
     assert "不改生产" in (r2.suggestion or "")
+
+
+def test_a_share_column_separate_from_us_defend():
+    r = a_share_column_hit("defend", "降预期/谨慎", True, -0.01, -0.008)
+    assert r.hit is True
+    assert "对A列" in r.name
+    r2 = a_share_column_hit("defend", "降预期/谨慎", True, 0.02, 0.015)
+    assert r2.hit is False
+    assert r2.suggestion and "美股defend" in r2.suggestion

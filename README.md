@@ -35,6 +35,7 @@ SECTOR_PROXY=off /workspace/macro-os/.venv/bin/python scripts/calibrate_daily.py
 | 四腿方向 | 偏多↔涨、偏空/防守↔跌；观望且 \|1D\|≤0.8% |
 | 科技相对强弱 | 强主题多数跑赢 QQQ、弱主题多数跑输 |
 | 半导对A门控 | 降预期 ↔ SMH 相对 QQQ 偏弱（rel1/rel5） |
+| **对A列（独立小节）** | 前日 posture/半导降预期 ↔ 次日创业板/沪深300/恒指/恒科；与美股 defend 建议分列 |
 | 标普 pine Top3 | Top3 多数次日跑赢 SPY |
 
 ## 测试
