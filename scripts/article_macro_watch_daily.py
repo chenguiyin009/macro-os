@@ -18,11 +18,13 @@ Fed 一年累计加息定价 bp：
   EFFR/target + 内置 FOMC 日程）。算法版本 `cme_settlement_cum_v1`：
     取 as_of 起 365 日内最远一场 FOMC，对其概率分布取目标区间中点期望，
     减去当前目标区间中点，×100 → bp。
+  FRED 维护/拉不到时：NY Fed EFFR API（含 target 上下限）+ 同库 CME 结算自算；
+  再不行则用 ZQ=F / ^IRX 估 mid，并用 TV ZQU 价推导 tv_1y_hike_bp 作旁证主值。
   与 CME FedWatch / QuikStrike 官网可能有偏差（日结算 vs 盘中、日程硬编码、
   月末敏感）；接受偏差，失败则整段 Fed degraded，**禁止编造 bp**。
 
-WTI / 10Y / T10YIE：复用 yfinance + FRED 公开 CSV，少加依赖。
-MOVE：TV-only，无开源代理 → null + abstain_reason（与冲击吸收同口径）。
+WTI / 10Y / T10YIE：复用 yfinance + FRED 公开 CSV；T10YIE 再回退 `data/_bei_daily.csv`。
+MOVE：优先 TradingView CFD scanner（TVC:MOVE）；失败则弃权（与冲击吸收同口径）。
 
 TV 对照（默认列，不进 min）：
   对 ~1y Fed Funds 期货 `CBOT:ZQU2027` 做 TradingView 报价交叉校验。
@@ -76,7 +78,11 @@ THRESHOLDS = {
 # TradingView 1y Fed Funds future cross-check (旁证对照列；不进 combined min)
 TV_FF_SYMBOL_DEFAULT = "CBOT:ZQU2027"
 TV_SCANNER_URL = "https://scanner.tradingview.com/futures/scan"
+TV_CFD_SCANNER_URL = "https://scanner.tradingview.com/cfd/scan"
 TV_SCANNER_TIMEOUT_SEC = 12
+TV_MOVE_SYMBOL = "TVC:MOVE"
+NYFED_EFFR_URL = "https://markets.newyorkfed.org/api/rates/unsecured/effr/last/1.json"
+BEI_CACHE_CSV = REPO_ROOT / "data" / "_bei_daily.csv"
 
 
 def _ensure_proxy() -> None:
@@ -131,6 +137,242 @@ def _expected_rate_from_probs(probabilities: Dict[str, float]) -> Optional[float
     return acc / total_w
 
 
+
+def _fetch_effr_nyfed(timeout_seconds: float = 12.0) -> Optional[Dict[str, Any]]:
+    """NY Fed public EFFR JSON — works when FRED graph CSV is on maintenance.
+
+    Returns dict with effr / target_lo / target_hi / as_of, or None.
+    """
+    import urllib.error
+    import urllib.request
+
+    _ensure_proxy()
+    req = urllib.request.Request(
+        NYFED_EFFR_URL,
+        headers={
+            "User-Agent": "macro-os-article-watch/1.0",
+            "Accept": "application/json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
+            payload = json.loads(resp.read().decode("utf-8", errors="replace"))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("NY Fed EFFR fetch failed: %s", exc)
+        return None
+    rows = payload.get("refRates") if isinstance(payload, dict) else None
+    if not rows:
+        return None
+    row = rows[0]
+    try:
+        effr = float(row["percentRate"])
+    except Exception:
+        return None
+    lo = row.get("targetRateFrom")
+    hi = row.get("targetRateTo")
+    try:
+        lo_f = float(lo) if lo is not None else None
+        hi_f = float(hi) if hi is not None else None
+    except Exception:
+        lo_f, hi_f = None, None
+    return {
+        "effr": effr,
+        "target_lo": lo_f,
+        "target_hi": hi_f,
+        "as_of": str(row.get("effectiveDate") or "")[:10] or None,
+        "source": "NYFed:EFFR",
+    }
+
+
+def _fetch_effr_zq_proxy() -> Optional[Dict[str, Any]]:
+    """Last-resort EFFR/mid proxy from front-month ZQ=F (or ^IRX)."""
+    for ticker, kind in (("ZQ=F", "zq"), ("^IRX", "irx")):
+        s = _download_close(ticker, period="10d")
+        if s is None or len(s) == 0:
+            continue
+        last = float(s.iloc[-1])
+        as_of = str(s.index[-1])[:10]
+        if kind == "zq":
+            # ZQ price → implied average EFFR for delivery month
+            effr = 100.0 - last
+        else:
+            effr = last
+        return {
+            "effr": round(effr, 4),
+            "target_lo": None,
+            "target_hi": None,
+            "as_of": as_of,
+            "source": f"yfinance:{ticker}",
+        }
+    return None
+
+
+def _resolve_effr_context() -> Dict[str, Any]:
+    """Resolve EFFR + target band without relying solely on FRED graph CSV."""
+    # 1) NY Fed (authoritative when FRED is down; also carries target band)
+    ny = _fetch_effr_nyfed()
+    if ny and ny.get("effr") is not None:
+        lo, hi = ny.get("target_lo"), ny.get("target_hi")
+        if lo is None or hi is None:
+            try:
+                from cme_fedwatch.calc import current_target_range
+
+                lo, hi = current_target_range(float(ny["effr"]))
+                ny["target_source"] = "estimated_from_effr"
+            except Exception:
+                lo = hi = None
+        else:
+            ny["target_source"] = "nyfed"
+        ny["target_lo"], ny["target_hi"] = lo, hi
+        return ny
+
+    # 2) Try FRED EFFR via cme-fedwatch (when maintenance ends)
+    try:
+        from cme_fedwatch.api import fetch_effr, fetch_target_range
+
+        effr = float(fetch_effr())
+        try:
+            lo, hi = fetch_target_range()
+            src = "fred"
+        except Exception:
+            from cme_fedwatch.calc import current_target_range
+
+            lo, hi = current_target_range(effr)
+            src = "estimated_from_effr"
+        return {
+            "effr": effr,
+            "target_lo": float(lo),
+            "target_hi": float(hi),
+            "as_of": None,
+            "source": "FRED:EFFR",
+            "target_source": src,
+        }
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("FRED EFFR/target unavailable: %s", exc)
+
+    # 3) ZQ=F / ^IRX proxy
+    prox = _fetch_effr_zq_proxy()
+    if prox and prox.get("effr") is not None:
+        try:
+            from cme_fedwatch.calc import current_target_range
+
+            lo, hi = current_target_range(float(prox["effr"]))
+            prox["target_lo"], prox["target_hi"] = lo, hi
+            prox["target_source"] = "estimated_from_effr"
+            return prox
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("ZQ/IRX target estimate failed: %s", exc)
+    return {
+        "effr": None,
+        "target_lo": None,
+        "target_hi": None,
+        "as_of": None,
+        "source": None,
+        "target_source": None,
+    }
+
+
+def _fed_from_cme_settlements(
+    *,
+    as_of: dt.date,
+    effr: float,
+    target_lo: float,
+    target_hi: float,
+    target_source: str,
+    effr_source: str,
+    trade_date: Optional[dt.date] = None,
+) -> Dict[str, Any]:
+    """CME settlements + known EFFR/target → same cum-hike bp shape as get_probabilities."""
+    base: Dict[str, Any] = {
+        "fed_1y_hike_bp": None,
+        "meeting_anchor": None,
+        "meetings_in_horizon": [],
+        "algo_version": ALGO_VERSION,
+        "source": f"cme-settlement+{effr_source}",
+        "quality": "degraded",
+        "degraded": True,
+        "degraded_reason": None,
+        "effr": float(effr),
+        "current_target": f"{target_lo:.2f}%-{target_hi:.2f}%",
+        "trade_date": None,
+        "expected_rate_1y": None,
+        "current_mid": round((float(target_lo) + float(target_hi)) / 2.0, 4),
+        "target_source": target_source,
+        "disclaimer": (
+            "开源自算 CME 日结算 FedWatch；EFFR/target 来自 FRED 回退源；"
+            "与官网 QuikStrike/盘中可能偏差，接受偏差；失败不编造 bp。"
+        ),
+    }
+    try:
+        from cme_fedwatch.api import get_settlements
+        from cme_fedwatch.calc import calculate
+        from cme_fedwatch.fomc import get_upcoming_meetings, schedule_horizon, schedule_status
+    except Exception as exc:  # noqa: BLE001
+        base["degraded_reason"] = f"cme-fedwatch import failed: {exc}"
+        return base
+
+    try:
+        settlements = get_settlements(trade_date)
+    except Exception as exc:  # noqa: BLE001
+        base["degraded_reason"] = f"CME settlements failed: {exc}"
+        return base
+
+    cur_mid = float(base["current_mid"])
+    td = settlements.trade_date
+    base["trade_date"] = td.isoformat()
+    try:
+        base["schedule_status"] = schedule_status()
+    except Exception:
+        pass
+
+    meetings_list = get_upcoming_meetings(td)
+    raw = calculate(
+        settlements.rows, meetings_list, (float(target_lo), float(target_hi)), schedule_horizon()
+    )
+    horizon_end = as_of + dt.timedelta(days=HORIZON_DAYS)
+    in_h: List[Dict[str, Any]] = []
+    for m in raw or []:
+        try:
+            md = dt.date.fromisoformat(str(m.get("date"))[:10])
+        except Exception:
+            continue
+        if md > horizon_end or md < as_of:
+            continue
+        exp = _expected_rate_from_probs(m.get("probabilities") or {})
+        if exp is None:
+            continue
+        in_h.append(
+            {
+                "date": md.isoformat(),
+                "contract": m.get("contract"),
+                "expected_rate": round(float(exp), 4),
+                "cum_hike_bp": round((float(exp) - cur_mid) * 100.0, 1),
+            }
+        )
+    if not in_h:
+        base["degraded_reason"] = (
+            f"no FOMC meetings in [{as_of.isoformat()}, {horizon_end.isoformat()}]"
+        )
+        return base
+    anchor = in_h[-1]
+    base.update(
+        {
+            "fed_1y_hike_bp": float(anchor["cum_hike_bp"]),
+            "meeting_anchor": {
+                "date": anchor["date"],
+                "contract": anchor.get("contract"),
+                "horizon_days": HORIZON_DAYS,
+            },
+            "meetings_in_horizon": in_h,
+            "quality": "ok",
+            "degraded": False,
+            "degraded_reason": None,
+            "expected_rate_1y": anchor["expected_rate"],
+        }
+    )
+    return base
+
+
 def compute_fed_1y_hike_bp(
     *,
     as_of: dt.date,
@@ -160,25 +402,66 @@ def compute_fed_1y_hike_bp(
             "接受偏差；失败不编造 bp。"
         ),
     }
+    # Prefer stock cme-fedwatch (FRED EFFR). On FRED outage, rebuild from
+    # CME settlements + NY Fed / ZQ EFFR context (same algo, no fabricated bp).
+    data = None
+    primary_err: Optional[str] = None
     try:
         from cme_fedwatch import get_probabilities
     except Exception as exc:  # noqa: BLE001
-        base["degraded_reason"] = f"cme-fedwatch import failed: {exc}"
-        logger.warning(base["degraded_reason"])
-        return base
+        primary_err = f"cme-fedwatch import failed: {exc}"
+        logger.warning(primary_err)
 
-    try:
-        kwargs: Dict[str, Any] = {}
-        if trade_date is not None:
-            kwargs["trade_date"] = trade_date
-        data = get_probabilities(**kwargs)  # all upcoming meetings
-    except Exception as exc:  # noqa: BLE001
-        base["degraded_reason"] = f"get_probabilities failed: {exc}"
-        logger.warning(base["degraded_reason"])
-        return base
+    if primary_err is None:
+        try:
+            kwargs: Dict[str, Any] = {}
+            if trade_date is not None:
+                kwargs["trade_date"] = trade_date
+            data = get_probabilities(**kwargs)  # all upcoming meetings
+        except Exception as exc:  # noqa: BLE001
+            primary_err = f"get_probabilities failed: {exc}"
+            logger.warning(primary_err)
+            data = None
 
     if not isinstance(data, dict) or not data.get("meetings"):
-        base["degraded_reason"] = "empty meetings from cme-fedwatch"
+        if data is not None and not data.get("meetings"):
+            primary_err = primary_err or "empty meetings from cme-fedwatch"
+        ctx = _resolve_effr_context()
+        if (
+            ctx.get("effr") is not None
+            and ctx.get("target_lo") is not None
+            and ctx.get("target_hi") is not None
+        ):
+            fb = _fed_from_cme_settlements(
+                as_of=as_of,
+                effr=float(ctx["effr"]),
+                target_lo=float(ctx["target_lo"]),
+                target_hi=float(ctx["target_hi"]),
+                target_source=str(ctx.get("target_source") or "fallback"),
+                effr_source=str(ctx.get("source") or "EFFR_fallback"),
+                trade_date=trade_date,
+            )
+            if fb.get("quality") == "ok":
+                if primary_err:
+                    fb["fallback_note"] = primary_err
+                return fb
+            primary_err = (
+                f"{primary_err}; settlement_fallback: {fb.get('degraded_reason')}"
+                if primary_err
+                else f"settlement_fallback: {fb.get('degraded_reason')}"
+            )
+            # Keep mid/effr even if meetings missing — helps TV bp conversion.
+            base.update(
+                {
+                    "effr": fb.get("effr"),
+                    "current_target": fb.get("current_target"),
+                    "current_mid": fb.get("current_mid"),
+                    "trade_date": fb.get("trade_date"),
+                    "target_source": fb.get("target_source"),
+                    "source": fb.get("source") or base["source"],
+                }
+            )
+        base["degraded_reason"] = primary_err or "empty meetings from cme-fedwatch"
         return base
 
     cur_label = data.get("current_target")
@@ -416,6 +699,54 @@ def fetch_dgs10(as_of: dt.date) -> Dict[str, Any]:
     return out
 
 
+
+def _load_bei_cache(as_of: dt.date, lookback: int) -> Optional[Dict[str, Any]]:
+    """Read data/_bei_daily.csv (T10YIE history) when live FRED is down."""
+    import csv
+
+    path_csv = BEI_CACHE_CSV
+    if not path_csv.is_file():
+        return None
+    rows: List[Tuple[str, float]] = []
+    try:
+        with path_csv.open(newline="", encoding="utf-8") as fh:
+            reader = csv.DictReader(fh)
+            for row in reader:
+                ds = (row.get("observation_date") or row.get("date") or "").strip()
+                raw = (row.get("T10YIE") or row.get("value") or "").strip()
+                if not ds or raw in {"", "."}:
+                    continue
+                if ds > as_of.isoformat():
+                    continue
+                try:
+                    rows.append((ds, float(raw)))
+                except ValueError:
+                    continue
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("BEI cache read failed: %s", exc)
+        return None
+    if not rows:
+        return None
+    rows.sort(key=lambda x: x[0])
+    start = (as_of - dt.timedelta(days=lookback)).isoformat()
+    window = [v for d, v in rows if d >= start] or [v for _, v in rows]
+    last_d, last_v = rows[-1]
+    mean = sum(window) / len(window)
+    dev = last_v - mean
+    return {
+        "t10yie": round(last_v, 3),
+        "as_of": last_d,
+        "mean": round(mean, 3),
+        "n_obs": len(window),
+        "deviation": round(dev, 3),
+        "deviation_bp": round(dev * 100.0, 1),
+        "source": "cache:_bei_daily.csv",
+        "quality": "ok",
+        "unit": "percent",
+        "note": "FRED T10YIE unavailable; using local cache (may lag 1 session)",
+    }
+
+
 def fetch_t10yie(as_of: dt.date) -> Dict[str, Any]:
     lookback = int(THRESHOLDS["t10yie_mean_lookback_calendar_days"])
     out: Dict[str, Any] = {
@@ -437,43 +768,72 @@ def fetch_t10yie(as_of: dt.date) -> Dict[str, Any]:
             "T10YIE", lookback_days=lookback + 60, timeout_seconds=25
         )
         pts = [p for p in pts if p.date <= as_of.isoformat()]
-        if not pts:
-            out["degraded_reason"] = "T10YIE empty"
+        if pts:
+            start = (as_of - dt.timedelta(days=lookback)).isoformat()
+            window = [p for p in pts if p.date >= start] or pts
+            vals = [float(p.value) for p in window]
+            mean = sum(vals) / len(vals)
+            last = pts[-1]
+            last_v = float(last.value)
+            dev = last_v - mean
+            out.update(
+                {
+                    "t10yie": round(last_v, 3),
+                    "as_of": last.date,
+                    "mean": round(mean, 3),
+                    "n_obs": len(vals),
+                    "deviation": round(dev, 3),
+                    "deviation_bp": round(dev * 100.0, 1),
+                    "quality": "ok",
+                }
+            )
             return out
-        start = (as_of - dt.timedelta(days=lookback)).isoformat()
-        window = [p for p in pts if p.date >= start] or pts
-        vals = [float(p.value) for p in window]
-        mean = sum(vals) / len(vals)
-        last = pts[-1]
-        last_v = float(last.value)
-        dev = last_v - mean
-        out.update(
-            {
-                "t10yie": round(last_v, 3),
-                "as_of": last.date,
-                "mean": round(mean, 3),
-                "n_obs": len(vals),
-                "deviation": round(dev, 3),
-                "deviation_bp": round(dev * 100.0, 1),
-                "quality": "ok",
-            }
-        )
-        return out
+        logger.warning("T10YIE FRED empty (maintenance?); trying local cache")
     except Exception as exc:  # noqa: BLE001
         out["degraded_reason"] = f"T10YIE fetch failed: {exc}"
         logger.warning(out["degraded_reason"])
+
+    # Fallback: local FRED cache written by prefetch / prior good runs
+    cached = _load_bei_cache(as_of, lookback)
+    if cached is not None:
+        out.update(cached)
         return out
+    if not out.get("degraded_reason"):
+        out["degraded_reason"] = "T10YIE empty (FRED + local cache)"
+    return out
 
 
-def move_abstain() -> Dict[str, Any]:
+def move_abstain(reason: Optional[str] = None) -> Dict[str, Any]:
     return {
         "move": None,
         "quality": "abstain",
-        "abstain_reason": (
+        "abstain_reason": reason
+        or (
             "MOVE (TVC:MOVE) 为 TV-only，无可靠开源日频代理；"
             "按冲击吸收同口径弃权，不参与任何计算、不编造。"
         ),
     }
+
+
+def fetch_move_tv(symbol: str = TV_MOVE_SYMBOL) -> Dict[str, Any]:
+    """Observational MOVE level via TradingView CFD scanner (not in combined min)."""
+    close, status, reason = fetch_tv_scanner_close(symbol, market="cfd")
+    if status == "ok" and close is not None:
+        return {
+            "move": round(float(close), 2),
+            "as_of": None,
+            "quality": "ok",
+            "source": f"tradingview_cfd_scanner:{symbol}",
+            "abstain_reason": None,
+            "note": "旁证展示用；不进合成 min / 不进冲击吸收计算。",
+        }
+    return move_abstain(
+        reason=(
+            f"MOVE TV scanner 不可用（status={status}"
+            + (f"；{reason}" if reason else "")
+            + "）；按冲击吸收同口径弃权，不编造。"
+        )
+    )
 
 
 def _tv_empty(
@@ -530,9 +890,12 @@ def _tv_compute_from_price(
     return out
 
 
-def fetch_tv_scanner_close(symbol: str) -> Tuple[Optional[float], str, Optional[str]]:
-    """Lightweight TradingView futures scanner HTTP → (close, status, reason).
+def fetch_tv_scanner_close(
+    symbol: str, *, market: str = "futures"
+) -> Tuple[Optional[float], str, Optional[str]]:
+    """Lightweight TradingView scanner HTTP → (close, status, reason).
 
+    market: futures | cfd | america | bond …
     status: ok | unavailable | rate_limited
     Never raises; never fabricates a price.
     """
@@ -540,6 +903,15 @@ def fetch_tv_scanner_close(symbol: str) -> Tuple[Optional[float], str, Optional[
     import urllib.request
 
     _ensure_proxy()
+    url = (
+        TV_CFD_SCANNER_URL
+        if market == "cfd"
+        else (
+            TV_SCANNER_URL
+            if market == "futures"
+            else f"https://scanner.tradingview.com/{market}/scan"
+        )
+    )
     payload = json.dumps(
         {
             "symbols": {"tickers": [symbol], "query": {"types": []}},
@@ -547,7 +919,7 @@ def fetch_tv_scanner_close(symbol: str) -> Tuple[Optional[float], str, Optional[
         }
     ).encode("utf-8")
     req = urllib.request.Request(
-        TV_SCANNER_URL,
+        url,
         data=payload,
         headers={
             "Content-Type": "application/json",
@@ -664,7 +1036,7 @@ def build_payload(
     wti = fetch_wti(as_of)
     dgs = fetch_dgs10(as_of)
     bei = fetch_t10yie(as_of)
-    move = move_abstain()
+    move = fetch_move_tv()
     tv = resolve_tv_crosscheck(
         symbol=tv_symbol or TV_FF_SYMBOL_DEFAULT,
         current_mid=fed.get("current_mid"),
@@ -672,6 +1044,34 @@ def build_payload(
         tv_price_override=tv_price,
         fetch_enabled=tv_fetch,
     )
+
+    # If CME path still degraded but we have mid + TV price, surface TV-derived
+    # hike bp as the observational Fed reading (never fabricates mid/price).
+    if (
+        fed.get("quality") != "ok"
+        and fed.get("fed_1y_hike_bp") is None
+        and isinstance(tv.get("tv_1y_hike_bp"), (int, float))
+        and fed.get("current_mid") is not None
+    ):
+        fed = dict(fed)
+        fed.update(
+            {
+                "fed_1y_hike_bp": float(tv["tv_1y_hike_bp"]),
+                "expected_rate_1y": tv.get("tv_implied_rate"),
+                "quality": "ok",
+                "degraded": False,
+                "degraded_reason": None,
+                "algo_version": "tv_zqu_implied_v1",
+                "source": f"tv_crosscheck:{tv.get('source') or tv_symbol}",
+                "fallback_note": fed.get("degraded_reason") or fed.get("fallback_note"),
+                "meeting_anchor": {
+                    "date": None,
+                    "contract": tv.get("tv_symbol") or tv_symbol,
+                    "horizon_days": HORIZON_DAYS,
+                    "note": "TV ZQU implied; CME settlement path unavailable",
+                },
+            }
+        )
 
     legs_ok = [
         fed.get("quality") == "ok",
@@ -872,7 +1272,14 @@ def build_report(p: Dict[str, Any]) -> str:
         f"（lookback {vs.get('lookback_calendar_days')}d）｜ "
         f"偏离 {vs.get('deviation')} pp（{vs.get('deviation_bp')} bp）"
     )
-    L.append(f"- **MOVE**: null — {(p.get('move_detail') or {}).get('abstain_reason')}")
+    md = p.get("move_detail") or {}
+    if p.get("move") is not None:
+        L.append(
+            f"- **MOVE**: {p.get('move')}（source={md.get('source')}；"
+            f"旁证展示，不进合成 min）"
+        )
+    else:
+        L.append(f"- **MOVE**: null — {md.get('abstain_reason')}")
     L.append("")
     L.append("## 门槛文案")
     L.append("")

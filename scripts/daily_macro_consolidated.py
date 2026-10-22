@@ -2430,10 +2430,18 @@ def build_report(
             f"- **T10YIE**: {article.get('t10yie')}% ｜ vs 近年均值偏离 "
             f"{vs.get('deviation_bp')} bp（mean={vs.get('mean')}）"
         )
-        L.append(
-            f"- **MOVE**: null — 弃权 "
-            f"（{(article.get('move_detail') or {}).get('abstain_reason', 'TV-only')}）"
-        )
+        move_v = article.get("move")
+        move_d = article.get("move_detail") or {}
+        if move_v is not None:
+            L.append(
+                f"- **MOVE**: {move_v} "
+                f"（source={move_d.get('source')}；旁证展示，不进合成 min）"
+            )
+        else:
+            L.append(
+                f"- **MOVE**: null — 弃权 "
+                f"（{move_d.get('abstain_reason', 'TV-only')}）"
+            )
         if article.get("alerts"):
             L.append("- **报警**:")
             for a in article["alerts"]:
