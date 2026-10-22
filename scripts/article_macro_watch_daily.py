@@ -771,7 +771,6 @@ def fetch_southbound_eastmoney(as_of: dt.date) -> Dict[str, Any]:
 
     MUTUAL_TYPE=006 = 南向合计；002/004 = 沪/深港股通。单位：万元。
     """
-    import urllib.parse
     import urllib.request
 
     out: Dict[str, Any] = {
