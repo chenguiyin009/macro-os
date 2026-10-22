@@ -2435,11 +2435,16 @@ def build_report(
                     + (f"；{tv.get('degraded_reason')}" if tv.get("degraded_reason") else "")
                     + "）— 不阻断 CME 旁证"
                 )
+        wti_extra = ""
+        if wti.get("above_narrative_line"):
+            wti_extra = (
+                "；文案=全球风险溢价抬升（禁止暗示中国特有崩盘）"
+            )
         L.append(
             f"- **WTI**: {article.get('wti_last')} "
             f"（叙事线 {thr.get('wti_narrative_line', 90)}；"
             f"{'过线' if wti.get('above_narrative_line') else '未过线'}；"
-            f"as_of={wti.get('as_of')}）"
+            f"as_of={wti.get('as_of')}{wti_extra}）"
         )
         L.append(
             f"- **10Y (DGS10)**: {article.get('dgs10')}% "
@@ -2460,6 +2465,18 @@ def build_report(
             L.append(
                 f"- **MOVE**: null — 弃权 "
                 f"（{move_d.get('abstain_reason', 'TV-only')}）"
+            )
+        hk = article.get("hk_liquidity") or {}
+        hk_line = article.get("hk_liquidity_one_liner") or hk.get("one_liner")
+        if hk_line:
+            L.append(
+                f"- **港股资金面旁证**: {hk_line} "
+                f"（quality={hk.get('quality')}；观察一行，不进合成 min）"
+            )
+        elif hk:
+            L.append(
+                f"- **港股资金面旁证**: 不可用 "
+                f"（{hk.get('degraded_reason') or 'degraded'}；不进合成 min）"
             )
         if article.get("alerts"):
             L.append("- **报警**:")

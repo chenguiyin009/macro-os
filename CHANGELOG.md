@@ -3,6 +3,11 @@
 
 ## Unreleased
 
+### Added
+- 思路观测旁证 **港股资金面一行**（南向净买卖 Eastmoney / 2800.HK 成交额代理 / 恒科 vs 恒指）；
+  consolidator `②-c` 挂载；**不进**四腿 min。见 `docs/ARTICLE_MACRO_WATCH.md` §7。
+- WTI 过叙事线文案强制 **全球风险溢价**，禁止暗示中国特有崩盘（docs + consolidator + alerts）。
+
 ### Changed
 - **思路观测旁证正式方案**（`docs/ARTICLE_MACRO_WATCH.md`，`article_macro_watch_fallback_v1`）：
   FRED 维护时的回退链升为生产默认——Fed：NY Fed EFFR → ZQ/^IRX → TV ZQU 隐含；

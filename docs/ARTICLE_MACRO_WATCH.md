@@ -6,7 +6,7 @@ tags: [macro-os,旁证, article-macro-watch, fallback, observational]
 
 ## 目的
 
-把作者叙事线（Fed 1y 加息定价 / WTI / 10Y / T10YIE / MOVE）收成只读观测 artifact，挂到晨报/晚报 `②-c`（或等价「思路观测旁证」小节）。
+把作者叙事线（Fed 1y 加息定价 / WTI / 10Y / T10YIE / MOVE / 港股资金面一行）收成只读观测 artifact，挂到晨报/晚报 `②-c`（或等价「思路观测旁证」小节）。
 
 本旁证是 **观察 + 报警**，不是控制层：
 
@@ -83,6 +83,23 @@ FRED `DGS10` → yfinance `^TNX`（FRED 维护时正式启用）。
 
 旁证展示 MOVE **不进**合成 min，也 **不进**冲击吸收状态机计算。
 
+### 7. 港股资金面旁证一行（不进 min）
+
+一行展示：**南向净买卖** / **港股成交额（代理）** / **恒生科技 vs 恒指日涨跌**。
+
+| 字段 | 优先级 / 来源 | 回退 |
+|---|---|---|
+| 南向净买卖 | Eastmoney `RPT_MUTUAL_DEAL_HISTORY`，`MUTUAL_TYPE=006`（南向合计），单位万元 | 失败 → null，文案写「不可用」；**禁止编造** |
+| 港股成交额 | `2800.HK` Close×Volume 作流动性代理（`^HSI` Volume 常为 0） | null + 标注 proxy；非官方全市场总成交 |
+| 恒科 vs 恒指 | 恒指 `^HSI`；恒科 `3032.HK`（HSTECH ETF；`^HSTECH` 常不可用）日涨跌差 | 任一腿失败 → 该段 null |
+
+挂载：旁证 MD「港股资金面旁证」小节 + consolidator `②-c` 一行。仍**不进**四腿合成 min。
+
+### 8. 油价文案（WTI ≥ 叙事线）
+
+过线时文案必须写 **全球风险溢价**；**禁止**暗示「中国特有崩盘 / 单独归因 A 股」。  
+门槛绝对价仍为 90（观察文案，未标定）。
+
 ## 晨晚例行（consolidator）
 
 ```bash
@@ -100,7 +117,7 @@ SECTOR_PROXY=off ARTICLE_TV_PRICE=95.315 python scripts/daily_macro_consolidated
 ## 质量与报警
 
 - `quality=ok|partial|degraded`；MOVE 单独 abstain **不**单独把整份标 degraded。
-- Fed 门槛文案（观察）：70 / 100 / 110 bp；WTI 叙事线 90。
+- Fed 门槛文案（观察）：70 / 100 / 110 bp；WTI 叙事线 90（过线=全球风险溢价，禁止中国特有崩盘暗示）。
 - 与官网 QuikStrike / 盘中 FedWatch 允许偏差（日结算 vs 盘中、日程硬编码、月末敏感）。
 
 ## 版本

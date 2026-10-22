@@ -113,11 +113,18 @@ FALLBACK_POLICY = {
         "dgs10": ["FRED:DGS10", "yfinance:^TNX"],
         "t10yie": ["FRED:T10YIE", "Treasury:nom10-real10", "cache:_bei_daily.csv"],
         "move": ["tradingview_cfd_scanner:TVC:MOVE", "abstain"],
+        "hk_liquidity": [
+            "eastmoney:RPT_MUTUAL_DEAL_HISTORY(MUTUAL_TYPE=006 南向合计)",
+            "yfinance:^HSI+3032.HK day%",
+            "yfinance:2800.HK Close×Volume as 港股成交额代理",
+        ],
     },
     "lag_notes": {
         "t10yie_cache": "data/_bei_daily.csv may lag ~1 US trading day vs live FRED",
         "t10yie_treasury": "Treasury nom−real ≈ BEI; may differ from FRED T10YIE by a few bp",
         "fed_settlement": "CME free settlement feed ~last 5 business days",
+        "hk_southbound": "Eastmoney NET_DEAL_AMT unit=万元；周末/假日可能仍为上一交易日",
+        "hk_turnover_proxy": "全市场成交额难直取时用 2800.HK 成交额代理，标注 proxy",
     },
 }
 
@@ -687,6 +694,260 @@ def fetch_wti(as_of: dt.date) -> Dict[str, Any]:
     return out
 
 
+
+def _download_ohlcv(ticker: str, period: str = "1mo") -> Optional[Any]:
+    """Close + Volume for turnover proxies. Returns DataFrame or None."""
+    import pandas as pd
+    import yfinance as yf
+
+    _ensure_proxy()
+    try:
+        raw = yf.download(
+            ticker, period=period, auto_adjust=True, progress=False, threads=False
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("yfinance ohlcv failed %s: %s", ticker, exc)
+        return None
+    if raw is None or getattr(raw, "empty", True):
+        return None
+    cols = raw.columns
+    if getattr(cols, "nlevels", 1) > 1:
+        close = None
+        vol = None
+        if ("Close", ticker) in cols:
+            close = raw[("Close", ticker)]
+        elif "Close" in cols.get_level_values(0):
+            close = raw.xs("Close", axis=1, level=0)
+            close = close[ticker] if ticker in close.columns else close.iloc[:, 0]
+        if ("Volume", ticker) in cols:
+            vol = raw[("Volume", ticker)]
+        elif "Volume" in cols.get_level_values(0):
+            vol = raw.xs("Volume", axis=1, level=0)
+            vol = vol[ticker] if ticker in vol.columns else vol.iloc[:, 0]
+        if close is None:
+            return None
+        out = pd.DataFrame({"Close": pd.to_numeric(close, errors="coerce")})
+        if vol is not None:
+            out["Volume"] = pd.to_numeric(vol, errors="coerce")
+    else:
+        if "Close" not in cols:
+            return None
+        out = pd.DataFrame({"Close": pd.to_numeric(raw["Close"], errors="coerce")})
+        if "Volume" in cols:
+            out["Volume"] = pd.to_numeric(raw["Volume"], errors="coerce")
+    out.index = pd.to_datetime(out.index).normalize()
+    out = out.dropna(subset=["Close"])
+    return out if len(out) >= 2 else None
+
+
+def _series_day_return(series: Any, as_of: dt.date) -> Tuple[Optional[float], Optional[str]]:
+    """Close-to-close 1D % ending on last bar <= as_of."""
+    if series is None or len(series) < 2:
+        return None, None
+    import pandas as pd
+
+    idx = series.index
+    try:
+        mask = idx.date <= as_of if hasattr(idx, "date") else idx <= pd_Timestamp(as_of)
+        sub = series.loc[mask]
+    except Exception:
+        keep = [i for i in idx if str(i)[:10] <= as_of.isoformat()]
+        if len(keep) < 2:
+            return None, None
+        sub = series.loc[keep]
+    if sub is None or len(sub) < 2:
+        return None, None
+    last_i = sub.index[-1]
+    prev_i = sub.index[-2]
+    last = float(sub.iloc[-1])
+    prev = float(sub.iloc[-2])
+    if prev <= 0:
+        return None, str(last_i)[:10]
+    return (last / prev - 1.0), str(last_i)[:10]
+
+
+def fetch_southbound_eastmoney(as_of: dt.date) -> Dict[str, Any]:
+    """南向净买卖（港股通合计）via Eastmoney RPT_MUTUAL_DEAL_HISTORY.
+
+    MUTUAL_TYPE=006 = 南向合计；002/004 = 沪/深港股通。单位：万元。
+    """
+    import urllib.parse
+    import urllib.request
+
+    out: Dict[str, Any] = {
+        "net_wan": None,
+        "as_of": None,
+        "buy_wan": None,
+        "sell_wan": None,
+        "source": "eastmoney:RPT_MUTUAL_DEAL_HISTORY",
+        "mutual_type": "006",
+        "unit": "万元",
+        "quality": "degraded",
+    }
+    # Prefer exact date; else latest row on/before as_of (page of recent days)
+    base = (
+        "https://datacenter-web.eastmoney.com/api/data/v1/get"
+        "?reportName=RPT_MUTUAL_DEAL_HISTORY&columns=ALL"
+        "&pageNumber=1&pageSize=40&sortTypes=-1&sortColumns=TRADE_DATE"
+        "&source=WEB&client=WEB"
+        "&filter=(MUTUAL_TYPE%3D%22006%22)"
+    )
+    _ensure_proxy()
+    try:
+        req = urllib.request.Request(base, headers={"User-Agent": "Mozilla/5.0 GYbot-article-watch"})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            payload = json.loads(resp.read().decode("utf-8", errors="replace"))
+    except Exception as exc:  # noqa: BLE001
+        out["degraded_reason"] = f"eastmoney southbound fetch failed: {exc}"
+        return out
+    rows = ((payload.get("result") or {}).get("data")) or []
+    if not rows:
+        out["degraded_reason"] = "eastmoney southbound empty"
+        return out
+    chosen = None
+    for row in rows:
+        td = str(row.get("TRADE_DATE") or "")[:10]
+        if td and td <= as_of.isoformat():
+            chosen = row
+            break
+    if chosen is None:
+        chosen = rows[0]
+    td = str(chosen.get("TRADE_DATE") or "")[:10] or None
+    net = chosen.get("NET_DEAL_AMT")
+    try:
+        net_f = float(net) if net is not None else None
+    except Exception:
+        net_f = None
+    if net_f is None:
+        out["degraded_reason"] = "eastmoney NET_DEAL_AMT null"
+        out["as_of"] = td
+        return out
+    buy = chosen.get("BUY_AMT")
+    sell = chosen.get("SELL_AMT")
+    try:
+        buy_f = float(buy) if buy is not None else None
+    except Exception:
+        buy_f = None
+    try:
+        sell_f = float(sell) if sell is not None else None
+    except Exception:
+        sell_f = None
+    out.update(
+        {
+            "net_wan": round(net_f, 2),
+            "buy_wan": round(buy_f, 2) if buy_f is not None else None,
+            "sell_wan": round(sell_f, 2) if sell_f is not None else None,
+            "as_of": td,
+            "quality": "ok",
+            "degraded_reason": None,
+        }
+    )
+    return out
+
+
+def fetch_hk_liquidity(as_of: dt.date) -> Dict[str, Any]:
+    """港股资金面旁证一行：南向净买卖 / 港股成交额代理 / 恒科 vs 恒指日涨跌。
+
+    永不进入四腿 min；失败字段置 null + degraded，禁止编造。
+    """
+    out: Dict[str, Any] = {
+        "as_of": as_of.isoformat(),
+        "quality": "degraded",
+        "degraded_reason": None,
+        "one_liner": None,
+        "southbound": None,
+        "hk_turnover": None,
+        "hstech_vs_hsi": None,
+        "bound_to_combined_min": False,
+        "note": "港股资金面旁证：观察一行；不进合成 min / 不改 denom_policy。",
+    }
+    sb = fetch_southbound_eastmoney(as_of)
+    out["southbound"] = sb
+
+    # 恒指 / 恒科日涨跌（恒科用 3032.HK ETF 代理；^HSTECH 常不可用）
+    hsi_s = _download_close("^HSI", period="1mo")
+    hstech_s = _download_close("3032.HK", period="1mo")
+    hsi_ret, hsi_d = _series_day_return(hsi_s, as_of)
+    hstech_ret, hstech_d = _series_day_return(hstech_s, as_of)
+    spread = None
+    if hsi_ret is not None and hstech_ret is not None:
+        spread = hstech_ret - hsi_ret
+    out["hstech_vs_hsi"] = {
+        "hsi_ret": round(hsi_ret, 6) if hsi_ret is not None else None,
+        "hstech_ret": round(hstech_ret, 6) if hstech_ret is not None else None,
+        "spread_hstech_minus_hsi": round(spread, 6) if spread is not None else None,
+        "hsi_as_of": hsi_d,
+        "hstech_as_of": hstech_d,
+        "hsi_source": "yfinance:^HSI",
+        "hstech_source": "yfinance:3032.HK (HSTECH ETF proxy; ^HSTECH often unavailable)",
+        "quality": "ok" if (hsi_ret is not None and hstech_ret is not None) else "degraded",
+    }
+
+    # 港股成交额：优先 2800.HK Close×Volume 作代理（^HSI Volume 常为 0）
+    ohlcv = _download_ohlcv("2800.HK", period="1mo")
+    turnover = None
+    turn_d = None
+    turn_src = "yfinance:2800.HK Close×Volume (proxy)"
+    if ohlcv is not None and "Volume" in ohlcv.columns:
+        import pandas as pd
+
+        idx = ohlcv.index
+        mask = idx.date <= as_of if hasattr(idx, "date") else idx <= pd_Timestamp(as_of)
+        sub = ohlcv.loc[mask]
+        if len(sub):
+            last = sub.iloc[-1]
+            vol = last.get("Volume")
+            close = last.get("Close")
+            if vol is not None and close is not None and float(vol) > 0:
+                turnover = float(close) * float(vol)
+                turn_d = str(sub.index[-1])[:10]
+    out["hk_turnover"] = {
+        "turnover_hkd": round(turnover, 0) if turnover is not None else None,
+        "turnover_yi": round(turnover / 1e8, 2) if turnover is not None else None,
+        "as_of": turn_d,
+        "source": turn_src,
+        "proxy": True,
+        "quality": "ok" if turnover is not None else "degraded",
+        "note": "全市场成交额难直取；2800.HK 成交额仅作流动性代理，非官方港股总成交。",
+    }
+
+    # one-liner
+    bits = []
+    if sb.get("quality") == "ok" and sb.get("net_wan") is not None:
+        bits.append(f"南向净买卖 {sb['net_wan']:+.0f}万（{sb.get('as_of')}）")
+    else:
+        bits.append("南向净买卖 —（不可用）")
+    ht = out["hk_turnover"]
+    if ht.get("turnover_yi") is not None:
+        bits.append(f"港股成交额代理 {ht['turnover_yi']:.1f}亿HKD（2800.HK）")
+    else:
+        bits.append("港股成交额 —（不可用）")
+    hv = out["hstech_vs_hsi"]
+    if hv.get("hsi_ret") is not None and hv.get("hstech_ret") is not None:
+        bits.append(
+            f"恒科 {hv['hstech_ret']*100:+.2f}% vs 恒指 {hv['hsi_ret']*100:+.2f}%"
+            f"（差 {hv['spread_hstech_minus_hsi']*100:+.2f}pp）"
+        )
+    else:
+        bits.append("恒科vs恒指 —（不可用）")
+    out["one_liner"] = "；".join(bits)
+
+    legs_ok = [
+        sb.get("quality") == "ok",
+        ht.get("quality") == "ok",
+        hv.get("quality") == "ok",
+    ]
+    if all(legs_ok):
+        out["quality"] = "ok"
+    elif any(legs_ok):
+        out["quality"] = "partial"
+        out["degraded_reason"] = "hk liquidity partial"
+    else:
+        out["quality"] = "degraded"
+        out["degraded_reason"] = "hk liquidity all legs failed"
+    return out
+
+
 def fetch_dgs10(as_of: dt.date) -> Dict[str, Any]:
     """Prefer FRED DGS10; fall back to yfinance ^TNX."""
     out: Dict[str, Any] = {
@@ -1172,6 +1433,7 @@ def build_payload(
     dgs = fetch_dgs10(as_of)
     bei = fetch_t10yie(as_of)
     move = fetch_move_tv()
+    hk = fetch_hk_liquidity(as_of)
     tv = resolve_tv_crosscheck(
         symbol=tv_symbol or TV_FF_SYMBOL_DEFAULT,
         current_mid=fed.get("current_mid"),
@@ -1247,8 +1509,13 @@ def build_payload(
             f"{THRESHOLDS['fed_1y_hike_bp']['warn']}/"
             f"{THRESHOLDS['fed_1y_hike_bp']['elevated']}/"
             f"{THRESHOLDS['fed_1y_hike_bp']['extreme']} bp；"
-            f"WTI 作者叙事线绝对价 {THRESHOLDS['wti_narrative_line']}。"
+            f"WTI 作者叙事线绝对价 {THRESHOLDS['wti_narrative_line']} "
+            f"（过线仅表示全球风险溢价抬升，禁止解读为「中国特有崩盘」）。"
             "本旁证不进合成 min / 不改 denom_policy。"
+        ),
+        "wti_over_line_copy": (
+            "全球风险溢价抬升（油价叙事线）；"
+            "不暗示中国特有崩盘 / 不单独归因 A 股。"
         ),
     }
 
@@ -1263,7 +1530,8 @@ def build_payload(
         alerts.append(f"Fed 1y 加息定价 {bp}bp ≥ 观察线 {thr['fed_1y_hike_bp_warn']}")
     if wti.get("above_narrative_line"):
         alerts.append(
-            f"WTI {wti.get('wti_last')} ≥ 叙事线 {thr['wti_narrative_line']}"
+            f"WTI {wti.get('wti_last')} ≥ 叙事线 {thr['wti_narrative_line']}："
+            f"{thr['wti_over_line_copy']}"
         )
     if fed.get("degraded"):
         alerts.append(f"Fed 段 degraded：{fed.get('degraded_reason')}")
@@ -1312,6 +1580,8 @@ def build_payload(
         "thresholds": thr,
         "fed_alert_level": lvl,
         "alerts": alerts,
+        "hk_liquidity": hk,
+        "hk_liquidity_one_liner": hk.get("one_liner"),
         "fallback_policy": FALLBACK_POLICY,
     }
 
@@ -1393,10 +1663,14 @@ def build_report(p: Dict[str, Any]) -> str:
     L.append("## WTI / 10Y / BEI / MOVE")
     L.append("")
     wti = p.get("wti") or {}
+    wti_note = ""
+    if wti.get("above_narrative_line"):
+        wti_note = "；文案=全球风险溢价抬升（禁止暗示中国特有崩盘）"
     L.append(
         f"- **WTI**: {p.get('wti_last')}（as_of={wti.get('as_of')}，"
         f"叙事线 {THRESHOLDS['wti_narrative_line']}，"
-        f"{'触及/越过' if wti.get('above_narrative_line') else '未过线'}）"
+        f"{'触及/越过' if wti.get('above_narrative_line') else '未过线'}"
+        f"{wti_note}）"
     )
     L.append(
         f"- **DGS10/10Y**: {p.get('dgs10')}%（source={ (p.get('rates_10y') or {}).get('source') }，"
@@ -1416,6 +1690,22 @@ def build_report(p: Dict[str, Any]) -> str:
         )
     else:
         L.append(f"- **MOVE**: null — {md.get('abstain_reason')}")
+    L.append("")
+    L.append("## 港股资金面旁证（一行 · 不进 min）")
+    L.append("")
+    hk = p.get("hk_liquidity") or {}
+    if hk.get("one_liner"):
+        L.append(f"- **一行**: {hk['one_liner']}")
+        L.append(
+            f"- **质量**: {hk.get('quality')} ｜ "
+            f"南向 source={(hk.get('southbound') or {}).get('source')} ｜ "
+            f"成交额={(hk.get('hk_turnover') or {}).get('source')} ｜ "
+            f"恒科={(hk.get('hstech_vs_hsi') or {}).get('hstech_source')}"
+        )
+        if hk.get("degraded_reason"):
+            L.append(f"- **降级**: {hk['degraded_reason']}")
+    else:
+        L.append("> 港股资金面旁证不可用。")
     L.append("")
     L.append("## 门槛文案")
     L.append("")

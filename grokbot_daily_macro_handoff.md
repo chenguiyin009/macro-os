@@ -85,6 +85,8 @@ SECTOR_PROXY=off python scripts/daily_macro_consolidated.py --report-dir ./outpu
 晨/晚 consolidator 默认跑 `article_macro_watch`。FRED 维护时按 `docs/ARTICLE_MACRO_WATCH.md` 自动回退，**无需**每次手填 `--tv-price`。
 可选：跑前设 `ARTICLE_TV_PRICE`（TradingView MCP 报价）或传 `--article-tv-price`，仅提高 TV 对照精度。
 汇报时注明旁证 quality / Fed bp 来源（CME+NYFed 或 TV 隐含），并强调**不进合成 min**。
+港股资金面一行（南向/成交额代理/恒科vs恒指）挂在 `②-c`；WTI 过线文案=**全球风险溢价**（禁止中国特有崩盘暗示）。
+
 
 ## 8. 不要做的一步（与作者本机自动化的差异）
 作者本机的完整自动化在生成报告后，还会 `build_desk_data.py` + `sync_desk_to_nexus.ps1` 把报告推到腾讯云 NEXUS desk（只读展示）。**这一步需要作者的 SSH 私钥（`.ssh-nexus.pem`）与云服务器，grokbot 不应执行**。grokbot 只负责生成 `output/daily_macro_*.{md,json}` 本地报告即可。
