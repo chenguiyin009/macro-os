@@ -1050,7 +1050,8 @@ A_SHARE_FORBID_WHEN_LAGGING = ("重回中性", "可对照加仓")
 
 
 # 弱降级影子：分数未落后均分，但 rel5 仅小幅为负（(-2%, 0)）
-REL5_JUST_NEG_FLOOR = -0.02  # 严格 > 此值且 <0 视为「刚负」
+# pct_change_n 已 ×100（百分数单位），故 -2% → -2.0（勿写成 -0.02）
+REL5_JUST_NEG_FLOOR = -2.0  # 严格 > 此值且 <0 视为「刚负」
 # 对A结构标签：创业板−沪深300 日差观测门槛（不改分数）
 A_STRUCT_SPREAD_GROWTH_KILL = -0.005  # cyb-hs300 <= -0.5pp 且成长更弱 → 成长杀/红利托底
 A_STRUCT_BOTH_DOWN = -0.01  # 两者日涨跌均 <= -1% → 全面杀
@@ -1217,7 +1218,7 @@ def a_share_mapping_from_selected(
         "shadow_weak_downgrade": shadow_weak_downgrade,
         "shadow_note": (
             "弱降级（影子）：分数未落后均分≥15，但 rel5 仅小幅为负"
-            f"（({REL5_JUST_NEG_FLOOR:.0%} , 0)）；硬门控仍强制降预期，软档未改生产。"
+            f"（({REL5_JUST_NEG_FLOOR:g}% , 0)）；硬门控仍强制降预期，软档未改生产。"
             if shadow_weak_downgrade
             else None
         ),

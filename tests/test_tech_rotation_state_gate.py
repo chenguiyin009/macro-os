@@ -143,19 +143,25 @@ def test_build_markdown_has_stable_a_share_section():
 
 @pytest.mark.unit
 def test_shadow_weak_downgrade_when_mid_score_just_neg_rel5():
-    """分数未落后均分，rel5 仅小幅为负 → 硬降级仍在，影子标弱降级。"""
-    am = a_share_mapping_from_selected(70.0, 70.0, -0.005, 0)
+    """分数未落后均分，rel5 仅小幅为负（百分数单位 (-2,0)）→ 硬降级仍在，影子标弱降级。"""
+    assert REL5_JUST_NEG_FLOOR == -2.0  # pct_change_n ×100：-2% → -2.0
+    am = a_share_mapping_from_selected(70.0, 70.0, -1.0, 0)  # -1% ∈ (-2%, 0)
     assert am["force_semi_downgrade"] is True
     assert am["shadow_weak_downgrade"] is True
     assert am["shadow_note"] and "弱降级" in am["shadow_note"]
+    assert "-2%" in am["shadow_note"]  # 勿再被 .0% 格式打成 -200%
     # score 落后时不算「弱」影子（硬落后主导）
-    am_lag = a_share_mapping_from_selected(50.0, 70.0, -0.005, 0)
+    am_lag = a_share_mapping_from_selected(50.0, 70.0, -1.0, 0)
     assert am_lag["force_semi_downgrade"] is True
     assert am_lag["shadow_weak_downgrade"] is False
-    # rel5 深负不算 just-neg
+    # rel5 深负不算 just-neg（≤ -2%）
     am_deep = a_share_mapping_from_selected(70.0, 70.0, REL5_JUST_NEG_FLOOR - 0.001, 0)
     assert am_deep["force_semi_downgrade"] is True
     assert am_deep["shadow_weak_downgrade"] is False
+    # 边界：刚好 -2.0 不算「刚负」（须严格 > floor）
+    am_edge = a_share_mapping_from_selected(70.0, 70.0, REL5_JUST_NEG_FLOOR, 0)
+    assert am_edge["force_semi_downgrade"] is True
+    assert am_edge["shadow_weak_downgrade"] is False
 
 
 @pytest.mark.unit
