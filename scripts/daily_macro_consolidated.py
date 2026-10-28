@@ -2163,6 +2163,27 @@ def build_plain_advice(
         "「今天不做」优先级高于打法；本栏是战术纪律翻译，不是买卖信号",
     ]
 
+    # 近阈注记（展示/笔记 only）：NQ z 贴近 -0.4 且硬否决时提示，不改 combined_budget / 四腿 min
+    near_threshold_note = None
+    try:
+        z_legs = (nq or {}).get("z_legs") or {}
+        nq_z = z_legs.get("nq")
+        if nq_z is None:
+            sens = (nq or {}).get("sensors") or []
+            for s in sens:
+                label = str((s or {}).get("leg") or (s or {}).get("name") or "").upper()
+                if label.startswith("NQ") or "NASDAQ" in label:
+                    nq_z = s.get("z")
+                    break
+        if hard_veto and nq_z is not None and abs(float(nq_z) + 0.4) < 0.15:
+            near_threshold_note = (
+                f"近阈注记：NQ z={float(nq_z):+.3f} 贴近硬否决常用阈 -0.4"
+                f"（|z+0.4|={abs(float(nq_z)+0.4):.3f}<0.15）；"
+                "仅展示，不改 combined_budget"
+            )
+    except (TypeError, ValueError):
+        near_threshold_note = None
+
     return {
         "headline": stance,
         "posture": posture,
@@ -2181,6 +2202,7 @@ def build_plain_advice(
         "nq_state": nq_state,
         "hard_veto": hard_veto,
         "pressure_override": pressure,
+        "near_threshold_note": near_threshold_note,
     }
 
 
@@ -2198,6 +2220,8 @@ def format_plain_advice_md(advice: Dict[str, Any]) -> List[str]:
         else ("压力覆盖" if advice.get("pressure_override") else "否")
     )
     L.append(f"- **硬否决/压力**：{flag}")
+    if advice.get("near_threshold_note"):
+        L.append(f"- **近阈注记（不改预算）**：{advice.get('near_threshold_note')}")
     L.append(f"- **动因修正（白话）**：{advice.get('driver_mod_plain') or '—'}")
     L.append(f"- **打法框架**：{advice.get('playbook') or '—'}")
     L.append(
