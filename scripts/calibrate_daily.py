@@ -153,11 +153,25 @@ def run_calibration(
     # --- 四腿 ---
     if fl:
         hits.append(
-            direction_hit(fl.posture, spy_1d, bias=fl.bias, bench="SPY").to_dict()
+            direction_hit(
+                fl.posture,
+                spy_1d,
+                bias=fl.bias,
+                bench="SPY",
+                binding=fl.binding,
+                denom_ceiling=fl.denom_ceiling,
+            ).to_dict()
         )
         if qqq_1d is not None:
             hits.append(
-                direction_hit(fl.posture, qqq_1d, bias=fl.bias, bench="QQQ").to_dict()
+                direction_hit(
+                    fl.posture,
+                    qqq_1d,
+                    bias=fl.bias,
+                    bench="QQQ",
+                    binding=fl.binding,
+                    denom_ceiling=fl.denom_ceiling,
+                ).to_dict()
             )
     else:
         hits.append(
@@ -185,6 +199,9 @@ def run_calibration(
                 am.get("semi_chip_stance"),
                 smh_rel1,
                 smh_rel5,
+                triggers=am.get("triggers"),
+                shadow_weak_downgrade=bool(am.get("shadow_weak_downgrade")),
+                pred_rel5_pct=tech.selected_rel5_pct,
             ).to_dict()
         )
     else:
@@ -207,7 +224,7 @@ def run_calibration(
     else:
         hits.append(
             {
-                "name": "标普pine Top3相对",
+                "name": "标普 pine Top3（笔记·不驱动C）",
                 "hit": None,
                 "detail": f"缺 daily_abc / sector_rotation for {as_of}",
                 "suggestion": None,
@@ -287,6 +304,7 @@ def run_calibration(
                 "bias": fl.bias,
                 "binding": fl.binding,
                 "combined_budget": fl.combined_budget,
+                "denom_ceiling": fl.denom_ceiling,
                 "stance": fl.stance,
             },
             "tech": None
@@ -296,6 +314,7 @@ def run_calibration(
                 "strongest": tech.strongest,
                 "weakest": tech.weakest,
                 "selected_theme": tech.selected_theme,
+                "selected_rel5_pct": tech.selected_rel5_pct,
                 "a_share_mapping": tech.a_share_mapping,
             },
             "spx": None
@@ -360,8 +379,26 @@ def render_md(note: Dict[str, Any]) -> str:
         am = tech.get("a_share_mapping") or {}
         lines += [
             f"- **科技**：强 {strong or '—'} ｜ 弱 {weak or '—'}",
-            f"- **对A半导门控**：{am.get('semi_chip_stance')} "
-            f"(force_downgrade={am.get('force_semi_downgrade')})",
+            (
+                f"- **对A半导门控**：{am.get('semi_chip_stance')} "
+                f"(force_downgrade={am.get('force_semi_downgrade')}"
+                + (
+                    f"；触发={'+'.join(am.get('triggers') or [])}"
+                    if am.get("triggers")
+                    else ""
+                )
+                + (
+                    "；仅刚负"
+                    if am.get("shadow_weak_downgrade")
+                    else ""
+                )
+                + (
+                    f"；预判rel5={tech.get('selected_rel5_pct'):+.2f}%"
+                    if tech.get("selected_rel5_pct") is not None
+                    else ""
+                )
+                + ")"
+            ),
         ]
     else:
         lines.append("- **科技**：缺文件")
@@ -373,7 +410,7 @@ def render_md(note: Dict[str, Any]) -> str:
         cw = " · ".join(
             f"{x.get('ticker')} {x.get('pct')}%" for x in (spx.get("c_weights") or [])[:6]
         )
-        lines.append(f"- **标普 pine Top3**：{top or '—'}")
+        lines.append(f"- **标普 pine Top3（笔记·不驱动C）**：{top or '—'}")
         if cw:
             lines.append(f"- **C 权重（只读）**：{cw}")
     else:

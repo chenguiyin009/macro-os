@@ -41,6 +41,12 @@ def map_posture(posture: Optional[str], bias: Optional[str] = None) -> str:
     return "neutral"
 
 
+def _binding_has_nq(binding: Optional[Sequence[str]]) -> bool:
+    if not binding:
+        return False
+    return any("NQ" in str(b).upper() for b in binding)
+
+
 def direction_hit(
     posture: Optional[str],
     ret_1d: Optional[float],
@@ -49,6 +55,8 @@ def direction_hit(
     bench: str = "SPY",
     chop: float = CHOP_1D,
     wait_miss: float = WAIT_MISS_1D,
+    binding: Optional[Sequence[str]] = None,
+    denom_ceiling: Optional[float] = None,
 ) -> HitResult:
     """预判偏多/偏空/观望 vs 实际涨跌."""
     name = f"四腿方向({bench})"
@@ -63,7 +71,15 @@ def direction_hit(
     elif side == "bearish":
         hit = ret_1d < 0
         detail = f"预判偏空/防守 · {bench} 1D {pct:+.2f}%"
-        sug = None if hit else "防守姿态但指数上涨：检查是否过早 defend，或仅分母纪律误伤"
+        if hit:
+            sug = None
+        elif _binding_has_nq(binding) and (
+            denom_ceiling is not None and float(denom_ceiling) >= 0.8
+        ):
+            # 分母本身宽松，真正收紧的是 NQ 硬否决 → 勿写成「分母纪律」
+            sug = "防守姿态但指数上涨：检查是否过早 defend，或 NQ硬否决近阈误伤"
+        else:
+            sug = "防守姿态但指数上涨：检查是否过早 defend，或仅分母纪律误伤"
     else:
         # 观望：窄幅震荡算命中；大波动算落空（本可更鲜明）
         if abs(ret_1d) <= wait_miss:
@@ -110,6 +126,10 @@ def semi_a_share_gate_hit(
     stance: Optional[str],
     smh_rel1: Optional[float],
     smh_rel5: Optional[float],
+    *,
+    triggers: Optional[Sequence[str]] = None,
+    shadow_weak_downgrade: bool = False,
+    pred_rel5_pct: Optional[float] = None,
 ) -> HitResult:
     """对A半导降预期是否与 SMH 相对 QQQ 强弱一致."""
     name = "半导对A门控 vs SMH相对"
@@ -125,9 +145,24 @@ def semi_a_share_gate_hit(
     def _pos(x: Optional[float]) -> bool:
         return x is not None and x >= 0
 
+    trig = list(triggers or [])
+    just_neg = bool(shadow_weak_downgrade) or (
+        pred_rel5_pct is not None
+        and -2.0 < float(pred_rel5_pct) < 0
+        and trig == ["rel5<0"]
+    )
+    mag_bits = []
+    if pred_rel5_pct is not None:
+        mag_bits.append(f"预判rel5={float(pred_rel5_pct):+.2f}%")
+    if trig:
+        mag_bits.append("触发=" + "+".join(trig))
+    if just_neg:
+        mag_bits.append("仅刚负")
+    mag_note = (" · " + " · ".join(mag_bits)) if mag_bits else ""
+
     rel_note = (
         f"SMH-QQQ rel1={_fmt(smh_rel1)} rel5={_fmt(smh_rel5)} · "
-        f"门控={'降预期' if downgrade else '未降级'}"
+        f"门控={'降预期' if downgrade else '未降级'}{mag_note}"
     )
     if downgrade:
         # 一致：至少一窗相对偏弱，或两窗都不强
@@ -135,7 +170,15 @@ def semi_a_share_gate_hit(
         if smh_rel1 is not None and smh_rel5 is not None and smh_rel1 > 0.005 and smh_rel5 > 0.01:
             consistent = False
         detail = f"{rel_note} → {'一致' if consistent else '不一致（美股半导相对并不弱）'}"
-        sug = None if consistent else "降预期日 SMH 相对并不弱：检查 score/rel5 阈值是否过敏感"
+        if consistent:
+            sug = None
+        elif just_neg:
+            sug = (
+                "降预期日 SMH 相对并不弱：触发幅度偏小（仅刚负）；"
+                "检查 score/rel5 阈值是否过敏感"
+            )
+        else:
+            sug = "降预期日 SMH 相对并不弱：检查 score/rel5 阈值是否过敏感"
         return HitResult(name, consistent, detail, sug)
     # 未降级：期望相对不弱
     consistent = _pos(smh_rel1) or (smh_rel1 is None and _pos(smh_rel5))
@@ -156,8 +199,8 @@ def pine_top3_hit(
     top3_rets: Sequence[Tuple[str, Optional[float]]],
     bench_ret: Optional[float],
 ) -> HitResult:
-    """标普 pine Top3 次日相对 SPY."""
-    name = "标普pine Top3相对"
+    """标普 pine Top3 次日相对 SPY（笔记·不驱动C）。"""
+    name = "标普 pine Top3（笔记·不驱动C）"
     if bench_ret is None:
         return HitResult(name, None, "缺 SPY 1D", None)
     pairs = [(t, r) for t, r in top3_rets if r is not None]
@@ -170,7 +213,12 @@ def pine_top3_hit(
         + " · ".join(f"{t} {_fmt(r)}" for t, r in pairs)
         + f" · SPY {_fmt(bench_ret)}"
     )
-    sug = None if hit else "pine Top3 次日多数跑输：建议仅作笔记，不改生产 C/pine 默认"
+    # 落空建议仅笔记，永不暗示改生产 C / pine 默认
+    sug = (
+        None
+        if hit
+        else "标普 pine Top3（笔记·不驱动C）次日多数跑输：仅作笔记，不改生产 C/pine 默认"
+    )
     return HitResult(name, hit, detail, sug)
 
 

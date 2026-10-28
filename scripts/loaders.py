@@ -72,6 +72,7 @@ class FourLegPred:
     combined_budget: Optional[float]
     stance: Optional[str]
     path: str
+    denom_ceiling: Optional[float] = None
 
 
 @dataclass
@@ -82,6 +83,7 @@ class TechPred:
     selected_theme: Optional[str]
     a_share_mapping: Dict[str, Any]
     path: str
+    selected_rel5_pct: Optional[float] = None  # 百分数单位（与 tech rel5_pct 一致）
 
 
 @dataclass
@@ -117,6 +119,7 @@ def load_fourleg(as_of: str) -> Optional[FourLegPred]:
         combined_budget=cr.get("combined_budget"),
         stance=pa.get("stance"),
         path=str(path),
+        denom_ceiling=cr.get("denominator_ceiling"),
     )
 
 
@@ -145,13 +148,26 @@ def load_tech(as_of: str) -> Optional[TechPred]:
         {"name": t.get("name"), "proxy": t.get("proxy"), "score": t.get("score"), "state": t.get("state")}
         for t in scored[-2:]
     ]
+    selected_name = d.get("selected_theme")
+    sel_rel5 = None
+    if selected_name:
+        for t in themes:
+            if t.get("name") == selected_name or t.get("id") == selected_name:
+                v = t.get("rel5_pct")
+                if v is not None:
+                    try:
+                        sel_rel5 = float(v)
+                    except (TypeError, ValueError):
+                        sel_rel5 = None
+                break
     return TechPred(
         as_of=str(d.get("as_of") or as_of),
         strongest=strongest,
         weakest=weakest,
-        selected_theme=d.get("selected_theme"),
+        selected_theme=selected_name,
         a_share_mapping=dict(d.get("a_share_mapping") or {}),
         path=str(path),
+        selected_rel5_pct=sel_rel5,
     )
 
 
