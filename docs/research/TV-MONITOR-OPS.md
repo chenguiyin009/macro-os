@@ -12,10 +12,11 @@ TV MCP script
 
 ## Start order
 
-1. Chrome CDP: `relay/start-tradingview-chart.ps1` (port 9222)
-2. Feishu relay health: `http://127.0.0.1:8787/health`
-3. Tech rotation alerts: `relay/start-tv-monitor.ps1` (QQQ rotation chart)
-4. Macro liquidity (needs Composite studies on chart):
+1. Chrome CDP: `relay/start-tradingview-chart.ps1` (port 9222; Chrome + chrome-tradingview-profiles，有意保留，不要改去对准 9223)
+2. TradingView Desktop CDP: port 9223（`start-tv-monitor.ps1` / `start-macro-liquidity-monitor.ps1` 等监控脚本默认连这里）
+3. Feishu relay health: `http://127.0.0.1:8787/health`
+4. Tech rotation alerts: `relay/start-tv-monitor.ps1` (QQQ rotation chart)
+5. Macro liquidity (needs Composite studies on chart):
    `relay/start-macro-liquidity-monitor.ps1`
 
 ## Macro liquidity chart requirement

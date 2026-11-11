@@ -3,7 +3,7 @@
 Covers:
 - PineConclusionSchema / FeatureSchema.pine parsing.
 - TradingViewAdapter.fetch_pine_conclusions (mock fallback + live CDP bridge when
-  TradingView Desktop is running with a debug port on 127.0.0.1:9222).
+  TradingView Desktop is running with a debug port on 127.0.0.1:9223).
 - PineAnalysisNode staging the conclusion onto the pipeline context.
 """
 
@@ -82,7 +82,7 @@ def test_fetch_pine_mock_fallback() -> None:
 
 
 @pytest.mark.live
-@pytest.mark.skipif(not _cdp_alive(), reason="TradingView Desktop CDP not reachable on 127.0.0.1:9222")
+@pytest.mark.skipif(not _cdp_alive(), reason="TradingView Desktop CDP not reachable on 127.0.0.1:9223")
 def test_fetch_pine_live_bridge() -> None:
     adapter = _make_adapter()
     conclusion = adapter.fetch_pine_conclusions(symbol="TVC:GOLD", script_name=LIVE_SCRIPT)
@@ -93,7 +93,7 @@ def test_fetch_pine_live_bridge() -> None:
 
 
 @pytest.mark.live
-@pytest.mark.skipif(not _cdp_alive(), reason="TradingView Desktop CDP not reachable on 127.0.0.1:9222")
+@pytest.mark.skipif(not _cdp_alive(), reason="TradingView Desktop CDP not reachable on 127.0.0.1:9223")
 def test_pine_analysis_node_stages_conclusion() -> None:
     adapter = _make_adapter()
     node = PineAnalysisNode(adapter, symbol="TVC:GOLD", script_name=LIVE_SCRIPT)
