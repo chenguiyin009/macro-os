@@ -57,7 +57,7 @@ class _FakeTVAdapter:
     def __init__(self, conclusion: PineConclusionSchema | None) -> None:
         self._conclusion = conclusion
 
-    def fetch_pine_conclusions(self, symbol=None, script_name=None, cdp_url="http://127.0.0.1:9222"):
+    def fetch_pine_conclusions(self, symbol=None, script_name=None, cdp_url="http://127.0.0.1:9223"):
         return self._conclusion
 
 
@@ -293,7 +293,7 @@ def test_pine_trinity_node_stages_decision() -> None:
 
 
 @pytest.mark.live
-@pytest.mark.skipif(not _cdp_alive(), reason="TradingView Desktop CDP not reachable on 127.0.0.1:9222")
+@pytest.mark.skipif(not _cdp_alive(), reason="TradingView Desktop CDP not reachable on 127.0.0.1:9223")
 def test_run_loop_live_cdp() -> None:
     from adapters.tradingview import TradingViewAdapter
 

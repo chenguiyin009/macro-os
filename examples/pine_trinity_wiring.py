@@ -3,7 +3,7 @@
 演示如何把 TradingView 活图表上的前端 Pine 信号，经 CDP 桥解析后，
 注入 Trinity OS v2.2.1 风险网关，得到带前端熔断的最终风险动作。
 
-运行方式（需 TradingView Desktop 开启且 CDP 在 127.0.0.1:9222）：
+运行方式（需 TradingView Desktop 开启且 CDP 在 127.0.0.1:9223）：
     python examples/pine_trinity_wiring.py
 关闭 TV 时示例会走 mock 兜底，仍能展示接线逻辑。
 """
