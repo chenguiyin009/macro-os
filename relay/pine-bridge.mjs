@@ -1,5 +1,5 @@
 // pine-bridge.mjs
-// Bridge: connect to TradingView Desktop via CDP (default http://127.0.0.1:9222),
+// Bridge: connect to TradingView Desktop via CDP (default http://127.0.0.1:9223),
 // read a named Pine script's outputs from the active chart, and emit a structured
 // JSON "conclusion" that macro-os (Python) consumes.
 //
@@ -17,7 +17,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { listTargets, selectChartTarget, snapshotTarget } from "./tv-cdp-client.mjs";
 
-const DEFAULT_CDP_URL = "http://127.0.0.1:9222";
+const DEFAULT_CDP_URL = "http://127.0.0.1:9223";
 const RELAY_DIR = dirname(fileURLToPath(import.meta.url));
 
 // ── Logging (stderr only, keep stdout clean for JSON) ──

@@ -339,7 +339,7 @@ class TradingViewAdapter:
         self,
         symbol: Optional[str] = None,
         script_name: Optional[str] = None,
-        cdp_url: str = "http://127.0.0.1:9222",
+        cdp_url: str = "http://127.0.0.1:9223",
     ) -> Optional[PineConclusionSchema]:
         """Fetch a Pine script conclusion from TradingView via the CDP bridge.
 
