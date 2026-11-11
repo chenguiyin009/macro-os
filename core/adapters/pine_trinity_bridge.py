@@ -325,7 +325,7 @@ def run_pine_trinity_loop(
     bar_data: Dict[str, Any],
     script_name: Optional[str] = None,
     symbol: Optional[str] = None,
-    cdp_url: str = "http://127.0.0.1:9222",
+    cdp_url: str = "http://127.0.0.1:9223",
     confidence_threshold: float = DEFAULT_CONFIDENCE_THRESHOLD,
     account_balance: float = 1_000_000.0,
     context: Optional[Dict[str, Any]] = None,
