@@ -9,7 +9,7 @@
 
 原始的「科技板块轮动 TV 快照」任务**无法在云主机/沙箱里直接运行**，因为它依赖：
 
-1. 本机 TradingView Desktop（Chrome + `--remote-debugging-port=9222` CDP）；
+1. 本机 TradingView Desktop（CDP 9223；与 Chrome/chrome-tradingview-profiles 的 9222 分离）；
 2. 人工在 QQQ 1D 图上**手动挂载** Pine 指标 v2.6.1r（沙箱无法自动粘贴/应用 Pine 源码）；
 3. 通过 MCP `data_get_pine_tables` / `data_get_study_values` / `capture_screenshot` 读取指标值与截图。
 
