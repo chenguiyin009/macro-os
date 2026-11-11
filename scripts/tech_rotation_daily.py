@@ -7,7 +7,7 @@
 「主题仪表盘 + 归因面板 + 所选主题轮动分数」读数，对齐 TV 快照的「一/二/三」三节。
 
 为什么是 headless 移植（而非直连 TV）：
-  原 TV 快照依赖本机 TradingView Desktop(Chrome+CDP 9222) + 手动挂载的 v2.6.1r
+  原 TV 快照依赖本机 TradingView Desktop(CDP 9223；与 Chrome/chrome-tradingview-profiles 的 9222 分离) + 手动挂载的 v2.6.1r
   + MCP 读 Pine 算值，云机无法复刻。本脚本用 yfinance 拉价，在本地 NumPy/Pandas
   上 1:1 还原 Pine 全部公式，输出与 TV 读数逐字对齐（已用 2026-09-01 已知快照校验）。
 
