@@ -24,10 +24,10 @@ Calibration suggestions only — never mutate scores.
 实现仓：/workspace/calibration。用 /workspace/macro-os/.venv（若无则 python3 + pandas）。环境 SECTOR_PROXY=off。
 
 步骤：
-1. 运行 `SECTOR_PROXY=off python /workspace/calibration/scripts/calibrate_daily.py`（不要默认 --force）。脚本会取「最新完整美股现金收盘」的前一美股交易日作为预判 as_of，用已有 output JSON + bar 缓存（必要时经 bar_sources 补 bar）。
-2. 若 stdout 含「校准无新数据」：只向本聊天回复「校准无新数据」并结束。
+1. 运行 `SECTOR_PROXY=off python /workspace/calibration/scripts/calibrate_daily.py`（不要默认 --force）。脚本会取「最新完整美股现金收盘」的前一美股交易日作为预判 as_of，用已有 output JSON + bar 缓存（必要时经 bar_sources 补 bar）。默认入口还会把已满 5 个美股交易日、但仍停在「观察」的旧 as_of 回填为官方科技强弱/半导结果。
+2. 若 stdout 只含「校准无新数据」、且没有「5D回填」行：只向本聊天回复「校准无新数据」并结束。若有 5D 回填，把回填结果一并简述。
 3. 否则读 staging MD：`/workspace/obsidian-staging/GYbot日报/校准/<prediction_as_of>.md`，以及同 as_of 的 `output/calibration_<as_of>.json`。
-4. 聊天要点（短）：预判 as_of → 实际 1D 日；命中 1–2 条；落空 1–2 条；可改点（明确写「建议、不改分」）；四腿 posture/binding、科技强弱与对A半导门控、标普 pine Top3（C 权重只读展示）。结尾：教学/数据参考，不构成投资建议。
+4. 聊天要点（短）：预判 as_of → 实际 1D 日（科技/半导结果以 5D 为官方窗口，1D 只记观察）；命中 1–2 条（只数官方）；落空 1–2 条；可改点（明确写「建议、不改分」）；四腿 posture/binding、科技按状态选出的明确强弱（含可测篮子）、对A半导门控完整性与 5D 结果、标普 pine Top3（C 权重只读展示）。结尾：教学/数据参考，不构成投资建议。
 
 输入源（只读）：
 - 四腿：/workspace/macro-os/output/daily_macro_<as_of>.json（plain_advice.posture、combined_risk_budget.binding）
