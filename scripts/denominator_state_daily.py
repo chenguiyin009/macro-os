@@ -70,7 +70,7 @@ EQUITY_MAP = {
     "kre": "KRE",        # AMEX:KRE
     "gold": "GLD",       # AMEX:GLD
     "spx": "^GSPC",      # SP:SPX (price proxy)
-    "vix3m": "VIX3M",    # CBOE:VIX3M (may be unavailable)
+    "vix3m": "^VIX3M",    # CBOE:VIX3M (may be unavailable)
 }
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")

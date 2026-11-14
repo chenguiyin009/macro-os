@@ -72,7 +72,7 @@ TV_SYMBOLS: Dict[str, str] = {
     "NVDA": "NASDAQ:NVDA", "AVGO": "NASDAQ:AVGO", "AMD": "NASDAQ:AMD",
     "MRVL": "NASDAQ:MRVL",
     "^GSPC": "SP:SPX", "^VIX": "CBOE:VIX", "^TNX": "TVC:US10Y",
-    "^TYX": "TVC:US30Y", "^IRX": "TVC:US03M", "VIX3M": "CBOE:VIX3M",
+    "^TYX": "TVC:US30Y", "^IRX": "TVC:US03M", "VIX3M": "CBOE:VIX3M", "^VIX3M": "CBOE:VIX3M",
     "DX-Y.NYB": "TVC:DXY", "EURUSD=X": "FX:EURUSD", "JPY=X": "FX:USDJPY",
     "BTC-USD": "BITSTAMP:BTCUSD", "CL=F": "NYMEX:CL1!", "HG=F": "COMEX:HG1!",
     "GC=F": "COMEX:GC1!", "ES=F": "CME_MINI:ES1!", "NQ=F": "CME_MINI:NQ1!",
@@ -82,7 +82,7 @@ TV_SYMBOLS: Dict[str, str] = {
 # yfinance ticker -> Stooq public CSV symbol. None means "do not guess".
 STOOQ_SYMBOLS: Dict[str, Optional[str]] = {
     "^GSPC": "^spx", "^VIX": "^vix", "^TNX": "^tnx", "^TYX": "^tyx",
-    "^IRX": "^irx", "VIX3M": None,
+    "^IRX": "^irx", "VIX3M": None, "^VIX3M": None,
     "DX-Y.NYB": "dx.f", "EURUSD=X": "eurusd", "JPY=X": "usdjpy",
     "BTC-USD": "btcusd", "CL=F": "cl.f", "HG=F": "hg.f", "GC=F": "gc.f",
     "ES=F": "es.f", "NQ=F": "nq.f", "ZN=F": "zn.f", "UB=F": "ub.f",

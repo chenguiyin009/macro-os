@@ -61,7 +61,7 @@ NQ_TICKERS = ["QQQ", "SPY", "IWM", "SOXX", "TLT", "TIP", "UUP", "FXY", "BTC-USD"
 SHOCK_TICKERS = ["ZN=F", "UB=F", "DX-Y.NYB", "ES=F", "NQ=F", "BTC-USD", "GC=F", "HYG", "LQD", "KRE", "^VIX"]
 DENOM_PAIRS = [
     ("qqq", "QQQ"), ("sox", "SOXX"), ("iwm", "IWM"), ("kre", "KRE"),
-    ("gold", "GLD"), ("spx", "^GSPC"), ("vix3m", "VIX3M"),
+    ("gold", "GLD"), ("spx", "^GSPC"), ("vix3m", "^VIX3M"),
 ]
 STRESS_TICKERS = ["SOXX", "QQQ"]
 

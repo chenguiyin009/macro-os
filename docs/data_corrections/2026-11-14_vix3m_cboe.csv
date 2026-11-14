@@ -1,0 +1,9 @@
+observation_date,old_close,new_close,source,corrected_at
+2026-11-02,21.72,21.6,CBOE VIX3M_History.csv (cdn.cboe.com) = FRED VXVCLS = TV CBOE:VIX3M,2026-11-14
+2026-11-03,21.25,21.27,CBOE VIX3M_History.csv (cdn.cboe.com) = FRED VXVCLS = TV CBOE:VIX3M,2026-11-14
+2026-11-04,18.84,18.8,CBOE VIX3M_History.csv (cdn.cboe.com) = FRED VXVCLS = TV CBOE:VIX3M,2026-11-14
+2026-11-05,25.28,25.55,CBOE VIX3M_History.csv (cdn.cboe.com) = FRED VXVCLS = TV CBOE:VIX3M,2026-11-14
+2026-11-09,20.92,20.85,CBOE VIX3M_History.csv (cdn.cboe.com) = FRED VXVCLS = TV CBOE:VIX3M,2026-11-14
+2026-11-10,20.7,20.64,CBOE VIX3M_History.csv (cdn.cboe.com) = FRED VXVCLS = TV CBOE:VIX3M,2026-11-14
+2026-11-11,19.29,19.24,CBOE VIX3M_History.csv (cdn.cboe.com) = FRED VXVCLS = TV CBOE:VIX3M,2026-11-14
+2026-11-12,20.12,20.06,CBOE VIX3M_History.csv (cdn.cboe.com) = FRED VXVCLS = TV CBOE:VIX3M,2026-11-14

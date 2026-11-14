@@ -58,6 +58,7 @@ NQ_SCRIPT = REPO_ROOT / "scripts" / "nq_driver_daily.py"
 SECTOR_SCRIPT = REPO_ROOT / "scripts" / "sector_rotation_daily.py"
 SHOCK_SCRIPT = REPO_ROOT / "scripts" / "shock_absorption_daily.py"
 ARTICLE_WATCH_SCRIPT = REPO_ROOT / "scripts" / "article_macro_watch_daily.py"
+EVENING_SECTIONS_SCRIPT = REPO_ROOT / "scripts" / "evening_watch_sections.py"
 
 _DATE_RE = re.compile(r"(20\d{2}-\d{2}-\d{2})")
 _CJK_RE = re.compile(r"[\u4e00-\u9fff]")
@@ -2892,6 +2893,27 @@ def build_json(
     }
 
 
+def append_evening_sections(md: str, date_str: str, report_dir: Path, run=None) -> str:
+    """晚报旁证 8–11 节（观察，不进 min）追加到 md 末尾；失败只记日志，不影响主报告。
+
+    2026-11-14：此前这 4 节只在聊天里手写，归档 md 缺失。环境变量
+    GYBOT_NO_EVENING_SECTIONS=1 可关闭；GYBOT_BUND10Y="当前,5日前" 注入 Bund 10Y。
+    """
+    import os as _os
+    if _os.environ.get("GYBOT_NO_EVENING_SECTIONS", "").strip().lower() in ("1", "true", "yes"):
+        return md
+    args = ["--date", date_str, "--report-dir", str(report_dir)]
+    bund = _os.environ.get("GYBOT_BUND10Y", "").strip()
+    if bund:
+        args += ["--bund10y", bund]
+    ok = (run or _run_script)(EVENING_SECTIONS_SCRIPT, args, [])
+    sec = Path(report_dir) / f"evening_sections_{date_str}.md"
+    if not ok or not sec.exists():
+        logger.warning("evening sections unavailable for %s", date_str)
+        return md
+    return md.rstrip("\n") + "\n\n---\n\n" + sec.read_text(encoding="utf-8")
+
+
 def main(argv: Optional[list] = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
@@ -3191,6 +3213,7 @@ def main(argv: Optional[list] = None) -> int:
 
     out_md = report_dir / f"daily_macro_{date_str}.md"
     out_json = report_dir / f"daily_macro_{date_str}.json"
+    md = append_evening_sections(md, date_str, report_dir)
     out_md.write_text(md, encoding="utf-8")
     out_json.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     logger.info("written: %s", out_md)
