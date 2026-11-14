@@ -1057,31 +1057,23 @@ A_STRUCT_SPREAD_GROWTH_KILL = -0.005  # cyb-hs300 <= -0.5pp 且成长更弱 → 
 A_STRUCT_BOTH_DOWN = -0.01  # 两者日涨跌均 <= -1% → 全面杀
 
 
+def _ab_mod():
+    import os as _os
+    import sys as _sys
+    _d = _os.path.dirname(_os.path.abspath(__file__))
+    if _d not in _sys.path:
+        _sys.path.insert(0, _d)
+    import a_share_bars
+    return a_share_bars
+
+
 def _sina_daily(symbol: str, datalen: int = 40):
-    """Sina 日 K（未复权收盘）→ (Series, err)。只读、失败返回 None，不编造。"""
-    import json as _json
-    import urllib.request as _ur
-    url = ("https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/"
-           f"CN_MarketData.getKLineData?symbol={symbol}&scale=240&ma=no&datalen={int(datalen)}")
-    try:
-        req = _ur.Request(url, headers={"User-Agent": "Mozilla/5.0", "Referer": "https://finance.sina.com.cn"})
-        with _ur.urlopen(req, timeout=15) as r:
-            rows = _json.loads(r.read().decode("utf-8", "replace") or "[]")
-    except Exception as exc:  # noqa: BLE001
-        return None, f"sina {exc}"
-    return sina_rows_to_series(rows)
+    """Sina 日 K → (Series, err)；实现见 scripts/a_share_bars.py（与 calibration 共用）。"""
+    return _ab_mod().sina_daily(symbol, datalen)
 
 
 def sina_rows_to_series(rows):
-    if not rows:
-        return None, "sina empty"
-    try:
-        s = pd.Series({pd.Timestamp(r["day"]).normalize(): float(r["close"]) for r in rows}).sort_index()
-    except Exception as exc:  # noqa: BLE001
-        return None, f"sina parse {exc}"
-    s = s[s > 0]
-    return (s, None) if len(s) else (None, "sina empty")
-
+    return _ab_mod().sina_rows_to_series(rows)
 
 def fetch_a_share_structure_obs(as_of: Optional[dt.date] = None) -> dict:
     """观测标签用：创业板ETF / 沪深300ETF 日涨跌差。失败则 null，不编造。不改分数。
@@ -1137,17 +1129,13 @@ def fetch_a_share_structure_obs(as_of: Optional[dt.date] = None) -> dict:
     # 导致结构标签晚一天。按 Sina 日 K 补位：每个标的取「最新日期 ≤ as_of」更新的那个来源
     # （同日优先 yfinance 复权价），两只必须落在同一交易日，否则退回共同的最近交易日。
     def _pick(yf_ticker: str, sina_symbol: str):
+        _ab = _ab_mod()
         ys, ye = _one(yf_ticker)
         ss, se = _sina_daily(sina_symbol)
-        cands = []
-        for src, ser in (("yfinance", ys), ("sina", ss)):
-            if ser is not None and len(ser[ser.index.date <= as_of]) >= 2:
-                cands.append((ser[ser.index.date <= as_of].index[-1], 0 if src == "yfinance" else 1, src, ser))
-        if not cands:
+        ser, src = _ab.pick_latest(ys, ss, as_of)
+        if ser is None:
             return None, f"yf={ye} sina={se}", None
-        cands.sort(key=lambda c: (c[0], -c[1]))
-        best = cands[-1]
-        return best[3], None, best[2]
+        return ser, None, src
 
     cyb, e1, src1 = _pick("159915.SZ", "sz159915")
     hs, e2, src2 = _pick("510300.SS", "sh510300")

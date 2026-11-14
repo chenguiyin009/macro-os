@@ -83,11 +83,21 @@ def test_build_feature_schema_includes_extended_series_fields() -> None:
     assert fs.dxy == 100.7
 
 
+class _FakeOpener:
+    """fetch_fred_series 按 OpenerDirector 用 .open(req, timeout=...) 调用（2026-11-14 测试对齐）。"""
+
+    def __init__(self, fn):
+        self._fn = fn
+
+    def open(self, req, timeout=0):
+        return self._fn(req, timeout=timeout)
+
+
 def test_fetch_fred_series_uses_opener() -> None:
     def opener(req, timeout=0):
         return _FakeResp(SAMPLE_CSV)
 
-    pts = fetch_fred_series("DGS10", opener=opener, timeout_seconds=1)
+    pts = fetch_fred_series("DGS10", opener=_FakeOpener(opener), timeout_seconds=1)
     assert len(pts) == 6
     assert pts[-1].value == 4.58
 
@@ -104,7 +114,7 @@ def test_fred_adapter_fetch_with_fake_opener() -> None:
             rows.append(f"2026-07-{i:02d},{base + i * 0.01}")
         return _FakeResp("\n".join(rows) + "\n")
 
-    a = FredMacroAdapter(opener=opener, timeout_seconds=1)
+    a = FredMacroAdapter(opener=_FakeOpener(opener), timeout_seconds=1)
     fs = a.fetch()
     assert fs is not None
     assert fs.tips_yield is not None
