@@ -1057,6 +1057,32 @@ A_STRUCT_SPREAD_GROWTH_KILL = -0.005  # cyb-hs300 <= -0.5pp 且成长更弱 → 
 A_STRUCT_BOTH_DOWN = -0.01  # 两者日涨跌均 <= -1% → 全面杀
 
 
+def _sina_daily(symbol: str, datalen: int = 40):
+    """Sina 日 K（未复权收盘）→ (Series, err)。只读、失败返回 None，不编造。"""
+    import json as _json
+    import urllib.request as _ur
+    url = ("https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/"
+           f"CN_MarketData.getKLineData?symbol={symbol}&scale=240&ma=no&datalen={int(datalen)}")
+    try:
+        req = _ur.Request(url, headers={"User-Agent": "Mozilla/5.0", "Referer": "https://finance.sina.com.cn"})
+        with _ur.urlopen(req, timeout=15) as r:
+            rows = _json.loads(r.read().decode("utf-8", "replace") or "[]")
+    except Exception as exc:  # noqa: BLE001
+        return None, f"sina {exc}"
+    return sina_rows_to_series(rows)
+
+
+def sina_rows_to_series(rows):
+    if not rows:
+        return None, "sina empty"
+    try:
+        s = pd.Series({pd.Timestamp(r["day"]).normalize(): float(r["close"]) for r in rows}).sort_index()
+    except Exception as exc:  # noqa: BLE001
+        return None, f"sina parse {exc}"
+    s = s[s > 0]
+    return (s, None) if len(s) else (None, "sina empty")
+
+
 def fetch_a_share_structure_obs(as_of: Optional[dt.date] = None) -> dict:
     """观测标签用：创业板ETF / 沪深300ETF 日涨跌差。失败则 null，不编造。不改分数。
 
@@ -1107,11 +1133,31 @@ def fetch_a_share_structure_obs(as_of: Optional[dt.date] = None) -> dict:
         s.index = pd.to_datetime(s.index).normalize()
         return s, None
 
-    cyb, e1 = _one("159915.SZ")
-    hs, e2 = _one("510300.SS")
+    # 2026-11-14：Yahoo 的 A 股 ETF 日线常把最新交易日留成 NaN（次日才补），
+    # 导致结构标签晚一天。按 Sina 日 K 补位：每个标的取「最新日期 ≤ as_of」更新的那个来源
+    # （同日优先 yfinance 复权价），两只必须落在同一交易日，否则退回共同的最近交易日。
+    def _pick(yf_ticker: str, sina_symbol: str):
+        ys, ye = _one(yf_ticker)
+        ss, se = _sina_daily(sina_symbol)
+        cands = []
+        for src, ser in (("yfinance", ys), ("sina", ss)):
+            if ser is not None and len(ser[ser.index.date <= as_of]) >= 2:
+                cands.append((ser[ser.index.date <= as_of].index[-1], 0 if src == "yfinance" else 1, src, ser))
+        if not cands:
+            return None, f"yf={ye} sina={se}", None
+        cands.sort(key=lambda c: (c[0], -c[1]))
+        best = cands[-1]
+        return best[3], None, best[2]
+
+    cyb, e1, src1 = _pick("159915.SZ", "sz159915")
+    hs, e2, src2 = _pick("510300.SS", "sh510300")
     if cyb is None or hs is None or len(cyb) < 2 or len(hs) < 2:
         out["degraded_reason"] = f"insufficient bars cyb={e1} hs={e2}"
         return out
+    common_last = min(cyb[cyb.index.date <= as_of].index[-1], hs[hs.index.date <= as_of].index[-1])
+    if common_last.date() < as_of:
+        as_of = common_last.date()
+    out["source"] = f"159915:{src1} / 510300:{src2}（yfinance 优先，最新日缺则 Sina 日K）"
 
     def _ret(s):
         mask = s.index.date <= as_of
