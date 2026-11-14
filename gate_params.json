@@ -1,0 +1,50 @@
+{
+  "params": {
+    "bear_thr": 1.5,
+    "warn_lo": 1.0,
+    "soft_w": 0.5,
+    "eq_acute_smooth": -0.1,
+    "eq_acute_raw": -0.1,
+    "eq_soft_lo": -0.1,
+    "eq_soft_hi": -0.05,
+    "denom_w": 1.0,
+    "nq_w": 1.0,
+    "eq_acute_w": 1.0,
+    "sat_full_below": 0.5,
+    "sat_zero_at": 1.5,
+    "gap_denom_vix": 30.0,
+    "gap_denom_vix_dd": 25.0,
+    "gap_denom_dd": -0.12,
+    "nq_vix_hard": 30.0,
+    "nq_vix_soft": 26.0,
+    "nq_dd": -0.1
+  },
+  "meta": {
+    "obj": 15.14661013962,
+    "full": {
+      "total": 3.1558036486001697,
+      "cagr": 0.18808418894940626,
+      "sharpe": 0.9275455549279634,
+      "mdd": -0.3199355643453585,
+      "vs_bench_pp": -26.76963513997963
+    },
+    "y22": {
+      "total": -0.2910236000957218,
+      "cagr": -0.29388849342573875,
+      "sharpe": -1.2721385089732458,
+      "mdd": -0.30270651476101107,
+      "vs_bench_pp": 4.115404560347081
+    },
+    "y23": {
+      "total": 0.5471818850983634,
+      "cagr": 0.5570606053818443,
+      "sharpe": 2.488429712307659,
+      "mdd": -0.12038293235753572,
+      "vs_bench_pp": -1.193448080083126
+    },
+    "bear_pct": 0.1554379210779596,
+    "bear_23": 0.004,
+    "n_eval": 108,
+    "note": "gap legs no-ffill + grid; BookC 70/30 sat*sat_mult continuous; sat proxy=S3"
+  }
+}

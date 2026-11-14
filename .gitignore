@@ -1,0 +1,8 @@
+__pycache__/
+output/
+rotation_results/
+obsidian/
+_backup_*/
+macro-os
+trinity_src_link
+*.pyc
