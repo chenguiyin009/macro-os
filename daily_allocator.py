@@ -1067,6 +1067,40 @@ def upsert_section(path, header, block):
     return "updated"
 
 
+
+# ---- 纸面账本快照（2026-11-14）----
+# 例行自 11-10 起把 JSON 写到 output/daily_allocator_<as_of>.json，不再复制到
+# rotation_results/daily_abc_<as_of>.json，paper_abc_ledger 因此读不到 11-10 之后的快照。
+# 生产 pass A（默认 pine_half_crowd 引擎、文件名无后缀）现在自动落快照；影子/重算不落。
+_PROD_JSON_RE = re.compile(r"^daily_allocator_(\d{4}-\d{2}-\d{2})\.json$")
+
+
+def ledger_snapshot_target(json_out, engine, res_dir=None):
+    """返回应写入的 daily_abc 路径；非生产 pass 返回 None。"""
+    if os.environ.get("GYBOT_NO_LEDGER_SNAPSHOT", "").strip().lower() in ("1", "true", "yes"):
+        return None
+    if not json_out or engine != "pine_half_crowd":
+        return None
+    m = _PROD_JSON_RE.match(os.path.basename(json_out))
+    if not m:
+        return None
+    res_dir = res_dir or os.path.join(HERE, "rotation_results")
+    return os.path.join(res_dir, f"daily_abc_{m.group(1)}.json")
+
+
+def write_ledger_snapshot(json_out, engine, payload_text, res_dir=None, overwrite=False):
+    """写快照；已存在且内容不同则不覆盖（已发出的快照不回溯改），返回 (path, status)。"""
+    tgt = ledger_snapshot_target(json_out, engine, res_dir)
+    if not tgt:
+        return None, "skip"
+    if os.path.exists(tgt) and not overwrite:
+        if open(tgt, encoding="utf-8").read() == payload_text:
+            return tgt, "same"
+        return tgt, "exists-kept"
+    os.makedirs(os.path.dirname(tgt), exist_ok=True)
+    open(tgt, "w", encoding="utf-8").write(payload_text)
+    return tgt, "written"
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--rotation", required=True)
@@ -1087,6 +1121,8 @@ def main():
         choices=["pine_half_crowd", "mom12", "blend", "raw"],
         help="标普 Top3 引擎（默认 pine_half；mom12=12M动量；blend=pine×mom12 融合，均研究旗标）",
     )
+    ap.add_argument("--ledger-snapshot-overwrite", action="store_true",
+                    help="允许覆盖已存在的 rotation_results/daily_abc_<as_of>.json（默认不覆盖）")
     args = ap.parse_args()
     global SECTOR_TOP3_ENGINE
     if getattr(args, "sector_top3_engine", None):
@@ -1389,7 +1425,13 @@ def main():
     jout = args.json_out or os.path.join(
         HERE, "rotation_results", f"daily_abc_{date.today().strftime('%Y-%m-%d')}.json"
     )
-    open(jout, "w", encoding="utf-8").write(json.dumps(payload, ensure_ascii=False, indent=2))
+    _ptxt = json.dumps(payload, ensure_ascii=False, indent=2)
+    open(jout, "w", encoding="utf-8").write(_ptxt)
+    if args.json_out:
+        _snap, _st = write_ledger_snapshot(args.json_out, SECTOR_TOP3_ENGINE, _ptxt,
+                                           overwrite=getattr(args, "ledger_snapshot_overwrite", False))
+        if _snap:
+            print(f"[OK] ledger snapshot ({_st}) -> {_snap}")
 
     print(f"[OK] rotation md: {r} -> {args.rotation}")
     print(f"[OK] sector  md: {s} -> {args.sector}")
