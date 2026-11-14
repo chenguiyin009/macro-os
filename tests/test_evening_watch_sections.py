@@ -65,3 +65,40 @@ def test_consolidator_appends(tmp_path, monkeypatch):
 def test_consolidator_survives_failure(tmp_path):
     import daily_macro_consolidated as dmc
     assert dmc.append_evening_sections("# A\n", "2026-11-13", tmp_path, run=lambda *a: False) == "# A\n"
+
+
+BBK_CSV = """DATAFLOW;BBK_STD_FREQ;TIME_PERIOD;OBS_VALUE;BBK_TITLE
+BBK:BBSSY(1.0);D;2026-11-06;3.22;x
+BBK:BBSSY(1.0);D;2026-11-07;.;x
+BBK:BBSSY(1.0);D;2026-11-09;3.26;x
+BBK:BBSSY(1.0);D;2026-11-10;3.24;x
+BBK:BBSSY(1.0);D;2026-11-11;3.30;x
+BBK:BBSSY(1.0);D;2026-11-12;3.29;x
+BBK:BBSSY(1.0);D;2026-11-13;3.37;x
+"""
+
+
+def test_parse_bbk_and_5d():
+    pts = ews.parse_bbk_csv(BBK_CSV)
+    assert len(pts) == 6 and pts[-1] == ("2026-11-13", 3.37)
+    b = ews.bund_from_points(pts, "2026-11-13", "BBK")
+    assert b["last"] == 3.37 and abs(b["chg5_bp"] - 15.0) < 1e-9
+    assert ews.parse_bbk_csv('{"status":404}') == []
+
+
+def test_fetch_bund_primary_then_fallback():
+    b, notes = ews.fetch_bund10y("2026-11-13", get=lambda url, h: BBK_CSV)
+    assert b["source"].startswith("Bundesbank BBSSY") and not notes
+    calls = []
+    def get(url, h):
+        calls.append(url)
+        if "BBSSY" in url:
+            raise OSError("down")
+        return BBK_CSV.replace("BBSSY", "BBSIS")
+    b, notes = ews.fetch_bund10y("2026-11-13", get=get)
+    assert "Svensson" in b["source"] and any("失败" in n for n in notes)
+
+
+def test_manual_override_wins(tmp_path):
+    p = ews.build("2026-11-13", tmp_path, bund=(3.3891, 3.2535), fetch=False)
+    assert p["bund10y"]["source"].startswith("手工覆盖") and abs(p["bund10y"]["chg5_bp"] - 13.6) < 1e-9

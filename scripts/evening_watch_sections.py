@@ -165,6 +165,78 @@ def _yf(ticker: str) -> List[Tuple[str, float]]:
         return []
 
 
+# ---------------- Bund 10Y（2026-11-14）----------------
+# 优先级：--bund10y / GYBOT_BUND10Y 手工覆盖 > Bundesbank 日频「最新 10 年期 Bund 收益率」(BBSSY WT1010，
+# 交易所价，口径最接近 TV TVC:DE10Y) > Bundesbank Svensson 10 年期零息曲线 > FRED IRLTLT01DEM156N（月均，只作兜底，无 5D）。
+BBK_URL = "https://api.statistiken.bundesbank.de/rest/data/{flow}/{key}?lastNObservations={n}"
+BBK_SERIES = [
+    ("BBSSY", "D.REN.EUR.A630.000000WT1010.A", "Bundesbank BBSSY WT1010（最新10年期Bund收益率，日）"),
+    ("BBSIS", "D.I.ZST.ZI.EUR.S1311.B.A604.R10XX.R.A.A._Z._Z.A", "Bundesbank Svensson 10Y（日，曲线拟合口径）"),
+]
+
+
+def parse_bbk_csv(text: str) -> List[Tuple[str, float]]:
+    """Bundesbank SDMX-CSV（; 分隔）→ 升序 (date, value)；'.' 为休市缺值，跳过。"""
+    lines = [ln for ln in (text or "").splitlines() if ln.strip()]
+    if not lines:
+        return []
+    head = lines[0].split(";")
+    try:
+        it, iv = head.index("TIME_PERIOD"), head.index("OBS_VALUE")
+    except ValueError:
+        return []
+    out = []
+    for ln in lines[1:]:
+        c = ln.split(";")
+        if len(c) <= max(it, iv):
+            continue
+        try:
+            out.append((c[it], float(c[iv])))
+        except ValueError:
+            continue
+    return sorted(out)
+
+
+def _http_get(url: str, headers: Optional[Dict[str, str]] = None, timeout: float = 25.0) -> str:
+    import urllib.request
+    req = urllib.request.Request(url, headers=headers or {"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.read().decode("utf-8", "replace")
+
+
+def bund_from_points(pts: List[Tuple[str, float]], date_str: str, source: str) -> Optional[Dict[str, Any]]:
+    pts = [(d, v) for d, v in pts if d <= date_str]
+    if not pts:
+        return None
+    last_d, last_v = pts[-1]
+    prev = pts[-6][1] if len(pts) >= 6 else None
+    return {"last": last_v, "date": last_d,
+            "chg5_bp": (round((last_v - prev) * 100, 1) if prev is not None else None), "source": source}
+
+
+def fetch_bund10y(date_str: str, get=None) -> Tuple[Optional[Dict[str, Any]], List[str]]:
+    get = get or _http_get
+    notes: List[str] = []
+    for flow, key, label in BBK_SERIES:
+        try:
+            txt = get(BBK_URL.format(flow=flow, key=key, n=20),
+                      {"Accept": "application/vnd.sdmx.data+csv;version=1.0.0", "User-Agent": "Mozilla/5.0"})
+            b = bund_from_points(parse_bbk_csv(txt), date_str, label)
+            if b:
+                if b["date"] != date_str:
+                    notes.append(f"{label} 最新 {b['date']}（{date_str} 未发布）")
+                return b, notes
+            notes.append(f"{label} 无数据")
+        except Exception as exc:  # noqa: BLE001
+            notes.append(f"{label} 失败: {exc}")
+    pts = _fred("IRLTLT01DEM156N", 400)
+    if pts:
+        d, v = [(d, v) for d, v in pts if d <= date_str][-1]
+        notes.append("Bund 10Y 用 FRED 月均兜底（无 5D）")
+        return {"last": v, "date": d, "chg5_bp": None, "source": "FRED IRLTLT01DEM156N（月均兜底）"}, notes
+    return None, notes
+
+
 def _load(report_dir: Path, stem: str, date_str: str) -> Optional[Dict[str, Any]]:
     p = report_dir / f"{stem}_{date_str}.json"
     if not p.exists():
@@ -208,11 +280,16 @@ def build(date_str: str, report_dir: Path, bund: Optional[Tuple[float, Optional[
                      "yoy_pct": yoy_weekly(h8, date_str), "yoy_4w_ago_pct": yoy_weekly(h8, date_str, 4)}
     out["px"] = px
     if bund:
-        out["bund10y"] = {"last": bund[0], "chg5_bp": ((bund[0] - bund[1]) * 100 if bund[1] is not None else None),
-                          "source": "cli:--bund10y（TradingView TVC:DE10Y）"}
+        out["bund10y"] = {"last": bund[0], "chg5_bp": (round((bund[0] - bund[1]) * 100, 1) if bund[1] is not None else None),
+                          "date": date_str, "source": "手工覆盖 --bund10y / GYBOT_BUND10Y"}
+    elif fetch:
+        b, notes = fetch_bund10y(date_str)
+        out["bund10y"] = b
+        out["gaps"] += notes
+        if b is None:
+            out["gaps"].append("Bund 10Y 所有来源失败")
     else:
         out["bund10y"] = None
-        out["gaps"].append("Bund 10Y 无脚本数据源（TV scanner bond 市场返回值不可靠），需 --bund10y 注入")
     art = out["article"] or {}
     fed = art.get("fed_1y_hike_bp")
     g = lambda k, f: (px.get(k) or {}).get(f)  # noqa: E731
@@ -272,7 +349,7 @@ def render(p: Dict[str, Any]) -> str:
              f"2Y {_n(g('us2y').get('last'))}%({_s(g('us2y').get('chg5_bp'), '{:+.0f}bp')}) / 5Y {_n(g('us5y').get('last'))}%({_s(g('us5y').get('chg5_bp'), '{:+.0f}bp')}) / "
              f"10Y {_n(g('us10y').get('last'))}%({_s(g('us10y').get('chg5_bp'), '{:+.0f}bp')})，FRED 截至 {g('us10y').get('date')}；TLT {_n(g('tlt').get('last'))}({_s(g('tlt').get('chg5_pct'))})。")
     L.append(f"- b 欧元/欧债/能源：**{v.get('b')}**。EURUSD {_n(g('eurusd').get('last'), '{:.4f}')}({_s(g('eurusd').get('chg5_pct'))})，"
-             f"Bund10Y {_n(bund.get('last'))}%({_s(bund.get('chg5_bp'), '{:+.1f}bp')})，WTI {_n(g('wti').get('last'))}({_s(g('wti').get('chg5_pct'))})，Brent {_n(g('brent').get('last'))}({_s(g('brent').get('chg5_pct'))})。")
+             f"Bund10Y {_n(bund.get('last'))}%({_s(bund.get('chg5_bp'), '{:+.1f}bp')}；{bund.get('source') or '缺失'}），WTI {_n(g('wti').get('last'))}({_s(g('wti').get('chg5_pct'))})，Brent {_n(g('brent').get('last'))}({_s(g('brent').get('chg5_pct'))})。")
     L.append(f"- c 现金贵/美元贵/流动性回撤：**{v.get('c')}**。DXY {_n(g('dxy').get('last'))}({_s(g('dxy').get('chg5_pct'))})，3M {_n(g('us3m').get('last'))}%，"
              f"EFFR {_n(g('effr').get('last'))}% / SOFR {_n(g('sofr').get('last'))}%（{g('sofr').get('date')}），VIX {_n(g('vix').get('last'))}，SPY {_s(g('spy').get('chg5_pct'))} vs RSP {_s(g('rsp').get('chg5_pct'))}。")
     L.append(f"- d 大宗不拖：**{v.get('d')}**。DBC {_n(g('dbc').get('last'))}({_s(g('dbc').get('chg5_pct'))}，月{_s(g('dbc').get('chg21_pct'))})，"
@@ -291,10 +368,12 @@ def main(argv: Optional[list] = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--date", required=True, help="YYYY-MM-DD（美股已收盘日）")
     ap.add_argument("--report-dir", default=str(REPO_ROOT / "output"))
-    ap.add_argument("--bund10y", default=None, help="DE10Y 收益率 当前[,5日前]，如 2.71,2.65（TV TVC:DE10Y）")
+    ap.add_argument("--bund10y", default=None, help="手工覆盖 DE10Y 收益率 当前[,5日前]（优先于 Bundesbank 自动源）")
     a = ap.parse_args(argv)
     dt.date.fromisoformat(a.date)
     bund = None
+    import os
+    a.bund10y = a.bund10y or os.environ.get("GYBOT_BUND10Y", "").strip() or None
     if a.bund10y:
         parts = [float(x) for x in a.bund10y.split(",")]
         bund = (parts[0], parts[1] if len(parts) > 1 else None)
