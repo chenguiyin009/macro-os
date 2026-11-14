@@ -1,6 +1,10 @@
 __pycache__/
 output/
-rotation_results/
+rotation_results/*
+# 2026-11-14：只放行生产快照与纸面账本/NAV（影子 _blend/_mom12、.bak、daily_instruction 仍忽略）
+!rotation_results/daily_abc_[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].json
+!rotation_results/paper_abc_ledger.json
+!rotation_results/paper_abc_nav_*.md
 obsidian/
 _backup_*/
 macro-os

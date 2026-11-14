@@ -1,0 +1,614 @@
+{
+  "date": "2026-11-04",
+  "gate": "score_b15_w1",
+  "score_gate": {
+    "denom": false,
+    "nq": false,
+    "eq_acute": true,
+    "eq_soft": false,
+    "denom_why": "未达紧缩/挤压（分裂/未确认）",
+    "nq_why": "无 hard_veto/nq_veto",
+    "eq_acute_why": "raw_dd=-22.72%≤-10%；smooth_dd=-20.22%≤-10%；减震器触发",
+    "eq_soft_why": "无 soft 带",
+    "score": 1.0,
+    "state": "WARN",
+    "state_code": 1,
+    "smooth_dd": -0.20215503929171963,
+    "raw_dd": -0.22718849730620094,
+    "bear_thr": 1.5,
+    "warn_lo": 1.0,
+    "formula": "1*denom+1*nq+1*eq_acute+0.5*eq_soft",
+    "why": "score=1.0∈[1.0,1.5) → WARN",
+    "bear": false,
+    "warn": true,
+    "sat_mult": 0.5,
+    "sat_mult_mode": "continuous"
+  },
+  "trinity": {
+    "exec_mult": 1.0,
+    "why": "无 Trinity 快照→系数1.0",
+    "snaps": {
+      "QQQ": null,
+      "SPY": null,
+      "SOXX": null,
+      "BOTZ": null,
+      "AIQ": null,
+      "IGV": null
+    },
+    "phase2": {
+      "enabled": true,
+      "budget": 0.1,
+      "c_sat_available": 0.15,
+      "note": "候选均未过结构线",
+      "selected": [],
+      "stock_rows": [],
+      "candidates": [
+        {
+          "symbol": "NVDA",
+          "name": "英伟达",
+          "pack_id": "fallback",
+          "reason": "fallback_pool"
+        },
+        {
+          "symbol": "AVGO",
+          "name": "博通",
+          "pack_id": "fallback",
+          "reason": "fallback_pool"
+        },
+        {
+          "symbol": "AMD",
+          "name": "超威",
+          "pack_id": "fallback",
+          "reason": "fallback_pool"
+        },
+        {
+          "symbol": "MSFT",
+          "name": "微软",
+          "pack_id": "fallback",
+          "reason": "fallback_pool"
+        },
+        {
+          "symbol": "META",
+          "name": "Meta",
+          "pack_id": "fallback",
+          "reason": "fallback_pool"
+        },
+        {
+          "symbol": "GOOGL",
+          "name": "谷歌",
+          "pack_id": "fallback",
+          "reason": "fallback_pool"
+        },
+        {
+          "symbol": "AMZN",
+          "name": "亚马逊",
+          "pack_id": "fallback",
+          "reason": "fallback_pool"
+        },
+        {
+          "symbol": "TSM",
+          "name": "台积电",
+          "pack_id": "fallback",
+          "reason": "fallback_pool"
+        },
+        {
+          "symbol": "AAPL",
+          "name": "苹果",
+          "pack_id": "fallback",
+          "reason": "fallback_pool"
+        }
+      ]
+    }
+  },
+  "tech": {
+    "top3": [
+      {
+        "name": "机器人",
+        "ticker": "BOTZ",
+        "score": 64
+      },
+      {
+        "name": "AI综合",
+        "ticker": "AIQ",
+        "score": 8
+      },
+      {
+        "name": "软件",
+        "ticker": "IGV",
+        "score": 41
+      }
+    ],
+    "strategies": [
+      {
+        "id": "A",
+        "name": "A 研究最优",
+        "role": "研究对照（A+Trinity）",
+        "core_pct": 0.0,
+        "sat_pct": 1.0,
+        "switch_cuts": "all",
+        "state": "WARN",
+        "score": 1.0,
+        "weights": [
+          {
+            "ticker": "BOTZ",
+            "name": "机器人",
+            "pct": 16.7
+          },
+          {
+            "ticker": "AIQ",
+            "name": "AI综合",
+            "pct": 16.7
+          },
+          {
+            "ticker": "IGV",
+            "name": "软件",
+            "pct": 16.7
+          },
+          {
+            "ticker": "BIL",
+            "name": "短债现金",
+            "pct": 50.0
+          }
+        ],
+        "action": "是：按 WARN 轻降（非清仓）",
+        "mode": "连续闸 A：权益50%(sat_mult=0.50) score=1.00·分数加权",
+        "sat_mult": 0.5,
+        "score_weight": true,
+        "trinity_enabled": true,
+        "trinity_mult": 1.0,
+        "trinity_why": "无 Trinity 快照→系数1.0",
+        "trinity_note": "滤网未改仓（gate=WARN 优先）",
+        "weights_pre_phase2": [
+          {
+            "ticker": "BOTZ",
+            "name": "机器人",
+            "pct": 16.7
+          },
+          {
+            "ticker": "AIQ",
+            "name": "AI综合",
+            "pct": 16.7
+          },
+          {
+            "ticker": "IGV",
+            "name": "软件",
+            "pct": 16.7
+          },
+          {
+            "ticker": "BIL",
+            "name": "短债现金",
+            "pct": 50.0
+          }
+        ],
+        "phase2_note": "候选均未过结构线"
+      },
+      {
+        "id": "C",
+        "name": "C 稳健生产",
+        "role": "生产默认（C+Trinity）",
+        "core_pct": 0.7,
+        "sat_pct": 0.3,
+        "switch_cuts": "satellite",
+        "state": "WARN",
+        "score": 1.0,
+        "weights": [
+          {
+            "ticker": "QQQ",
+            "name": "QQQ",
+            "pct": 70.0
+          },
+          {
+            "ticker": "BOTZ",
+            "name": "机器人",
+            "pct": 5.0
+          },
+          {
+            "ticker": "AIQ",
+            "name": "AI综合",
+            "pct": 5.0
+          },
+          {
+            "ticker": "IGV",
+            "name": "软件",
+            "pct": 5.0
+          },
+          {
+            "ticker": "BIL",
+            "name": "短债现金",
+            "pct": 15.0
+          }
+        ],
+        "action": "是：按 WARN 轻降（非清仓）",
+        "mode": "连续闸 C：核心70%+卫星15%(sat_mult=0.50)+BIL15% score=1.00/WARN·分数加权",
+        "sat_mult": 0.5,
+        "score_weight": true,
+        "trinity_enabled": true,
+        "trinity_mult": 1.0,
+        "trinity_why": "无 Trinity 快照→系数1.0",
+        "trinity_note": "滤网未改仓（gate=WARN 优先）",
+        "weights_pre_phase2": [
+          {
+            "ticker": "QQQ",
+            "name": "QQQ",
+            "pct": 70.0
+          },
+          {
+            "ticker": "BOTZ",
+            "name": "机器人",
+            "pct": 5.0
+          },
+          {
+            "ticker": "AIQ",
+            "name": "AI综合",
+            "pct": 5.0
+          },
+          {
+            "ticker": "IGV",
+            "name": "软件",
+            "pct": 5.0
+          },
+          {
+            "ticker": "BIL",
+            "name": "短债现金",
+            "pct": 15.0
+          }
+        ],
+        "phase2_note": "候选均未过结构线"
+      },
+      {
+        "id": "B",
+        "name": "B 折中对照",
+        "role": "对照",
+        "core_pct": 0.6,
+        "sat_pct": 0.4,
+        "switch_cuts": "satellite",
+        "state": "WARN",
+        "score": 1.0,
+        "weights": [
+          {
+            "ticker": "QQQ",
+            "name": "QQQ",
+            "pct": 60.0
+          },
+          {
+            "ticker": "BOTZ",
+            "name": "机器人",
+            "pct": 6.7
+          },
+          {
+            "ticker": "AIQ",
+            "name": "AI综合",
+            "pct": 6.7
+          },
+          {
+            "ticker": "IGV",
+            "name": "软件",
+            "pct": 6.7
+          },
+          {
+            "ticker": "BIL",
+            "name": "短债现金",
+            "pct": 20.0
+          }
+        ],
+        "action": "对照",
+        "mode": "连续闸 C：核心60%+卫星20%(sat_mult=0.50)+BIL20% score=1.00/WARN·分数加权",
+        "phase2_note": "候选均未过结构线"
+      }
+    ]
+  },
+  "spy": {
+    "top3": [
+      {
+        "name": "必需消费",
+        "ticker": "XLP",
+        "score": 100
+      },
+      {
+        "name": "医疗保健",
+        "ticker": "XLV",
+        "score": 100
+      },
+      {
+        "name": "金融",
+        "ticker": "XLF",
+        "score": 100
+      }
+    ],
+    "strategies": [
+      {
+        "id": "A",
+        "name": "A 研究最优",
+        "role": "研究对照（A+Trinity）",
+        "core_pct": 0.0,
+        "sat_pct": 1.0,
+        "switch_cuts": "all",
+        "state": "WARN",
+        "score": 1.0,
+        "weights": [
+          {
+            "ticker": "XLP",
+            "name": "必需消费",
+            "pct": 16.7
+          },
+          {
+            "ticker": "XLV",
+            "name": "医疗保健",
+            "pct": 16.7
+          },
+          {
+            "ticker": "XLF",
+            "name": "金融",
+            "pct": 16.7
+          },
+          {
+            "ticker": "BIL",
+            "name": "短债现金",
+            "pct": 50.0
+          }
+        ],
+        "action": "是：按 WARN 轻降（非清仓）",
+        "mode": "连续闸 A：权益50%(sat_mult=0.50) score=1.00·分数加权",
+        "sat_mult": 0.5,
+        "score_weight": true,
+        "trinity_enabled": true,
+        "trinity_mult": 1.0,
+        "trinity_why": "无 Trinity 快照→系数1.0（标普侧Phase1默认不改）",
+        "trinity_note": "标普卫星不应用Trinity滤网"
+      },
+      {
+        "id": "C",
+        "name": "C 稳健生产",
+        "role": "生产默认（C+Trinity）",
+        "core_pct": 0.7,
+        "sat_pct": 0.3,
+        "switch_cuts": "satellite",
+        "state": "WARN",
+        "score": 1.0,
+        "weights": [
+          {
+            "ticker": "SPY",
+            "name": "SPY",
+            "pct": 70.0
+          },
+          {
+            "ticker": "XLP",
+            "name": "必需消费",
+            "pct": 5.0
+          },
+          {
+            "ticker": "XLV",
+            "name": "医疗保健",
+            "pct": 5.0
+          },
+          {
+            "ticker": "XLF",
+            "name": "金融",
+            "pct": 5.0
+          },
+          {
+            "ticker": "BIL",
+            "name": "短债现金",
+            "pct": 15.0
+          }
+        ],
+        "action": "是：按 WARN 轻降（非清仓）",
+        "mode": "连续闸 C：核心70%+卫星15%(sat_mult=0.50)+BIL15% score=1.00/WARN·分数加权",
+        "sat_mult": 0.5,
+        "score_weight": true,
+        "trinity_enabled": true,
+        "trinity_mult": 1.0,
+        "trinity_why": "无 Trinity 快照→系数1.0（标普侧Phase1默认不改）",
+        "trinity_note": "标普卫星不应用Trinity滤网"
+      },
+      {
+        "id": "B",
+        "name": "B 折中对照",
+        "role": "对照",
+        "core_pct": 0.6,
+        "sat_pct": 0.4,
+        "switch_cuts": "satellite",
+        "state": "WARN",
+        "score": 1.0,
+        "weights": [
+          {
+            "ticker": "SPY",
+            "name": "SPY",
+            "pct": 60.0
+          },
+          {
+            "ticker": "XLP",
+            "name": "必需消费",
+            "pct": 6.7
+          },
+          {
+            "ticker": "XLV",
+            "name": "医疗保健",
+            "pct": 6.7
+          },
+          {
+            "ticker": "XLF",
+            "name": "金融",
+            "pct": 6.7
+          },
+          {
+            "ticker": "BIL",
+            "name": "短债现金",
+            "pct": 20.0
+          }
+        ],
+        "action": "对照",
+        "mode": "连续闸 C：核心60%+卫星20%(sat_mult=0.50)+BIL20% score=1.00/WARN·分数加权"
+      }
+    ]
+  },
+  "defaults": {
+    "production": "C+Trinity+P2",
+    "research": "A+Trinity+P2",
+    "trinity_filter": true,
+    "trinity_apply_spy": false,
+    "trinity_phase2": true,
+    "tech_top3": "mom6m_S3_rel60",
+    "sector_top3": "pine_half_rel60",
+    "s3_soft_crowd": true,
+    "s3_soft_crowd_pp": 0.05,
+    "pine_half_crowd_penalty": 12.5,
+    "gate_continuous": true,
+    "top3_score_weight": true,
+    "top3_single_cap": 0.15,
+    "sat_mult": 0.5
+  },
+  "ranking": {
+    "tech": {
+      "engine": "mom6m_S3_rel60",
+      "note": "科技Top3=mom6m_S3_rel60（主引擎；非 pine 分）；机器人(BOTZ) mom6m=N/A rel60=-9.2；AI综合(AIQ) mom6m=N/A rel60=-1.7；软件(IGV) mom6m=N/A rel60=+3.4｜警告: mom6m 下载失败，排序可能无效",
+      "mom_map": {},
+      "picks": [
+        {
+          "name": "机器人",
+          "rs5d": 1.1,
+          "rel60": -9.2,
+          "trend": "偏强",
+          "score": 64,
+          "status": "分数够、动能不足",
+          "over_ext": false,
+          "ticker": "BOTZ",
+          "mom6m": null,
+          "mom_rank": -1000000000.0,
+          "crowd_pen": 0.0,
+          "rank_engine": "mom6m_S3_rel60",
+          "rank_score": -1000000000.0,
+          "pine_raw": 64.0,
+          "adj_score": 64.0,
+          "rank": 1
+        },
+        {
+          "name": "AI综合",
+          "rs5d": -2.51,
+          "rel60": -1.74,
+          "trend": "弱",
+          "score": 8,
+          "status": "资金撤出",
+          "over_ext": false,
+          "ticker": "AIQ",
+          "mom6m": null,
+          "mom_rank": -1000000000.0,
+          "crowd_pen": 0.0,
+          "rank_engine": "mom6m_S3_rel60",
+          "rank_score": -1000000000.0,
+          "pine_raw": 8.0,
+          "adj_score": 8.0,
+          "rank": 2
+        },
+        {
+          "name": "软件",
+          "rs5d": -2.96,
+          "rel60": 3.36,
+          "trend": "偏弱",
+          "score": 41,
+          "status": "派发/撤出",
+          "over_ext": false,
+          "ticker": "IGV",
+          "mom6m": null,
+          "mom_rank": -1000000000.0,
+          "crowd_pen": 0.0,
+          "rank_engine": "mom6m_S3_rel60",
+          "rank_score": -1000000000.0,
+          "pine_raw": 41.0,
+          "adj_score": 41.0,
+          "rank": 3
+        }
+      ]
+    },
+    "spy": {
+      "engine": "pine_half_rel60",
+      "note": "标普Top3=pine_half_rel60；选中: 必需消费 raw=100.0 adj=100.0 rel60=+9.5, 医疗保健 raw=100.0 adj=100.0 rel60=+13.6, 金融 raw=100.0 adj=100.0 rel60=+3.0",
+      "picks": [
+        {
+          "name": "必需消费",
+          "ticker": "XLP",
+          "score": 100,
+          "status": "拥挤主升",
+          "rs5d": 6.63,
+          "rel60": 9.54,
+          "over_ext": true,
+          "pine_raw": 100.0,
+          "crowd_pen": 0.0,
+          "adj_score": 100.0,
+          "rank_score": 100.0,
+          "rank_engine": "pine_half_rel60",
+          "rank": 1
+        },
+        {
+          "name": "医疗保健",
+          "ticker": "XLV",
+          "score": 100,
+          "status": "拥挤主升",
+          "rs5d": 6.29,
+          "rel60": 13.59,
+          "over_ext": true,
+          "pine_raw": 100.0,
+          "crowd_pen": 0.0,
+          "adj_score": 100.0,
+          "rank_score": 100.0,
+          "rank_engine": "pine_half_rel60",
+          "rank": 2
+        },
+        {
+          "name": "金融",
+          "ticker": "XLF",
+          "score": 100,
+          "status": "确认进入",
+          "rs5d": 6.23,
+          "rel60": 3.03,
+          "over_ext": false,
+          "pine_raw": 100.0,
+          "crowd_pen": 0.0,
+          "adj_score": 100.0,
+          "rank_score": 100.0,
+          "rank_engine": "pine_half_rel60",
+          "rank": 3
+        }
+      ]
+    }
+  },
+  "meta": {
+    "rotation_md": "/workspace/tradingview-desk/output/tech_rotation_2026-11-04.md",
+    "sector_md": "/workspace/tradingview-desk/output/sector_rotation_2026-11-04.md",
+    "books": {
+      "A": {
+        "id": "A",
+        "name": "A 研究最优",
+        "role": "研究对照（A+Trinity）",
+        "blurb": "100% 科技mom6m Top3（可软罚拥挤）/ 标普pine_half Top3 + 分数闸 + Trinity。BEAR→BIL；WARN→权益75%。研究对照。",
+        "core_pct": 0.0,
+        "sat_pct": 1.0,
+        "switch_cuts": "all"
+      },
+      "C": {
+        "id": "C",
+        "name": "C 稳健生产",
+        "role": "生产默认（C+Trinity）",
+        "blurb": "70% 宽基 + 30% Top3（科技mom6m / 标普pine_half）+ 分数闸 + Trinity。BEAR只砍卫星；WARN卫星减半。**生产默认**。",
+        "core_pct": 0.7,
+        "sat_pct": 0.3,
+        "switch_cuts": "satellite"
+      },
+      "B": {
+        "id": "B",
+        "name": "B 折中对照",
+        "role": "对照",
+        "blurb": "60% 宽基 + 40% Top3 + 同分数闸。仅作 A/C 之间对照，非默认执行锚点。",
+        "core_pct": 0.6,
+        "sat_pct": 0.4,
+        "switch_cuts": "satellite"
+      }
+    },
+    "params": {
+      "bear_thr": 1.5,
+      "warn_lo": 1.0,
+      "warn_a_equity": 0.75,
+      "warn_sat_frac": 0.5
+    }
+  }
+}

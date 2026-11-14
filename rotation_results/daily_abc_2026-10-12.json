@@ -1,0 +1,1039 @@
+{
+  "date": "2026-10-13",
+  "gate": "score_b15_w1",
+  "score_gate": {
+    "denom": false,
+    "nq": false,
+    "eq_acute": true,
+    "eq_soft": false,
+    "denom_why": "未达紧缩/挤压（分裂/未确认）",
+    "nq_why": "无 hard_veto/nq_veto",
+    "eq_acute_why": "减震器触发",
+    "eq_soft_why": "无 soft 带",
+    "score": 1.0,
+    "state": "WARN",
+    "state_code": 1,
+    "smooth_dd": -0.07575783277637355,
+    "raw_dd": -0.07575783277637349,
+    "bear_thr": 1.5,
+    "warn_lo": 1.0,
+    "formula": "1*denom+1*nq+1*eq_acute+0.5*eq_soft",
+    "why": "score=1.0∈[1.0,1.5) → WARN",
+    "bear": false,
+    "warn": true,
+    "sat_mult": 0.5,
+    "sat_mult_mode": "continuous"
+  },
+  "trinity": {
+    "exec_mult": 1.0,
+    "why": "QQQ:HIGH/1.00 (结构完整 + 回抽/近D3 → 卫星可满配)",
+    "snaps": {
+      "QQQ": {
+        "symbol": "QQQ",
+        "as_of": "2026-10-12",
+        "close": 746.04,
+        "ma55": 720.8405,
+        "bb_mid": 739.2363,
+        "dist_ma55_pct": 3.5,
+        "dist_bb_mid_pct": 0.92,
+        "structure_type": "StructureType.A",
+        "structure_score": 0.95,
+        "d_complete": true,
+        "d_score": 0.95,
+        "near_d3": false,
+        "pullback_confirm": true,
+        "against_structure": false,
+        "tier": "HIGH",
+        "last_pivots": [
+          {
+            "i": 236,
+            "px": 660.45,
+            "h": false
+          },
+          {
+            "i": 249,
+            "px": 733.82,
+            "h": true
+          },
+          {
+            "i": 254,
+            "px": 701.97,
+            "h": false
+          },
+          {
+            "i": 258,
+            "px": 723.38,
+            "h": true
+          },
+          {
+            "i": 270,
+            "px": 699.27,
+            "h": false
+          },
+          {
+            "i": 284,
+            "px": 762.86,
+            "h": true
+          }
+        ],
+        "note": "结构完整 + 回抽/近D3 → 卫星可满配",
+        "exec_mult": 1.0
+      },
+      "SPY": {
+        "symbol": "SPY",
+        "as_of": "2026-10-12",
+        "close": 778.1,
+        "ma55": 764.2922,
+        "bb_mid": 768.5564,
+        "dist_ma55_pct": 1.81,
+        "dist_bb_mid_pct": 1.24,
+        "structure_type": "StructureType.A",
+        "structure_score": 0.95,
+        "d_complete": true,
+        "d_score": 0.95,
+        "near_d3": false,
+        "pullback_confirm": true,
+        "against_structure": false,
+        "tier": "HIGH",
+        "last_pivots": [
+          {
+            "i": 214,
+            "px": 714.81,
+            "h": false
+          },
+          {
+            "i": 226,
+            "px": 753.71,
+            "h": true
+          },
+          {
+            "i": 236,
+            "px": 727.29,
+            "h": false
+          },
+          {
+            "i": 247,
+            "px": 777.44,
+            "h": true
+          },
+          {
+            "i": 270,
+            "px": 747.74,
+            "h": false
+          },
+          {
+            "i": 284,
+            "px": 781.62,
+            "h": true
+          }
+        ],
+        "note": "结构完整 + 回抽/近D3 → 卫星可满配",
+        "exec_mult": 1.0
+      },
+      "SOXX": {
+        "symbol": "SOXX",
+        "as_of": "2026-10-12",
+        "close": 544.85,
+        "ma55": 534.1537,
+        "bb_mid": 559.054,
+        "dist_ma55_pct": 2.0,
+        "dist_bb_mid_pct": -2.54,
+        "structure_type": "StructureType.A",
+        "structure_score": 0.95,
+        "d_complete": true,
+        "d_score": 0.95,
+        "near_d3": true,
+        "pullback_confirm": true,
+        "against_structure": true,
+        "tier": "HIGH",
+        "last_pivots": [
+          {
+            "i": 274,
+            "px": 573.52,
+            "h": true
+          },
+          {
+            "i": 276,
+            "px": 553.24,
+            "h": false
+          },
+          {
+            "i": 277,
+            "px": 575.69,
+            "h": true
+          },
+          {
+            "i": 278,
+            "px": 551.95,
+            "h": false
+          },
+          {
+            "i": 282,
+            "px": 596.44,
+            "h": true
+          },
+          {
+            "i": 288,
+            "px": 543.34,
+            "h": false
+          }
+        ],
+        "note": "结构偏混沌/逆结构 → 卫星打折",
+        "exec_mult": 0.6
+      },
+      "CIBR": {
+        "symbol": "CIBR",
+        "as_of": "2026-10-12",
+        "close": 107.8,
+        "ma55": 98.6638,
+        "bb_mid": 103.8272,
+        "dist_ma55_pct": 9.26,
+        "dist_bb_mid_pct": 3.83,
+        "structure_type": "StructureType.B",
+        "structure_score": 0.95,
+        "d_complete": true,
+        "d_score": 0.95,
+        "near_d3": true,
+        "pullback_confirm": false,
+        "against_structure": false,
+        "tier": "HIGH",
+        "last_pivots": [
+          {
+            "i": 272,
+            "px": 98.86,
+            "h": false
+          },
+          {
+            "i": 275,
+            "px": 104.25,
+            "h": true
+          },
+          {
+            "i": 278,
+            "px": 99.15,
+            "h": false
+          },
+          {
+            "i": 284,
+            "px": 109.07,
+            "h": true
+          },
+          {
+            "i": 286,
+            "px": 105.5,
+            "h": false
+          },
+          {
+            "i": 288,
+            "px": 110.68,
+            "h": true
+          }
+        ],
+        "note": "相对MA55延伸偏大且未回抽 → 卫星七折",
+        "exec_mult": 0.7
+      },
+      "SKYY": {
+        "symbol": "SKYY",
+        "as_of": "2026-10-12",
+        "close": 172.51,
+        "ma55": 160.6471,
+        "bb_mid": 166.9435,
+        "dist_ma55_pct": 7.38,
+        "dist_bb_mid_pct": 3.33,
+        "structure_type": "StructureType.A",
+        "structure_score": 0.95,
+        "d_complete": true,
+        "d_score": 0.95,
+        "near_d3": false,
+        "pullback_confirm": false,
+        "against_structure": false,
+        "tier": "HIGH",
+        "last_pivots": [
+          {
+            "i": 261,
+            "px": 158.55,
+            "h": false
+          },
+          {
+            "i": 262,
+            "px": 164.27,
+            "h": true
+          },
+          {
+            "i": 266,
+            "px": 156.31,
+            "h": false
+          },
+          {
+            "i": 274,
+            "px": 169.41,
+            "h": true
+          },
+          {
+            "i": 278,
+            "px": 159.68,
+            "h": false
+          },
+          {
+            "i": 288,
+            "px": 175.81,
+            "h": true
+          }
+        ],
+        "note": "相对MA55延伸偏大且未回抽 → 卫星七折",
+        "exec_mult": 0.7
+      },
+      "IGV": {
+        "symbol": "IGV",
+        "as_of": "2026-10-12",
+        "close": 111.28,
+        "ma55": 104.0998,
+        "bb_mid": 107.6915,
+        "dist_ma55_pct": 6.9,
+        "dist_bb_mid_pct": 3.33,
+        "structure_type": "StructureType.A",
+        "structure_score": 0.95,
+        "d_complete": true,
+        "d_score": 0.95,
+        "near_d3": true,
+        "pullback_confirm": false,
+        "against_structure": false,
+        "tier": "HIGH",
+        "last_pivots": [
+          {
+            "i": 272,
+            "px": 103.48,
+            "h": false
+          },
+          {
+            "i": 274,
+            "px": 108.44,
+            "h": true
+          },
+          {
+            "i": 278,
+            "px": 103.57,
+            "h": false
+          },
+          {
+            "i": 284,
+            "px": 112.34,
+            "h": true
+          },
+          {
+            "i": 286,
+            "px": 108.83,
+            "h": false
+          },
+          {
+            "i": 288,
+            "px": 113.7,
+            "h": true
+          }
+        ],
+        "note": "相对MA55延伸偏大且未回抽 → 卫星七折",
+        "exec_mult": 0.7
+      }
+    },
+    "phase2": {
+      "enabled": true,
+      "budget": 0.1,
+      "c_sat_available": 0.15,
+      "note": "选中 NVDA,GOOGL,AMZN 合计 10.0%",
+      "selected": [
+        {
+          "symbol": "NVDA",
+          "name": "英伟达",
+          "exec_mult": 1.0,
+          "tier": "HIGH",
+          "structure_score": 0.95
+        },
+        {
+          "symbol": "GOOGL",
+          "name": "谷歌",
+          "exec_mult": 1.0,
+          "tier": "HIGH",
+          "structure_score": 0.95
+        },
+        {
+          "symbol": "AMZN",
+          "name": "亚马逊",
+          "exec_mult": 1.0,
+          "tier": "HIGH",
+          "structure_score": 0.95
+        }
+      ],
+      "stock_rows": [
+        {
+          "ticker": "NVDA",
+          "name": "英伟达",
+          "pct": 3.3,
+          "kind": "stock",
+          "exec_mult": 1.0,
+          "tier": "HIGH",
+          "note": "结构完整 + 回抽/近D3 → 卫星可满配"
+        },
+        {
+          "ticker": "GOOGL",
+          "name": "谷歌",
+          "pct": 3.3,
+          "kind": "stock",
+          "exec_mult": 1.0,
+          "tier": "HIGH",
+          "note": "结构完整 + 回抽/近D3 → 卫星可满配"
+        },
+        {
+          "ticker": "AMZN",
+          "name": "亚马逊",
+          "pct": 3.3,
+          "kind": "stock",
+          "exec_mult": 1.0,
+          "tier": "HIGH",
+          "note": "结构完整 + 回抽/近D3 → 卫星可满配"
+        }
+      ],
+      "candidates": [
+        {
+          "symbol": "NVDA",
+          "name": "英伟达",
+          "pack_id": "fallback",
+          "reason": "fallback_pool"
+        },
+        {
+          "symbol": "AVGO",
+          "name": "博通",
+          "pack_id": "fallback",
+          "reason": "fallback_pool"
+        },
+        {
+          "symbol": "AMD",
+          "name": "超威",
+          "pack_id": "fallback",
+          "reason": "fallback_pool"
+        },
+        {
+          "symbol": "MSFT",
+          "name": "微软",
+          "pack_id": "fallback",
+          "reason": "fallback_pool"
+        },
+        {
+          "symbol": "META",
+          "name": "Meta",
+          "pack_id": "fallback",
+          "reason": "fallback_pool"
+        },
+        {
+          "symbol": "GOOGL",
+          "name": "谷歌",
+          "pack_id": "fallback",
+          "reason": "fallback_pool"
+        },
+        {
+          "symbol": "AMZN",
+          "name": "亚马逊",
+          "pack_id": "fallback",
+          "reason": "fallback_pool"
+        },
+        {
+          "symbol": "TSM",
+          "name": "台积电",
+          "pack_id": "fallback",
+          "reason": "fallback_pool"
+        },
+        {
+          "symbol": "AAPL",
+          "name": "苹果",
+          "pack_id": "fallback",
+          "reason": "fallback_pool"
+        }
+      ]
+    }
+  },
+  "tech": {
+    "top3": [
+      {
+        "name": "网络安全",
+        "ticker": "CIBR",
+        "score": 87
+      },
+      {
+        "name": "云计算",
+        "ticker": "SKYY",
+        "score": 79
+      },
+      {
+        "name": "软件",
+        "ticker": "IGV",
+        "score": 89
+      }
+    ],
+    "strategies": [
+      {
+        "id": "A",
+        "name": "A 研究最优",
+        "role": "研究对照（A+Trinity）",
+        "core_pct": 0.0,
+        "sat_pct": 1.0,
+        "switch_cuts": "all",
+        "state": "WARN",
+        "score": 1.0,
+        "weights": [
+          {
+            "ticker": "AMZN",
+            "name": "亚马逊",
+            "pct": 3.3,
+            "kind": "stock"
+          },
+          {
+            "ticker": "GOOGL",
+            "name": "谷歌",
+            "pct": 3.3,
+            "kind": "stock"
+          },
+          {
+            "ticker": "NVDA",
+            "name": "英伟达",
+            "pct": 3.3,
+            "kind": "stock"
+          },
+          {
+            "ticker": "CIBR",
+            "name": "网络安全",
+            "pct": 12.0,
+            "kind": "etf"
+          },
+          {
+            "ticker": "IGV",
+            "name": "软件",
+            "pct": 16.0,
+            "kind": "etf"
+          },
+          {
+            "ticker": "SKYY",
+            "name": "云计算",
+            "pct": 12.0,
+            "kind": "etf"
+          },
+          {
+            "ticker": "BIL",
+            "name": "短债现金",
+            "pct": 50.0,
+            "kind": "cash"
+          }
+        ],
+        "action": "是：按 WARN 轻降（非清仓）",
+        "mode": "连续闸 A：权益50%(sat_mult=0.50) score=1.00·分数加权",
+        "sat_mult": 0.5,
+        "score_weight": true,
+        "trinity_enabled": true,
+        "trinity_mult": 1.0,
+        "trinity_why": "QQQ:HIGH/1.00 (结构完整 + 回抽/近D3 → 卫星可满配)",
+        "trinity_note": "滤网未改仓（gate=WARN 优先）",
+        "weights_pre_phase2": [
+          {
+            "ticker": "CIBR",
+            "name": "网络安全",
+            "pct": 15.0
+          },
+          {
+            "ticker": "SKYY",
+            "name": "云计算",
+            "pct": 15.0
+          },
+          {
+            "ticker": "IGV",
+            "name": "软件",
+            "pct": 20.0
+          },
+          {
+            "ticker": "BIL",
+            "name": "短债现金",
+            "pct": 50.0
+          }
+        ],
+        "phase2_note": "Phase2个股袖 9.9%（硬顶预算10.0%）←挤出ETF卫星"
+      },
+      {
+        "id": "C",
+        "name": "C 稳健生产",
+        "role": "生产默认（C+Trinity）",
+        "core_pct": 0.7,
+        "sat_pct": 0.3,
+        "switch_cuts": "satellite",
+        "state": "WARN",
+        "score": 1.0,
+        "weights": [
+          {
+            "ticker": "QQQ",
+            "name": "QQQ",
+            "pct": 70.0,
+            "kind": "core"
+          },
+          {
+            "ticker": "AMZN",
+            "name": "亚马逊",
+            "pct": 3.3,
+            "kind": "stock"
+          },
+          {
+            "ticker": "GOOGL",
+            "name": "谷歌",
+            "pct": 3.3,
+            "kind": "stock"
+          },
+          {
+            "ticker": "NVDA",
+            "name": "英伟达",
+            "pct": 3.3,
+            "kind": "stock"
+          },
+          {
+            "ticker": "CIBR",
+            "name": "网络安全",
+            "pct": 2.1,
+            "kind": "etf"
+          },
+          {
+            "ticker": "IGV",
+            "name": "软件",
+            "pct": 1.2,
+            "kind": "etf"
+          },
+          {
+            "ticker": "SKYY",
+            "name": "云计算",
+            "pct": 1.7,
+            "kind": "etf"
+          },
+          {
+            "ticker": "BIL",
+            "name": "短债现金",
+            "pct": 15.0,
+            "kind": "cash"
+          }
+        ],
+        "action": "是：按 WARN 轻降（非清仓）",
+        "mode": "连续闸 C：核心70%+卫星15%(sat_mult=0.50)+BIL15% score=1.00/WARN·分数加权",
+        "sat_mult": 0.5,
+        "score_weight": true,
+        "trinity_enabled": true,
+        "trinity_mult": 1.0,
+        "trinity_why": "QQQ:HIGH/1.00 (结构完整 + 回抽/近D3 → 卫星可满配)",
+        "trinity_note": "滤网未改仓（gate=WARN 优先）",
+        "weights_pre_phase2": [
+          {
+            "ticker": "QQQ",
+            "name": "QQQ",
+            "pct": 70.0
+          },
+          {
+            "ticker": "CIBR",
+            "name": "网络安全",
+            "pct": 6.4
+          },
+          {
+            "ticker": "SKYY",
+            "name": "云计算",
+            "pct": 5.0
+          },
+          {
+            "ticker": "IGV",
+            "name": "软件",
+            "pct": 3.6
+          },
+          {
+            "ticker": "BIL",
+            "name": "短债现金",
+            "pct": 15.0
+          }
+        ],
+        "phase2_note": "Phase2个股袖 9.9%（硬顶预算10.0%）←挤出ETF卫星"
+      },
+      {
+        "id": "B",
+        "name": "B 折中对照",
+        "role": "对照",
+        "core_pct": 0.6,
+        "sat_pct": 0.4,
+        "switch_cuts": "satellite",
+        "state": "WARN",
+        "score": 1.0,
+        "weights": [
+          {
+            "ticker": "QQQ",
+            "name": "QQQ",
+            "pct": 60.0,
+            "kind": "core"
+          },
+          {
+            "ticker": "AMZN",
+            "name": "亚马逊",
+            "pct": 3.3,
+            "kind": "stock"
+          },
+          {
+            "ticker": "GOOGL",
+            "name": "谷歌",
+            "pct": 3.3,
+            "kind": "stock"
+          },
+          {
+            "ticker": "NVDA",
+            "name": "英伟达",
+            "pct": 3.3,
+            "kind": "stock"
+          },
+          {
+            "ticker": "CIBR",
+            "name": "网络安全",
+            "pct": 4.2,
+            "kind": "etf"
+          },
+          {
+            "ticker": "IGV",
+            "name": "软件",
+            "pct": 2.4,
+            "kind": "etf"
+          },
+          {
+            "ticker": "SKYY",
+            "name": "云计算",
+            "pct": 3.4,
+            "kind": "etf"
+          },
+          {
+            "ticker": "BIL",
+            "name": "短债现金",
+            "pct": 20.0,
+            "kind": "cash"
+          }
+        ],
+        "action": "对照",
+        "mode": "连续闸 C：核心60%+卫星20%(sat_mult=0.50)+BIL20% score=1.00/WARN·分数加权",
+        "phase2_note": "Phase2个股袖 9.9%（硬顶预算10.0%）←挤出ETF卫星"
+      }
+    ]
+  },
+  "spy": {
+    "top3": [
+      {
+        "name": "医疗保健",
+        "ticker": "XLV",
+        "score": 87
+      },
+      {
+        "name": "能源",
+        "ticker": "XLE",
+        "score": 85
+      },
+      {
+        "name": "公用事业",
+        "ticker": "XLU",
+        "score": 77
+      }
+    ],
+    "strategies": [
+      {
+        "id": "A",
+        "name": "A 研究最优",
+        "role": "研究对照（A+Trinity）",
+        "core_pct": 0.0,
+        "sat_pct": 1.0,
+        "switch_cuts": "all",
+        "state": "WARN",
+        "score": 1.0,
+        "weights": [
+          {
+            "ticker": "XLV",
+            "name": "医疗保健",
+            "pct": 16.7
+          },
+          {
+            "ticker": "XLE",
+            "name": "能源",
+            "pct": 16.7
+          },
+          {
+            "ticker": "XLU",
+            "name": "公用事业",
+            "pct": 16.7
+          },
+          {
+            "ticker": "BIL",
+            "name": "短债现金",
+            "pct": 50.0
+          }
+        ],
+        "action": "是：按 WARN 轻降（非清仓）",
+        "mode": "连续闸 A：权益50%(sat_mult=0.50) score=1.00·分数加权",
+        "sat_mult": 0.5,
+        "score_weight": true,
+        "trinity_enabled": true,
+        "trinity_mult": 1.0,
+        "trinity_why": "QQQ:HIGH/1.00 (结构完整 + 回抽/近D3 → 卫星可满配)（标普侧Phase1默认不改）",
+        "trinity_note": "标普卫星不应用Trinity滤网"
+      },
+      {
+        "id": "C",
+        "name": "C 稳健生产",
+        "role": "生产默认（C+Trinity）",
+        "core_pct": 0.7,
+        "sat_pct": 0.3,
+        "switch_cuts": "satellite",
+        "state": "WARN",
+        "score": 1.0,
+        "weights": [
+          {
+            "ticker": "SPY",
+            "name": "SPY",
+            "pct": 70.0
+          },
+          {
+            "ticker": "XLV",
+            "name": "医疗保健",
+            "pct": 5.2
+          },
+          {
+            "ticker": "XLE",
+            "name": "能源",
+            "pct": 5.1
+          },
+          {
+            "ticker": "XLU",
+            "name": "公用事业",
+            "pct": 4.6
+          },
+          {
+            "ticker": "BIL",
+            "name": "短债现金",
+            "pct": 15.0
+          }
+        ],
+        "action": "是：按 WARN 轻降（非清仓）",
+        "mode": "连续闸 C：核心70%+卫星15%(sat_mult=0.50)+BIL15% score=1.00/WARN·分数加权",
+        "sat_mult": 0.5,
+        "score_weight": true,
+        "trinity_enabled": true,
+        "trinity_mult": 1.0,
+        "trinity_why": "QQQ:HIGH/1.00 (结构完整 + 回抽/近D3 → 卫星可满配)（标普侧Phase1默认不改）",
+        "trinity_note": "标普卫星不应用Trinity滤网"
+      },
+      {
+        "id": "B",
+        "name": "B 折中对照",
+        "role": "对照",
+        "core_pct": 0.6,
+        "sat_pct": 0.4,
+        "switch_cuts": "satellite",
+        "state": "WARN",
+        "score": 1.0,
+        "weights": [
+          {
+            "ticker": "SPY",
+            "name": "SPY",
+            "pct": 60.0
+          },
+          {
+            "ticker": "XLV",
+            "name": "医疗保健",
+            "pct": 7.0
+          },
+          {
+            "ticker": "XLE",
+            "name": "能源",
+            "pct": 6.8
+          },
+          {
+            "ticker": "XLU",
+            "name": "公用事业",
+            "pct": 6.2
+          },
+          {
+            "ticker": "BIL",
+            "name": "短债现金",
+            "pct": 20.0
+          }
+        ],
+        "action": "对照",
+        "mode": "连续闸 C：核心60%+卫星20%(sat_mult=0.50)+BIL20% score=1.00/WARN·分数加权"
+      }
+    ]
+  },
+  "defaults": {
+    "production": "C+Trinity+P2",
+    "research": "A+Trinity+P2",
+    "trinity_filter": true,
+    "trinity_apply_spy": false,
+    "trinity_phase2": true,
+    "tech_top3": "mom6m_S3_rel60",
+    "sector_top3": "pine_half_rel60",
+    "s3_soft_crowd": true,
+    "s3_soft_crowd_pp": 0.05,
+    "pine_half_crowd_penalty": 12.5,
+    "gate_continuous": true,
+    "top3_score_weight": true,
+    "top3_single_cap": 0.15,
+    "sat_mult": 0.5
+  },
+  "ranking": {
+    "tech": {
+      "engine": "mom6m_S3_rel60",
+      "note": "科技Top3=mom6m_S3_rel60（主引擎；非 pine 分）；网络安全(CIBR) mom6m=+73.6% rel60=+8.7；云计算(SKYY) mom6m=+59.5% pen=2.0pp→+57.5% rel60=+18.0 拥挤；软件(IGV) mom6m=+41.4% rel60=+11.7",
+      "mom_map": {
+        "IGV": 0.4143315107554497,
+        "CIBR": 0.7357346930647193,
+        "SKYY": 0.5946019068599633,
+        "AIQ": 0.27156080360793955,
+        "SMH": 0.29108408700048405,
+        "BOTZ": -0.04680425845058778
+      },
+      "picks": [
+        {
+          "name": "网络安全",
+          "rs5d": 3.07,
+          "rel60": 8.67,
+          "trend": "强",
+          "score": 87,
+          "status": "确认进入",
+          "over_ext": false,
+          "ticker": "CIBR",
+          "mom6m": 0.7357346930647193,
+          "crowd_pen": 0.0,
+          "mom_rank": 0.7357346930647193,
+          "rank_engine": "mom6m_S3_rel60",
+          "rank_score": 0.7357346930647193,
+          "pine_raw": 87.0,
+          "adj_score": 87.0,
+          "rank": 1
+        },
+        {
+          "name": "云计算",
+          "rs5d": 2.96,
+          "rel60": 18.01,
+          "trend": "强",
+          "score": 79,
+          "status": "拥挤主升",
+          "over_ext": true,
+          "ticker": "SKYY",
+          "mom6m": 0.5946019068599633,
+          "crowd_pen": 0.020066666666666677,
+          "mom_rank": 0.5745352401932966,
+          "rank_engine": "mom6m_S3_rel60",
+          "rank_score": 0.5745352401932966,
+          "pine_raw": 79.0,
+          "adj_score": 73.98333333333333,
+          "rank": 2
+        },
+        {
+          "name": "软件",
+          "rs5d": 2.8,
+          "rel60": 11.65,
+          "trend": "强",
+          "score": 89,
+          "status": "确认进入",
+          "over_ext": false,
+          "ticker": "IGV",
+          "mom6m": 0.4143315107554497,
+          "crowd_pen": 0.0,
+          "mom_rank": 0.4143315107554497,
+          "rank_engine": "mom6m_S3_rel60",
+          "rank_score": 0.4143315107554497,
+          "pine_raw": 89.0,
+          "adj_score": 89.0,
+          "rank": 3
+        }
+      ]
+    },
+    "spy": {
+      "engine": "pine_half_rel60",
+      "note": "标普Top3=pine_half_rel60；选中: 医疗保健 raw=87.0 adj=87.0 rel60=+2.1, 能源 raw=85.0 adj=85.0 rel60=+9.7, 公用事业 raw=77.0 adj=77.0 rel60=-11.5",
+      "picks": [
+        {
+          "name": "医疗保健",
+          "ticker": "XLV",
+          "score": 87,
+          "status": "确认进入",
+          "rs5d": 2.33,
+          "rel60": 2.13,
+          "over_ext": false,
+          "pine_raw": 87.0,
+          "crowd_pen": 0.0,
+          "adj_score": 87.0,
+          "rank_score": 87.0,
+          "rank_engine": "pine_half_rel60",
+          "rank": 1
+        },
+        {
+          "name": "能源",
+          "ticker": "XLE",
+          "score": 85,
+          "status": "确认进入",
+          "rs5d": 3.6,
+          "rel60": 9.7,
+          "over_ext": false,
+          "pine_raw": 85.0,
+          "crowd_pen": 0.0,
+          "adj_score": 85.0,
+          "rank_score": 85.0,
+          "rank_engine": "pine_half_rel60",
+          "rank": 2
+        },
+        {
+          "name": "公用事业",
+          "ticker": "XLU",
+          "score": 77,
+          "status": "确认进入",
+          "rs5d": 3.72,
+          "rel60": -11.53,
+          "over_ext": false,
+          "pine_raw": 77.0,
+          "crowd_pen": 0.0,
+          "adj_score": 77.0,
+          "rank_score": 77.0,
+          "rank_engine": "pine_half_rel60",
+          "rank": 3
+        }
+      ]
+    }
+  },
+  "meta": {
+    "rotation_md": "output/tech_rotation_2026-10-12.md",
+    "sector_md": "output/sector_rotation_2026-10-12.md",
+    "books": {
+      "A": {
+        "id": "A",
+        "name": "A 研究最优",
+        "role": "研究对照（A+Trinity）",
+        "blurb": "100% 科技mom6m Top3（可软罚拥挤）/ 标普pine_half Top3 + 分数闸 + Trinity。BEAR→BIL；WARN→权益75%。研究对照。",
+        "core_pct": 0.0,
+        "sat_pct": 1.0,
+        "switch_cuts": "all"
+      },
+      "C": {
+        "id": "C",
+        "name": "C 稳健生产",
+        "role": "生产默认（C+Trinity）",
+        "blurb": "70% 宽基 + 30% Top3（科技mom6m / 标普pine_half）+ 分数闸 + Trinity。BEAR只砍卫星；WARN卫星减半。**生产默认**。",
+        "core_pct": 0.7,
+        "sat_pct": 0.3,
+        "switch_cuts": "satellite"
+      },
+      "B": {
+        "id": "B",
+        "name": "B 折中对照",
+        "role": "对照",
+        "blurb": "60% 宽基 + 40% Top3 + 同分数闸。仅作 A/C 之间对照，非默认执行锚点。",
+        "core_pct": 0.6,
+        "sat_pct": 0.4,
+        "switch_cuts": "satellite"
+      }
+    },
+    "params": {
+      "bear_thr": 1.5,
+      "warn_lo": 1.0,
+      "warn_a_equity": 0.75,
+      "warn_sat_frac": 0.5
+    }
+  }
+}

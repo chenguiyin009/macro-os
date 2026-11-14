@@ -1,0 +1,3651 @@
+{
+  "schema": "paper_abc_ledger_v1",
+  "principal": 100000.0,
+  "cost_one_way": 0.001,
+  "created": "2026-11-14 11:47",
+  "updated": "2026-11-14 11:47",
+  "start_date": "2026-09-03",
+  "last_date": "2026-11-13",
+  "sleeves": {
+    "tech_A": {
+      "nav": 97070.77143968883,
+      "peak": 107245.01915126102,
+      "max_dd": -0.11444390828812889,
+      "weights": {
+        "AMZN": 0.05,
+        "AVGO": 0.05,
+        "MSFT": 0.05,
+        "CIBR": 0.15,
+        "IGV": 0.15,
+        "SKYY": 0.15,
+        "BIL": 0.4
+      },
+      "history": [
+        {
+          "date": "2026-09-03",
+          "nav": 100000.0,
+          "day_ret": 0.0,
+          "turnover": 0.0,
+          "rebalanced": true,
+          "note": "起始建仓"
+        },
+        {
+          "date": "2026-09-04",
+          "nav": 100123.2267,
+          "day_ret": 0.001298,
+          "turnover": 0.065934,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-08",
+          "nav": 100090.2859,
+          "day_ret": -0.000197,
+          "turnover": 0.131868,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-09",
+          "nav": 99981.0246,
+          "day_ret": -0.00096,
+          "turnover": 0.131868,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-10",
+          "nav": 99359.9979,
+          "day_ret": -0.00608,
+          "turnover": 0.131868,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-11",
+          "nav": 99834.7568,
+          "day_ret": 0.004844,
+          "turnover": 0.065934,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-14",
+          "nav": 100422.1974,
+          "day_ret": 0.005884,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-15",
+          "nav": 100460.3323,
+          "day_ret": 0.00038,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-16",
+          "nav": 100374.2693,
+          "day_ret": -0.000857,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-17",
+          "nav": 101323.0671,
+          "day_ret": 0.009453,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-18",
+          "nav": 101238.7557,
+          "day_ret": -0.000832,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-21",
+          "nav": 102930.738,
+          "day_ret": 0.016713,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-22",
+          "nav": 103020.363,
+          "day_ret": 0.000871,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-23",
+          "nav": 102859.7066,
+          "day_ret": -0.000795,
+          "turnover": 0.764635,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-24",
+          "nav": 102587.8095,
+          "day_ret": -0.002643,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-25",
+          "nav": 102203.3431,
+          "day_ret": -0.003648,
+          "turnover": 0.1001,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-28",
+          "nav": 101796.1411,
+          "day_ret": -0.003984,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-29",
+          "nav": 102107.7953,
+          "day_ret": 0.003162,
+          "turnover": 0.1001,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-30",
+          "nav": 102774.6391,
+          "day_ret": 0.006531,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-01",
+          "nav": 103581.159,
+          "day_ret": 0.007948,
+          "turnover": 0.1001,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-02",
+          "nav": 104662.0234,
+          "day_ret": 0.010536,
+          "turnover": 0.1001,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-05",
+          "nav": 105373.9543,
+          "day_ret": 0.006802,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-06",
+          "nav": 106114.9227,
+          "day_ret": 0.007032,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-10-07",
+          "nav": 105600.7132,
+          "day_ret": -0.004846,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-10-08",
+          "nav": 104530.0053,
+          "day_ret": -0.009181,
+          "turnover": 0.966967,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-09",
+          "nav": 107245.0192,
+          "day_ret": 0.026076,
+          "turnover": 0.1001,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-12",
+          "nav": 105740.2266,
+          "day_ret": -0.012913,
+          "turnover": 1.133133,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-13",
+          "nav": 105626.0279,
+          "day_ret": -0.00108,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-10-14",
+          "nav": 103891.7528,
+          "day_ret": -0.016419,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-10-15",
+          "nav": 104234.516,
+          "day_ret": 0.004303,
+          "turnover": 0.998999,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-16",
+          "nav": 104268.6767,
+          "day_ret": 0.000328,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-19",
+          "nav": 104268.6767,
+          "day_ret": 0.0,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-20",
+          "nav": 104280.0694,
+          "day_ret": 0.000109,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-21",
+          "nav": 104198.639,
+          "day_ret": 0.000218,
+          "turnover": 0.998999,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-22",
+          "nav": 103482.1698,
+          "day_ret": -0.005883,
+          "turnover": 0.998999,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-23",
+          "nav": 103516.0618,
+          "day_ret": 0.000328,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-26",
+          "nav": 103527.3562,
+          "day_ret": 0.000109,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-27",
+          "nav": 103446.5074,
+          "day_ret": 0.000218,
+          "turnover": 0.998999,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-28",
+          "nav": 103356.5108,
+          "day_ret": -0.000738,
+          "turnover": 0.132132,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-29",
+          "nav": 101787.4996,
+          "day_ret": -0.014972,
+          "turnover": 0.212212,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-30",
+          "nav": 99542.4701,
+          "day_ret": -0.021861,
+          "turnover": 0.199199,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-02",
+          "nav": 97907.5131,
+          "day_ret": -0.016228,
+          "turnover": 0.2,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-03",
+          "nav": 97918.6064,
+          "day_ret": 0.001115,
+          "turnover": 1.000999,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-04",
+          "nav": 97775.2336,
+          "day_ret": -0.001131,
+          "turnover": 0.333666,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-05",
+          "nav": 94971.48,
+          "day_ret": -0.028675,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-11-06",
+          "nav": 95322.1418,
+          "day_ret": 0.004376,
+          "turnover": 0.680679,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-09",
+          "nav": 96777.427,
+          "day_ret": 0.015267,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-10",
+          "nav": 96495.61,
+          "day_ret": -0.002844,
+          "turnover": 0.067868,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-11",
+          "nav": 97304.0881,
+          "day_ret": 0.008513,
+          "turnover": 0.133934,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-12",
+          "nav": 97573.9999,
+          "day_ret": 0.00284,
+          "turnover": 0.066066,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-13",
+          "nav": 97070.7714,
+          "day_ret": -0.004937,
+          "turnover": 0.221321,
+          "rebalanced": true
+        }
+      ]
+    },
+    "tech_B": {
+      "nav": 95138.1467709349,
+      "peak": 105892.8827983909,
+      "max_dd": -0.13586536258700677,
+      "weights": {
+        "QQQ": 0.6,
+        "AMZN": 0.05,
+        "AVGO": 0.05,
+        "MSFT": 0.05,
+        "CIBR": 0.094,
+        "IGV": 0.062,
+        "SKYY": 0.094
+      },
+      "history": [
+        {
+          "date": "2026-09-03",
+          "nav": 100000.0,
+          "day_ret": 0.0,
+          "turnover": 0.0,
+          "rebalanced": true,
+          "note": "起始建仓"
+        },
+        {
+          "date": "2026-09-04",
+          "nav": 100168.1498,
+          "day_ret": 0.00176,
+          "turnover": 0.078078,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-08",
+          "nav": 100151.0811,
+          "day_ret": -3.6e-05,
+          "turnover": 0.134134,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-09",
+          "nav": 99905.2145,
+          "day_ret": -0.002317,
+          "turnover": 0.138138,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-10",
+          "nav": 99016.9613,
+          "day_ret": -0.008754,
+          "turnover": 0.138074,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-11",
+          "nav": 99705.1889,
+          "day_ret": 0.007021,
+          "turnover": 0.07014,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-14",
+          "nav": 99459.684,
+          "day_ret": -0.002462,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-15",
+          "nav": 99026.9678,
+          "day_ret": -0.004351,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-16",
+          "nav": 98987.2517,
+          "day_ret": -0.000401,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-17",
+          "nav": 100377.8804,
+          "day_ret": 0.014049,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-18",
+          "nav": 100756.698,
+          "day_ret": 0.003774,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-21",
+          "nav": 103052.4953,
+          "day_ret": 0.022786,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-22",
+          "nav": 103538.4271,
+          "day_ret": 0.004715,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-23",
+          "nav": 102840.0307,
+          "day_ret": -0.006278,
+          "turnover": 0.470537,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-24",
+          "nav": 102758.8356,
+          "day_ret": -0.00079,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-25",
+          "nav": 103034.674,
+          "day_ret": 0.00279,
+          "turnover": 0.105536,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-28",
+          "nav": 102245.2117,
+          "day_ret": -0.007662,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-29",
+          "nav": 102426.8645,
+          "day_ret": 0.001885,
+          "turnover": 0.108,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-30",
+          "nav": 102909.7167,
+          "day_ret": 0.004726,
+          "turnover": 0.011832,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-01",
+          "nav": 103281.2745,
+          "day_ret": 0.003715,
+          "turnover": 0.10367,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-02",
+          "nav": 104419.2324,
+          "day_ret": 0.011129,
+          "turnover": 0.11,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-05",
+          "nav": 105243.7739,
+          "day_ret": 0.007905,
+          "turnover": 0.008,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-06",
+          "nav": 105892.8828,
+          "day_ret": 0.006168,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-10-07",
+          "nav": 105641.5026,
+          "day_ret": -0.002374,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-10-08",
+          "nav": 104345.1537,
+          "day_ret": -0.011906,
+          "turnover": 0.369299,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-09",
+          "nav": 105459.2369,
+          "day_ret": 0.01078,
+          "turnover": 0.101762,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-12",
+          "nav": 104560.6965,
+          "day_ret": -0.007991,
+          "turnover": 0.533734,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-13",
+          "nav": 104348.0175,
+          "day_ret": -0.002034,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-10-14",
+          "nav": 102504.2932,
+          "day_ret": -0.017669,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-10-15",
+          "nav": 102440.9546,
+          "day_ret": -0.000218,
+          "turnover": 0.3996,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-16",
+          "nav": 100917.7684,
+          "day_ret": -0.014869,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-19",
+          "nav": 101647.9931,
+          "day_ret": 0.007236,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-20",
+          "nav": 101590.4603,
+          "day_ret": -0.000566,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-21",
+          "nav": 102201.5012,
+          "day_ret": 0.006417,
+          "turnover": 0.399198,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-22",
+          "nav": 99965.5465,
+          "day_ret": -0.021487,
+          "turnover": 0.399198,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-23",
+          "nav": 99972.6872,
+          "day_ret": 7.1e-05,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-26",
+          "nav": 100641.2631,
+          "day_ret": 0.006688,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-27",
+          "nav": 101376.8382,
+          "day_ret": 0.007712,
+          "turnover": 0.3996,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-28",
+          "nav": 101717.8067,
+          "day_ret": 0.003498,
+          "turnover": 0.134134,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-29",
+          "nav": 100264.5605,
+          "day_ret": -0.014147,
+          "turnover": 0.142142,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-30",
+          "nav": 97155.9054,
+          "day_ret": -0.030812,
+          "turnover": 0.198599,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-02",
+          "nav": 95660.6422,
+          "day_ret": -0.015193,
+          "turnover": 0.2,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-03",
+          "nav": 95859.4297,
+          "day_ret": 0.002481,
+          "turnover": 0.401598,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-04",
+          "nav": 96362.2884,
+          "day_ret": 0.00538,
+          "turnover": 0.133866,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-05",
+          "nav": 91505.7079,
+          "day_ret": -0.050399,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-11-06",
+          "nav": 92400.0604,
+          "day_ret": 0.010139,
+          "turnover": 0.361558,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-09",
+          "nav": 94931.3765,
+          "day_ret": 0.027401,
+          "turnover": 0.006006,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-10",
+          "nav": 94459.1833,
+          "day_ret": -0.004903,
+          "turnover": 0.071804,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-11",
+          "nav": 95953.217,
+          "day_ret": 0.015959,
+          "turnover": 0.14,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-12",
+          "nav": 96123.3083,
+          "day_ret": 0.001845,
+          "turnover": 0.071916,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-13",
+          "nav": 95138.1468,
+          "day_ret": -0.00985,
+          "turnover": 0.403206,
+          "rebalanced": true
+        }
+      ]
+    },
+    "tech_C": {
+      "nav": 94774.0142545669,
+      "peak": 105593.4215234393,
+      "max_dd": -0.13924326243984242,
+      "weights": {
+        "QQQ": 0.7007007007007007,
+        "AMZN": 0.05005005005005005,
+        "AVGO": 0.05005005005005005,
+        "MSFT": 0.05005005005005005,
+        "CIBR": 0.012012012012012012,
+        "IGV": 0.006006006006006006,
+        "SKYY": 0.011011011011011013,
+        "BIL": 0.12012012012012012
+      },
+      "history": [
+        {
+          "date": "2026-09-03",
+          "nav": 100000.0,
+          "day_ret": 0.0,
+          "turnover": 0.0,
+          "rebalanced": true,
+          "note": "起始建仓"
+        },
+        {
+          "date": "2026-09-04",
+          "nav": 100184.2462,
+          "day_ret": 0.001915,
+          "turnover": 0.072072,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-08",
+          "nav": 100165.3805,
+          "day_ret": -5.4e-05,
+          "turnover": 0.134134,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-09",
+          "nav": 99895.1907,
+          "day_ret": -0.002564,
+          "turnover": 0.134134,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-10",
+          "nav": 98962.2042,
+          "day_ret": -0.009203,
+          "turnover": 0.137936,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-11",
+          "nav": 99689.9697,
+          "day_ret": 0.007422,
+          "turnover": 0.068,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-14",
+          "nav": 99281.4198,
+          "day_ret": -0.004098,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-15",
+          "nav": 98769.431,
+          "day_ret": -0.005157,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-16",
+          "nav": 98740.6894,
+          "day_ret": -0.000291,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-17",
+          "nav": 100208.31,
+          "day_ret": 0.014863,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-18",
+          "nav": 100670.067,
+          "day_ret": 0.004608,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-21",
+          "nav": 103073.2764,
+          "day_ret": 0.023872,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-22",
+          "nav": 103629.9157,
+          "day_ret": 0.0054,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-23",
+          "nav": 102850.9425,
+          "day_ret": -0.007243,
+          "turnover": 0.27609,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-24",
+          "nav": 102834.5013,
+          "day_ret": -0.00016,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-25",
+          "nav": 103282.4891,
+          "day_ret": 0.004461,
+          "turnover": 0.103746,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-28",
+          "nav": 102455.9929,
+          "day_ret": -0.008002,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-29",
+          "nav": 102575.1897,
+          "day_ret": 0.00127,
+          "turnover": 0.106,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-30",
+          "nav": 102975.3386,
+          "day_ret": 0.003907,
+          "turnover": 0.00593,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-01",
+          "nav": 103191.7653,
+          "day_ret": 0.002204,
+          "turnover": 0.101922,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-02",
+          "nav": 104252.0819,
+          "day_ret": 0.01038,
+          "turnover": 0.104,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-05",
+          "nav": 105028.1349,
+          "day_ret": 0.007448,
+          "turnover": 0.004,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-06",
+          "nav": 105593.4215,
+          "day_ret": 0.005382,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-10-07",
+          "nav": 105464.3987,
+          "day_ret": -0.001222,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-10-08",
+          "nav": 104213.5093,
+          "day_ret": -0.011503,
+          "turnover": 0.361499,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-09",
+          "nav": 105059.9432,
+          "day_ret": 0.008227,
+          "turnover": 0.103896,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-12",
+          "nav": 104260.3276,
+          "day_ret": -0.007179,
+          "turnover": 0.435232,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-13",
+          "nav": 104032.8335,
+          "day_ret": -0.002182,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-10-14",
+          "nav": 102180.7327,
+          "day_ret": -0.017803,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-10-15",
+          "nav": 102067.9213,
+          "day_ret": -0.000805,
+          "turnover": 0.2997,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-16",
+          "nav": 100291.7667,
+          "day_ret": -0.017402,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-19",
+          "nav": 101138.4109,
+          "day_ret": 0.008442,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-20",
+          "nav": 101069.784,
+          "day_ret": -0.000679,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-21",
+          "nav": 101792.1907,
+          "day_ret": 0.00745,
+          "turnover": 0.2997,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-22",
+          "nav": 99313.8696,
+          "day_ret": -0.024054,
+          "turnover": 0.2997,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-23",
+          "nav": 99316.7251,
+          "day_ret": 2.9e-05,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-26",
+          "nav": 100089.8063,
+          "day_ret": 0.007784,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-27",
+          "nav": 100956.3897,
+          "day_ret": 0.00896,
+          "turnover": 0.2997,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-28",
+          "nav": 101382.8765,
+          "day_ret": 0.004357,
+          "turnover": 0.132132,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-29",
+          "nav": 99939.2973,
+          "day_ret": -0.014103,
+          "turnover": 0.138138,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-30",
+          "nav": 96688.4578,
+          "day_ret": -0.032336,
+          "turnover": 0.198498,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-02",
+          "nav": 95237.8669,
+          "day_ret": -0.014806,
+          "turnover": 0.2,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-03",
+          "nav": 95471.6492,
+          "day_ret": 0.002756,
+          "turnover": 0.3,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-04",
+          "nav": 96080.1542,
+          "day_ret": 0.006474,
+          "turnover": 0.1,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-05",
+          "nav": 90890.249,
+          "day_ret": -0.054016,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-11-06",
+          "nav": 91873.5958,
+          "day_ret": 0.011102,
+          "turnover": 0.27998,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-09",
+          "nav": 94559.9372,
+          "day_ret": 0.029244,
+          "turnover": 0.004004,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-10",
+          "nav": 94044.6893,
+          "day_ret": -0.005379,
+          "turnover": 0.069836,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-11",
+          "nav": 95647.9608,
+          "day_ret": 0.01719,
+          "turnover": 0.139894,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-12",
+          "nav": 95792.3098,
+          "day_ret": 0.001579,
+          "turnover": 0.07007,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-13",
+          "nav": 94774.0143,
+          "day_ret": -0.010529,
+          "turnover": 0.102102,
+          "rebalanced": true
+        }
+      ]
+    },
+    "spy_A": {
+      "nav": 100914.32561367603,
+      "peak": 101996.18896288668,
+      "max_dd": -0.02394496113491884,
+      "weights": {
+        "XLI": 0.3333333333333333,
+        "XLF": 0.3333333333333333,
+        "XLB": 0.3333333333333333
+      },
+      "history": [
+        {
+          "date": "2026-09-03",
+          "nav": 100000.0,
+          "day_ret": 0.0,
+          "turnover": 0.0,
+          "rebalanced": true,
+          "note": "起始建仓"
+        },
+        {
+          "date": "2026-09-04",
+          "nav": 99475.6848,
+          "day_ret": -0.004579,
+          "turnover": 0.667333,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-08",
+          "nav": 99266.043,
+          "day_ret": -0.001774,
+          "turnover": 0.333666,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-09",
+          "nav": 99169.9459,
+          "day_ret": -0.000567,
+          "turnover": 0.400999,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-10",
+          "nav": 98959.2943,
+          "day_ret": -0.001725,
+          "turnover": 0.4,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-11",
+          "nav": 99119.702,
+          "day_ret": 0.002022,
+          "turnover": 0.4,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-14",
+          "nav": 98991.6354,
+          "day_ret": -0.001292,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-15",
+          "nav": 99248.8652,
+          "day_ret": 0.002598,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-16",
+          "nav": 98557.7448,
+          "day_ret": -0.006964,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-17",
+          "nav": 98953.9651,
+          "day_ret": 0.00402,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-18",
+          "nav": 98830.6871,
+          "day_ret": -0.001246,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-21",
+          "nav": 99392.9622,
+          "day_ret": 0.005689,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-22",
+          "nav": 99126.6865,
+          "day_ret": -0.002679,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-23",
+          "nav": 98990.5619,
+          "day_ret": 2.7e-05,
+          "turnover": 1.4,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-24",
+          "nav": 99512.5082,
+          "day_ret": 0.005273,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-25",
+          "nav": 99640.6183,
+          "day_ret": 0.001287,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-28",
+          "nav": 98931.7567,
+          "day_ret": -0.007114,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-29",
+          "nav": 98844.6936,
+          "day_ret": -0.000214,
+          "turnover": 0.666667,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-30",
+          "nav": 98126.3449,
+          "day_ret": -0.006605,
+          "turnover": 0.666667,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-01",
+          "nav": 97605.5039,
+          "day_ret": -0.00398,
+          "turnover": 1.333333,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-02",
+          "nav": 97949.6412,
+          "day_ret": 0.004195,
+          "turnover": 0.666667,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-05",
+          "nav": 98509.1338,
+          "day_ret": 0.006383,
+          "turnover": 0.666667,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-06",
+          "nav": 100048.2019,
+          "day_ret": 0.015624,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-10-07",
+          "nav": 99831.9289,
+          "day_ret": -0.002162,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-10-08",
+          "nav": 99142.9447,
+          "day_ret": -0.005576,
+          "turnover": 1.333333,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-09",
+          "nav": 99339.447,
+          "day_ret": 0.001982,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-12",
+          "nav": 100243.7505,
+          "day_ret": 0.01045,
+          "turnover": 1.332667,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-13",
+          "nav": 100426.0331,
+          "day_ret": 0.001818,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-10-14",
+          "nav": 100897.8565,
+          "day_ret": 0.004698,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-10-15",
+          "nav": 100825.8259,
+          "day_ret": 0.000287,
+          "turnover": 1.000999,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-16",
+          "nav": 100858.8695,
+          "day_ret": 0.000328,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-19",
+          "nav": 100858.8695,
+          "day_ret": 0.0,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-20",
+          "nav": 100869.8896,
+          "day_ret": 0.000109,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-21",
+          "nav": 100790.9204,
+          "day_ret": 0.000218,
+          "turnover": 1.000999,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-22",
+          "nav": 100957.0812,
+          "day_ret": 0.002652,
+          "turnover": 1.000999,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-23",
+          "nav": 100990.1462,
+          "day_ret": 0.000328,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-26",
+          "nav": 101001.165,
+          "day_ret": 0.000109,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-27",
+          "nav": 100922.1879,
+          "day_ret": 0.000218,
+          "turnover": 1.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-28",
+          "nav": 100630.5915,
+          "day_ret": -0.002489,
+          "turnover": 0.400999,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-29",
+          "nav": 101479.476,
+          "day_ret": 0.008772,
+          "turnover": 0.333666,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-30",
+          "nav": 101486.7542,
+          "day_ret": 0.000406,
+          "turnover": 0.333666,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-02",
+          "nav": 101996.189,
+          "day_ret": 0.005691,
+          "turnover": 0.667333,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-03",
+          "nav": 101120.0799,
+          "day_ret": -0.007928,
+          "turnover": 0.667333,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-04",
+          "nav": 101815.2851,
+          "day_ret": 0.007884,
+          "turnover": 1.000999,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-05",
+          "nav": 100780.1754,
+          "day_ret": -0.010167,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-11-06",
+          "nav": 100404.6425,
+          "day_ret": -0.003061,
+          "turnover": 0.667333,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-09",
+          "nav": 101391.1422,
+          "day_ret": 0.009825,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-10",
+          "nav": 101433.1842,
+          "day_ret": 0.000749,
+          "turnover": 0.333666,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-11",
+          "nav": 101386.9742,
+          "day_ret": 0.000546,
+          "turnover": 1.000999,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-12",
+          "nav": 101056.4258,
+          "day_ret": -0.002562,
+          "turnover": 0.7,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-13",
+          "nav": 100914.3256,
+          "day_ret": -6e-06,
+          "turnover": 1.4,
+          "rebalanced": true
+        }
+      ]
+    },
+    "spy_B": {
+      "nav": 99234.32667201628,
+      "peak": 100844.33109886803,
+      "max_dd": -0.033441990594386795,
+      "weights": {
+        "SPY": 0.6,
+        "XLI": 0.15,
+        "XLF": 0.135,
+        "XLB": 0.115
+      },
+      "history": [
+        {
+          "date": "2026-09-03",
+          "nav": 100000.0,
+          "day_ret": 0.0,
+          "turnover": 0.0,
+          "rebalanced": true,
+          "note": "起始建仓"
+        },
+        {
+          "date": "2026-09-04",
+          "nav": 99559.1351,
+          "day_ret": -0.004144,
+          "turnover": 0.266,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-08",
+          "nav": 99151.4267,
+          "day_ret": -0.003962,
+          "turnover": 0.134134,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-09",
+          "nav": 98837.2261,
+          "day_ret": -0.003019,
+          "turnover": 0.14987,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-10",
+          "nav": 98347.5653,
+          "day_ret": -0.004851,
+          "turnover": 0.104,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-11",
+          "nav": 98972.3102,
+          "day_ret": 0.006483,
+          "turnover": 0.13,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-14",
+          "nav": 98655.3426,
+          "day_ret": -0.003203,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-15",
+          "nav": 98425.0607,
+          "day_ret": -0.002334,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-16",
+          "nav": 97956.0449,
+          "day_ret": -0.004765,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-17",
+          "nav": 98802.4364,
+          "day_ret": 0.008641,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-18",
+          "nav": 98844.3465,
+          "day_ret": 0.000424,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-21",
+          "nav": 100116.8983,
+          "day_ret": 0.012874,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-22",
+          "nav": 100034.9933,
+          "day_ret": -0.000818,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-23",
+          "nav": 99516.5985,
+          "day_ret": -0.004673,
+          "turnover": 0.512,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-24",
+          "nav": 99642.4149,
+          "day_ret": 0.001264,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-25",
+          "nav": 100056.5516,
+          "day_ret": 0.004251,
+          "turnover": 0.094,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-28",
+          "nav": 99273.0784,
+          "day_ret": -0.00783,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-29",
+          "nav": 99139.4559,
+          "day_ret": -0.001046,
+          "turnover": 0.3,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-30",
+          "nav": 98765.8311,
+          "day_ret": -0.003569,
+          "turnover": 0.2,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-01",
+          "nav": 98691.0913,
+          "day_ret": -0.000257,
+          "turnover": 0.5,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-02",
+          "nav": 99290.5042,
+          "day_ret": 0.006293,
+          "turnover": 0.218,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-05",
+          "nav": 99925.9762,
+          "day_ret": 0.006684,
+          "turnover": 0.282,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-06",
+          "nav": 100838.1794,
+          "day_ret": 0.009129,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-10-07",
+          "nav": 100600.8942,
+          "day_ret": -0.002353,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-10-08",
+          "nav": 100036.917,
+          "day_ret": -0.005033,
+          "turnover": 0.576,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-09",
+          "nav": 100451.7076,
+          "day_ret": 0.004189,
+          "turnover": 0.042,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-12",
+          "nav": 100782.922,
+          "day_ret": 0.003839,
+          "turnover": 0.54,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-13",
+          "nav": 100844.3311,
+          "day_ret": 0.000609,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-10-14",
+          "nav": 100390.6668,
+          "day_ret": -0.004499,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-10-15",
+          "nav": 100538.26,
+          "day_ret": 0.001871,
+          "turnover": 0.4,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-16",
+          "nav": 99883.9567,
+          "day_ret": -0.006508,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-19",
+          "nav": 100137.5747,
+          "day_ret": 0.002539,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-20",
+          "nav": 100343.408,
+          "day_ret": 0.002056,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-21",
+          "nav": 100628.2239,
+          "day_ret": 0.003239,
+          "turnover": 0.3996,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-22",
+          "nav": 99972.5905,
+          "day_ret": -0.006118,
+          "turnover": 0.3996,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-23",
+          "nav": 99672.4022,
+          "day_ret": -0.003003,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-26",
+          "nav": 100101.6901,
+          "day_ret": 0.004307,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-27",
+          "nav": 100406.8994,
+          "day_ret": 0.00345,
+          "turnover": 0.4,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-28",
+          "nav": 100505.0322,
+          "day_ret": 0.001103,
+          "turnover": 0.126,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-29",
+          "nav": 100609.7688,
+          "day_ret": 0.00119,
+          "turnover": 0.148,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-30",
+          "nav": 99545.2616,
+          "day_ret": -0.010436,
+          "turnover": 0.146,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-02",
+          "nav": 99460.1496,
+          "day_ret": -0.000587,
+          "turnover": 0.267868,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-03",
+          "nav": 99298.2342,
+          "day_ret": -0.001362,
+          "turnover": 0.265866,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-04",
+          "nav": 100539.0905,
+          "day_ret": 0.012903,
+          "turnover": 0.401598,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-05",
+          "nav": 97471.8959,
+          "day_ret": -0.030507,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-11-06",
+          "nav": 97508.5886,
+          "day_ret": 0.000644,
+          "turnover": 0.267732,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-09",
+          "nav": 99274.8692,
+          "day_ret": 0.018126,
+          "turnover": 0.011732,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-10",
+          "nav": 99074.0997,
+          "day_ret": -0.001879,
+          "turnover": 0.144,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-11",
+          "nav": 99839.4099,
+          "day_ret": 0.008128,
+          "turnover": 0.4,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-12",
+          "nav": 99497.4718,
+          "day_ret": -0.003184,
+          "turnover": 0.242,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-13",
+          "nav": 99234.3267,
+          "day_ret": -0.002132,
+          "turnover": 0.514,
+          "rebalanced": true
+        }
+      ]
+    },
+    "spy_C": {
+      "nav": 98765.10113957696,
+      "peak": 100845.69671690359,
+      "max_dd": -0.040628674208447735,
+      "weights": {
+        "SPY": 0.7,
+        "XLI": 0.114,
+        "XLF": 0.1,
+        "XLB": 0.086
+      },
+      "history": [
+        {
+          "date": "2026-09-03",
+          "nav": 100000.0,
+          "day_ret": 0.0,
+          "turnover": 0.0,
+          "rebalanced": true,
+          "note": "起始建仓"
+        },
+        {
+          "date": "2026-09-04",
+          "nav": 99573.6241,
+          "day_ret": -0.004066,
+          "turnover": 0.198198,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-08",
+          "nav": 99130.0134,
+          "day_ret": -0.004355,
+          "turnover": 0.1001,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-09",
+          "nav": 98779.2548,
+          "day_ret": -0.003427,
+          "turnover": 0.111902,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-10",
+          "nav": 98264.0324,
+          "day_ret": -0.005137,
+          "turnover": 0.079698,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-11",
+          "nav": 98941.5235,
+          "day_ret": 0.006993,
+          "turnover": 0.097902,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-14",
+          "nav": 98593.0617,
+          "day_ret": -0.003522,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-15",
+          "nav": 98307.2502,
+          "day_ret": -0.002899,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-16",
+          "nav": 97847.8422,
+          "day_ret": -0.004673,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-17",
+          "nav": 98759.8978,
+          "day_ret": 0.009321,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-18",
+          "nav": 98823.2966,
+          "day_ret": 0.000642,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-21",
+          "nav": 100162.3358,
+          "day_ret": 0.01355,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-22",
+          "nav": 100097.3407,
+          "day_ret": -0.000649,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-23",
+          "nav": 99528.097,
+          "day_ret": -0.005305,
+          "turnover": 0.383616,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-24",
+          "nav": 99573.4582,
+          "day_ret": 0.000456,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-25",
+          "nav": 100035.7415,
+          "day_ret": 0.004752,
+          "turnover": 0.109178,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-28",
+          "nav": 99234.5096,
+          "day_ret": -0.008009,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-29",
+          "nav": 99093.4629,
+          "day_ret": -0.00117,
+          "turnover": 0.251886,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-30",
+          "nav": 98770.424,
+          "day_ret": -0.003116,
+          "turnover": 0.144,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-01",
+          "nav": 98766.1097,
+          "day_ret": 0.000324,
+          "turnover": 0.368,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-02",
+          "nav": 99434.3333,
+          "day_ret": 0.006897,
+          "turnover": 0.13,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-05",
+          "nav": 100077.7693,
+          "day_ret": 0.006642,
+          "turnover": 0.17,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-06",
+          "nav": 100845.6967,
+          "day_ret": 0.007673,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-10-07",
+          "nav": 100602.8625,
+          "day_ret": -0.002408,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-10-08",
+          "nav": 99999.8462,
+          "day_ret": -0.005537,
+          "turnover": 0.46,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-09",
+          "nav": 100460.6568,
+          "day_ret": 0.00464,
+          "turnover": 0.032,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-12",
+          "nav": 100693.5384,
+          "day_ret": 0.002725,
+          "turnover": 0.405806,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-13",
+          "nav": 100737.0791,
+          "day_ret": 0.000432,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-10-14",
+          "nav": 100123.249,
+          "day_ret": -0.006093,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-10-15",
+          "nav": 100304.2663,
+          "day_ret": 0.002108,
+          "turnover": 0.2997,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-16",
+          "nav": 99537.2103,
+          "day_ret": -0.007647,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-19",
+          "nav": 99832.0708,
+          "day_ret": 0.002962,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-20",
+          "nav": 100069.659,
+          "day_ret": 0.00238,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-21",
+          "nav": 100414.0665,
+          "day_ret": 0.003743,
+          "turnover": 0.3,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-22",
+          "nav": 99627.3501,
+          "day_ret": -0.007537,
+          "turnover": 0.3,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-23",
+          "nav": 99272.9016,
+          "day_ret": -0.003558,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-26",
+          "nav": 99769.9249,
+          "day_ret": 0.005007,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-27",
+          "nav": 100137.8622,
+          "day_ret": 0.003989,
+          "turnover": 0.3,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-28",
+          "nav": 100297.8235,
+          "day_ret": 0.001693,
+          "turnover": 0.095796,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-29",
+          "nav": 100278.6674,
+          "day_ret": -7.9e-05,
+          "turnover": 0.111812,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-30",
+          "nav": 99038.7008,
+          "day_ret": -0.012257,
+          "turnover": 0.11,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-02",
+          "nav": 98855.7614,
+          "day_ret": -0.001647,
+          "turnover": 0.2,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-03",
+          "nav": 98808.145,
+          "day_ret": -0.000282,
+          "turnover": 0.2,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-04",
+          "nav": 100144.4807,
+          "day_ret": 0.013829,
+          "turnover": 0.3,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-05",
+          "nav": 96748.4698,
+          "day_ret": -0.033911,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-11-06",
+          "nav": 96851.928,
+          "day_ret": 0.00127,
+          "turnover": 0.2,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-09",
+          "nav": 98740.6816,
+          "day_ret": 0.01951,
+          "turnover": 0.008,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-10",
+          "nav": 98500.0741,
+          "day_ret": -0.002329,
+          "turnover": 0.108,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-11",
+          "nav": 99394.814,
+          "day_ret": 0.009386,
+          "turnover": 0.3,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-12",
+          "nav": 99051.5562,
+          "day_ret": -0.003272,
+          "turnover": 0.182,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-13",
+          "nav": 98765.1011,
+          "day_ret": -0.002507,
+          "turnover": 0.386,
+          "rebalanced": true
+        }
+      ]
+    },
+    "bh_QQQ": {
+      "nav": 94834.46584026229,
+      "peak": 105961.17933963417,
+      "max_dd": -0.14823735530703985,
+      "weights": {
+        "QQQ": 1.0
+      },
+      "history": [
+        {
+          "date": "2026-09-03",
+          "nav": 100000.0,
+          "day_ret": 0.0,
+          "turnover": 0.0,
+          "rebalanced": true,
+          "note": "起始建仓"
+        },
+        {
+          "date": "2026-09-04",
+          "nav": 100179.7538,
+          "day_ret": 0.001798,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-08",
+          "nav": 100096.1513,
+          "day_ret": -0.000835,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-09",
+          "nav": 99810.5068,
+          "day_ret": -0.002854,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-10",
+          "nav": 98748.7384,
+          "day_ret": -0.010638,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-11",
+          "nav": 99611.2485,
+          "day_ret": 0.008734,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-14",
+          "nav": 98817.0081,
+          "day_ret": -0.007973,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-15",
+          "nav": 98170.4682,
+          "day_ret": -0.006543,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-16",
+          "nav": 98195.5489,
+          "day_ret": 0.000255,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-17",
+          "nav": 99895.4969,
+          "day_ret": 0.017312,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-18",
+          "nav": 100526.7126,
+          "day_ret": 0.006319,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-21",
+          "nav": 103423.9467,
+          "day_ret": 0.028821,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-22",
+          "nav": 104259.469,
+          "day_ret": 0.008079,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-23",
+          "nav": 103387.6877,
+          "day_ret": -0.008362,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-24",
+          "nav": 103372.3379,
+          "day_ret": -0.000148,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-25",
+          "nav": 103846.5903,
+          "day_ret": 0.004588,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-28",
+          "nav": 102734.8989,
+          "day_ret": -0.010705,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-29",
+          "nav": 102930.1728,
+          "day_ret": 0.001901,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-30",
+          "nav": 103186.829,
+          "day_ret": 0.002493,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-01",
+          "nav": 103502.0664,
+          "day_ret": 0.003055,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-02",
+          "nav": 104555.1766,
+          "day_ret": 0.010175,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-05",
+          "nav": 105478.5667,
+          "day_ret": 0.008832,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-06",
+          "nav": 105961.1793,
+          "day_ret": 0.004575,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-10-07",
+          "nav": 105691.9743,
+          "day_ret": -0.002541,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-10-08",
+          "nav": 104276.2065,
+          "day_ret": -0.013395,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-09",
+          "nav": 104790.9066,
+          "day_ret": 0.004936,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-12",
+          "nav": 104061.3942,
+          "day_ret": -0.006962,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-13",
+          "nav": 103716.8703,
+          "day_ret": -0.003311,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-10-14",
+          "nav": 101677.6001,
+          "day_ret": -0.019662,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-10-15",
+          "nav": 101545.0877,
+          "day_ret": -0.001303,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-16",
+          "nav": 99006.4588,
+          "day_ret": -0.025,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-19",
+          "nav": 100200.4501,
+          "day_ret": 0.01206,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-20",
+          "nav": 100098.6288,
+          "day_ret": -0.001016,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-21",
+          "nav": 101154.5313,
+          "day_ret": 0.010549,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-22",
+          "nav": 98263.0013,
+          "day_ret": -0.028585,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-23",
+          "nav": 98253.2448,
+          "day_ret": -9.9e-05,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-26",
+          "nav": 99341.2262,
+          "day_ret": 0.011073,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-27",
+          "nav": 100603.5638,
+          "day_ret": 0.012707,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-28",
+          "nav": 101211.7164,
+          "day_ret": 0.006045,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-29",
+          "nav": 99779.2112,
+          "day_ret": -0.014154,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-30",
+          "nav": 96313.0035,
+          "day_ret": -0.034739,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-02",
+          "nav": 95001.8496,
+          "day_ret": -0.013613,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-03",
+          "nav": 95586.2921,
+          "day_ret": 0.006152,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-04",
+          "nav": 96516.6547,
+          "day_ret": 0.009733,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-05",
+          "nav": 90253.7743,
+          "day_ret": -0.064889,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-11-06",
+          "nav": 91516.112,
+          "day_ret": 0.013987,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-09",
+          "nav": 94759.1385,
+          "day_ret": 0.035437,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-10",
+          "nav": 94118.9071,
+          "day_ret": -0.006756,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-11",
+          "nav": 96297.6622,
+          "day_ret": 0.023149,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-12",
+          "nav": 95989.3973,
+          "day_ret": -0.003201,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-13",
+          "nav": 94834.4658,
+          "day_ret": -0.012032,
+          "turnover": 0.0,
+          "rebalanced": true
+        }
+      ]
+    },
+    "bh_SPY": {
+      "nav": 97810.73308284217,
+      "peak": 101015.90354535083,
+      "max_dd": -0.059158794576661955,
+      "weights": {
+        "SPY": 1.0
+      },
+      "history": [
+        {
+          "date": "2026-09-03",
+          "nav": 100000.0,
+          "day_ret": 0.0,
+          "turnover": 0.0,
+          "rebalanced": true,
+          "note": "起始建仓"
+        },
+        {
+          "date": "2026-09-04",
+          "nav": 99614.5768,
+          "day_ret": -0.003854,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-08",
+          "nav": 99067.4757,
+          "day_ret": -0.005492,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-09",
+          "nav": 98607.0381,
+          "day_ret": -0.004648,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-10",
+          "nav": 98015.9603,
+          "day_ret": -0.005994,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-11",
+          "nav": 98851.4779,
+          "day_ret": 0.008524,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-14",
+          "nav": 98410.4368,
+          "day_ret": -0.004462,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-15",
+          "nav": 97959.0525,
+          "day_ret": -0.004587,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-16",
+          "nav": 97527.0648,
+          "day_ret": -0.00441,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-17",
+          "nav": 98632.9002,
+          "day_ret": 0.011339,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-18",
+          "nav": 98759.8367,
+          "day_ret": 0.001287,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-21",
+          "nav": 100291.1072,
+          "day_ret": 0.015505,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-22",
+          "nav": 100275.5488,
+          "day_ret": -0.000155,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-23",
+          "nav": 99553.3481,
+          "day_ret": -0.007202,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-24",
+          "nav": 99471.6624,
+          "day_ret": -0.000821,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-25",
+          "nav": 100012.3375,
+          "day_ret": 0.005435,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-28",
+          "nav": 99268.0971,
+          "day_ret": -0.007441,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-09-29",
+          "nav": 99085.2816,
+          "day_ret": -0.001842,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-09-30",
+          "nav": 98881.7163,
+          "day_ret": -0.002054,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-01",
+          "nav": 99058.0504,
+          "day_ret": 0.001783,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-02",
+          "nav": 99790.626,
+          "day_ret": 0.007395,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-05",
+          "nav": 100463.5557,
+          "day_ret": 0.006743,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-06",
+          "nav": 101015.9035,
+          "day_ret": 0.005498,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-10-07",
+          "nav": 100773.4342,
+          "day_ret": -0.0024,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-10-08",
+          "nav": 100346.8595,
+          "day_ret": -0.004233,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-09",
+          "nav": 100948.4784,
+          "day_ret": 0.005995,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-12",
+          "nav": 100887.5347,
+          "day_ret": -0.000604,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-13",
+          "nav": 100875.8698,
+          "day_ret": -0.000116,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-10-14",
+          "nav": 99785.4346,
+          "day_ret": -0.01081,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-10-15",
+          "nav": 100069.3877,
+          "day_ret": 0.002846,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-16",
+          "nav": 98962.1042,
+          "day_ret": -0.011065,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-19",
+          "nav": 99380.8996,
+          "day_ret": 0.004232,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-20",
+          "nav": 99714.1238,
+          "day_ret": 0.003353,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-21",
+          "nav": 100237.9505,
+          "day_ret": 0.005253,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-22",
+          "nav": 99054.1648,
+          "day_ret": -0.01181,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-23",
+          "nav": 98536.8194,
+          "day_ret": -0.005223,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-26",
+          "nav": 99236.9802,
+          "day_ret": 0.007106,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-27",
+          "nav": 99793.2138,
+          "day_ret": 0.005605,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-28",
+          "nav": 100136.8129,
+          "day_ret": 0.003443,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-29",
+          "nav": 99754.3177,
+          "day_ret": -0.00382,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-10-30",
+          "nav": 97985.7693,
+          "day_ret": -0.017729,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-02",
+          "nav": 97516.405,
+          "day_ret": -0.00479,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-03",
+          "nav": 97808.1374,
+          "day_ret": 0.002992,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-04",
+          "nav": 99423.6893,
+          "day_ret": 0.016518,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-05",
+          "nav": 95039.9245,
+          "day_ret": -0.044092,
+          "turnover": 0.0,
+          "rebalanced": false
+        },
+        {
+          "date": "2026-11-06",
+          "nav": 95336.8403,
+          "day_ret": 0.003124,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-09",
+          "nav": 97592.9072,
+          "day_ret": 0.023664,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-10",
+          "nav": 97233.7497,
+          "day_ret": -0.00368,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-11",
+          "nav": 98516.0774,
+          "day_ret": 0.013188,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-12",
+          "nav": 98167.2949,
+          "day_ret": -0.00354,
+          "turnover": 0.0,
+          "rebalanced": true
+        },
+        {
+          "date": "2026-11-13",
+          "nav": 97810.7331,
+          "day_ret": -0.003632,
+          "turnover": 0.0,
+          "rebalanced": true
+        }
+      ]
+    }
+  },
+  "shadow_cash0": {
+    "tech_C": {
+      "nav": 94669.73649547236,
+      "peak": 105557.77100539189,
+      "max_dd": -0.13975977937434747,
+      "history": [
+        {
+          "date": "2026-09-03",
+          "nav": 100000.0,
+          "day_ret": 0.0,
+          "note": "起始建仓(现金=0影子)"
+        },
+        {
+          "date": "2026-09-04",
+          "nav": 100179.3202,
+          "day_ret": 0.001865,
+          "turnover": 0.072072
+        },
+        {
+          "date": "2026-09-08",
+          "nav": 100158.8103,
+          "day_ret": -7.1e-05,
+          "turnover": 0.134134
+        },
+        {
+          "date": "2026-09-09",
+          "nav": 99888.6382,
+          "day_ret": -0.002564,
+          "turnover": 0.134134
+        },
+        {
+          "date": "2026-09-10",
+          "nav": 98954.0727,
+          "day_ret": -0.009219,
+          "turnover": 0.137936
+        },
+        {
+          "date": "2026-09-11",
+          "nav": 99676.9114,
+          "day_ret": 0.007373,
+          "turnover": 0.068
+        },
+        {
+          "date": "2026-09-14",
+          "nav": 99268.4151,
+          "day_ret": -0.004098,
+          "turnover": 0.0
+        },
+        {
+          "date": "2026-09-15",
+          "nav": 98754.8654,
+          "day_ret": -0.005173,
+          "turnover": 0.0
+        },
+        {
+          "date": "2026-09-16",
+          "nav": 98726.1281,
+          "day_ret": -0.000291,
+          "turnover": 0.0
+        },
+        {
+          "date": "2026-09-17",
+          "nav": 100190.2958,
+          "day_ret": 0.014831,
+          "turnover": 0.0
+        },
+        {
+          "date": "2026-09-18",
+          "nav": 100648.6861,
+          "day_ret": 0.004575,
+          "turnover": 0.0
+        },
+        {
+          "date": "2026-09-21",
+          "nav": 103048.0858,
+          "day_ret": 0.023839,
+          "turnover": 0.0
+        },
+        {
+          "date": "2026-09-22",
+          "nav": 103604.5891,
+          "day_ret": 0.0054,
+          "turnover": 0.0
+        },
+        {
+          "date": "2026-09-23",
+          "nav": 102822.4144,
+          "day_ret": -0.007276,
+          "turnover": 0.27609
+        },
+        {
+          "date": "2026-09-24",
+          "nav": 102806.4822,
+          "day_ret": -0.000155,
+          "turnover": 0.0
+        },
+        {
+          "date": "2026-09-25",
+          "nav": 103252.3293,
+          "day_ret": 0.004441,
+          "turnover": 0.103746
+        },
+        {
+          "date": "2026-09-28",
+          "nav": 102425.568,
+          "day_ret": -0.008007,
+          "turnover": 0.0
+        },
+        {
+          "date": "2026-09-29",
+          "nav": 102543.7227,
+          "day_ret": 0.00126,
+          "turnover": 0.106
+        },
+        {
+          "date": "2026-09-30",
+          "nav": 102944.2528,
+          "day_ret": 0.003912,
+          "turnover": 0.00593
+        },
+        {
+          "date": "2026-10-01",
+          "nav": 103158.9396,
+          "day_ret": 0.002188,
+          "turnover": 0.101922
+        },
+        {
+          "date": "2026-10-02",
+          "nav": 104217.9033,
+          "day_ret": 0.01037,
+          "turnover": 0.104
+        },
+        {
+          "date": "2026-10-05",
+          "nav": 104993.1891,
+          "day_ret": 0.007443,
+          "turnover": 0.004
+        },
+        {
+          "date": "2026-10-06",
+          "nav": 105557.771,
+          "day_ret": 0.005377,
+          "turnover": 0.0
+        },
+        {
+          "date": "2026-10-07",
+          "nav": 105428.2724,
+          "day_ret": -0.001227,
+          "turnover": 0.0
+        },
+        {
+          "date": "2026-10-08",
+          "nav": 104177.2927,
+          "day_ret": -0.011508,
+          "turnover": 0.361499
+        },
+        {
+          "date": "2026-10-09",
+          "nav": 105023.4325,
+          "day_ret": 0.008227,
+          "turnover": 0.103896
+        },
+        {
+          "date": "2026-10-12",
+          "nav": 104224.0948,
+          "day_ret": -0.007179,
+          "turnover": 0.435232
+        },
+        {
+          "date": "2026-10-13",
+          "nav": 103993.2599,
+          "day_ret": -0.002215,
+          "turnover": 0.0
+        },
+        {
+          "date": "2026-10-14",
+          "nav": 102141.8637,
+          "day_ret": -0.017803,
+          "turnover": 0.0
+        },
+        {
+          "date": "2026-10-15",
+          "nav": 102025.7442,
+          "day_ret": -0.000837,
+          "turnover": 0.2997
+        },
+        {
+          "date": "2026-10-16",
+          "nav": 100240.2924,
+          "day_ret": -0.0175,
+          "turnover": 0.0
+        },
+        {
+          "date": "2026-10-19",
+          "nav": 101086.5022,
+          "day_ret": 0.008442,
+          "turnover": 0.0
+        },
+        {
+          "date": "2026-10-20",
+          "nav": 101014.597,
+          "day_ret": -0.000711,
+          "turnover": 0.0
+        },
+        {
+          "date": "2026-10-21",
+          "nav": 101729.9947,
+          "day_ret": 0.007384,
+          "turnover": 0.2997
+        },
+        {
+          "date": "2026-10-22",
+          "nav": 99253.1879,
+          "day_ret": -0.024054,
+          "turnover": 0.2997
+        },
+        {
+          "date": "2026-10-23",
+          "nav": 99246.2895,
+          "day_ret": -7e-05,
+          "turnover": 0.0
+        },
+        {
+          "date": "2026-10-26",
+          "nav": 100015.5739,
+          "day_ret": 0.007751,
+          "turnover": 0.0
+        },
+        {
+          "date": "2026-10-27",
+          "nav": 100874.9672,
+          "day_ret": 0.008895,
+          "turnover": 0.2997
+        },
+        {
+          "date": "2026-10-28",
+          "nav": 101301.1101,
+          "day_ret": 0.004357,
+          "turnover": 0.132132
+        },
+        {
+          "date": "2026-10-29",
+          "nav": 99857.0364,
+          "day_ret": -0.014119,
+          "turnover": 0.138138
+        },
+        {
+          "date": "2026-10-30",
+          "nav": 96603.9667,
+          "day_ret": -0.032385,
+          "turnover": 0.198498
+        },
+        {
+          "date": "2026-11-02",
+          "nav": 95151.7892,
+          "day_ret": -0.014835,
+          "turnover": 0.2
+        },
+        {
+          "date": "2026-11-03",
+          "nav": 95383.8002,
+          "day_ret": 0.002739,
+          "turnover": 0.3
+        },
+        {
+          "date": "2026-11-04",
+          "nav": 95991.7453,
+          "day_ret": 0.006474,
+          "turnover": 0.1
+        },
+        {
+          "date": "2026-11-05",
+          "nav": 90805.0402,
+          "day_ret": -0.054033,
+          "turnover": 0.0
+        },
+        {
+          "date": "2026-11-06",
+          "nav": 91782.9974,
+          "day_ret": 0.011053,
+          "turnover": 0.27998
+        },
+        {
+          "date": "2026-11-09",
+          "nav": 94463.6754,
+          "day_ret": 0.029211,
+          "turnover": 0.004004
+        },
+        {
+          "date": "2026-11-10",
+          "nav": 93947.4025,
+          "day_ret": -0.005396,
+          "turnover": 0.069836
+        },
+        {
+          "date": "2026-11-11",
+          "nav": 95547.4751,
+          "day_ret": 0.017174,
+          "turnover": 0.139894
+        },
+        {
+          "date": "2026-11-12",
+          "nav": 95691.6724,
+          "day_ret": 0.001579,
+          "turnover": 0.07007
+        },
+        {
+          "date": "2026-11-13",
+          "nav": 94669.7365,
+          "day_ret": -0.010578,
+          "turnover": 0.102102
+        }
+      ]
+    },
+    "spy_C": {
+      "nav": 98663.4820064901,
+      "peak": 100817.66050471118,
+      "max_dd": -0.04119268160706746,
+      "history": [
+        {
+          "date": "2026-09-03",
+          "nav": 100000.0,
+          "day_ret": 0.0,
+          "note": "起始建仓(现金=0影子)"
+        },
+        {
+          "date": "2026-09-04",
+          "nav": 99568.6987,
+          "day_ret": -0.004116,
+          "turnover": 0.198198
+        },
+        {
+          "date": "2026-09-08",
+          "nav": 99123.4748,
+          "day_ret": -0.004372,
+          "turnover": 0.1001
+        },
+        {
+          "date": "2026-09-09",
+          "nav": 98772.7393,
+          "day_ret": -0.003427,
+          "turnover": 0.111902
+        },
+        {
+          "date": "2026-09-10",
+          "nav": 98255.9306,
+          "day_ret": -0.005153,
+          "turnover": 0.079698
+        },
+        {
+          "date": "2026-09-11",
+          "nav": 98928.5381,
+          "day_ret": 0.006944,
+          "turnover": 0.097902
+        },
+        {
+          "date": "2026-09-14",
+          "nav": 98580.1221,
+          "day_ret": -0.003522,
+          "turnover": 0.0
+        },
+        {
+          "date": "2026-09-15",
+          "nav": 98292.7331,
+          "day_ret": -0.002915,
+          "turnover": 0.0
+        },
+        {
+          "date": "2026-09-16",
+          "nav": 97833.3929,
+          "day_ret": -0.004673,
+          "turnover": 0.0
+        },
+        {
+          "date": "2026-09-17",
+          "nav": 98742.1099,
+          "day_ret": 0.009288,
+          "turnover": 0.0
+        },
+        {
+          "date": "2026-09-18",
+          "nav": 98802.2643,
+          "day_ret": 0.000609,
+          "turnover": 0.0
+        },
+        {
+          "date": "2026-09-21",
+          "nav": 100137.783,
+          "day_ret": 0.013517,
+          "turnover": 0.0
+        },
+        {
+          "date": "2026-09-22",
+          "nav": 100072.8039,
+          "day_ret": -0.000649,
+          "turnover": 0.0
+        },
+        {
+          "date": "2026-09-23",
+          "nav": 99500.4271,
+          "day_ret": -0.005338,
+          "turnover": 0.383616
+        },
+        {
+          "date": "2026-09-24",
+          "nav": 99545.7757,
+          "day_ret": 0.000456,
+          "turnover": 0.0
+        },
+        {
+          "date": "2026-09-25",
+          "nav": 100007.9305,
+          "day_ret": 0.004752,
+          "turnover": 0.109178
+        },
+        {
+          "date": "2026-09-28",
+          "nav": 99206.9213,
+          "day_ret": -0.008009,
+          "turnover": 0.0
+        },
+        {
+          "date": "2026-09-29",
+          "nav": 99065.9139,
+          "day_ret": -0.00117,
+          "turnover": 0.251886
+        },
+        {
+          "date": "2026-09-30",
+          "nav": 98742.9647,
+          "day_ret": -0.003116,
+          "turnover": 0.144
+        },
+        {
+          "date": "2026-10-01",
+          "nav": 98738.6517,
+          "day_ret": 0.000324,
+          "turnover": 0.368
+        },
+        {
+          "date": "2026-10-02",
+          "nav": 99406.6894,
+          "day_ret": 0.006897,
+          "turnover": 0.13
+        },
+        {
+          "date": "2026-10-05",
+          "nav": 100049.9465,
+          "day_ret": 0.006642,
+          "turnover": 0.17
+        },
+        {
+          "date": "2026-10-06",
+          "nav": 100817.6605,
+          "day_ret": 0.007673,
+          "turnover": 0.0
+        },
+        {
+          "date": "2026-10-07",
+          "nav": 100574.8938,
+          "day_ret": -0.002408,
+          "turnover": 0.0
+        },
+        {
+          "date": "2026-10-08",
+          "nav": 99972.0452,
+          "day_ret": -0.005537,
+          "turnover": 0.46
+        },
+        {
+          "date": "2026-10-09",
+          "nav": 100432.7277,
+          "day_ret": 0.00464,
+          "turnover": 0.032
+        },
+        {
+          "date": "2026-10-12",
+          "nav": 100665.5444,
+          "day_ret": 0.002725,
+          "turnover": 0.405806
+        },
+        {
+          "date": "2026-10-13",
+          "nav": 100705.7701,
+          "day_ret": 0.0004,
+          "turnover": 0.0
+        },
+        {
+          "date": "2026-10-14",
+          "nav": 100092.1308,
+          "day_ret": -0.006093,
+          "turnover": 0.0
+        },
+        {
+          "date": "2026-10-15",
+          "nav": 100269.808,
+          "day_ret": 0.002075,
+          "turnover": 0.2997
+        },
+        {
+          "date": "2026-10-16",
+          "nav": 99493.1571,
+          "day_ret": -0.007746,
+          "turnover": 0.0
+        },
+        {
+          "date": "2026-10-19",
+          "nav": 99787.8871,
+          "day_ret": 0.002962,
+          "turnover": 0.0
+        },
+        {
+          "date": "2026-10-20",
+          "nav": 100022.0993,
+          "day_ret": 0.002347,
+          "turnover": 0.0
+        },
+        {
+          "date": "2026-10-21",
+          "nav": 100359.7935,
+          "day_ret": 0.003677,
+          "turnover": 0.3
+        },
+        {
+          "date": "2026-10-22",
+          "nav": 99573.5024,
+          "day_ret": -0.007537,
+          "turnover": 0.3
+        },
+        {
+          "date": "2026-10-23",
+          "nav": 99209.4619,
+          "day_ret": -0.003656,
+          "turnover": 0.0
+        },
+        {
+          "date": "2026-10-26",
+          "nav": 99702.9201,
+          "day_ret": 0.004974,
+          "turnover": 0.0
+        },
+        {
+          "date": "2026-10-27",
+          "nav": 100064.0835,
+          "day_ret": 0.003924,
+          "turnover": 0.3
+        },
+        {
+          "date": "2026-10-28",
+          "nav": 100223.927,
+          "day_ret": 0.001693,
+          "turnover": 0.095796
+        },
+        {
+          "date": "2026-10-29",
+          "nav": 100203.1438,
+          "day_ret": -9.6e-05,
+          "turnover": 0.111812
+        },
+        {
+          "date": "2026-10-30",
+          "nav": 98959.1927,
+          "day_ret": -0.012306,
+          "turnover": 0.11
+        },
+        {
+          "date": "2026-11-02",
+          "nav": 98773.4763,
+          "day_ret": -0.001677,
+          "turnover": 0.2
+        },
+        {
+          "date": "2026-11-03",
+          "nav": 98724.2799,
+          "day_ret": -0.000298,
+          "turnover": 0.2
+        },
+        {
+          "date": "2026-11-04",
+          "nav": 100059.4814,
+          "day_ret": 0.013829,
+          "turnover": 0.3
+        },
+        {
+          "date": "2026-11-05",
+          "nav": 96664.7107,
+          "day_ret": -0.033928,
+          "turnover": 0.0
+        },
+        {
+          "date": "2026-11-06",
+          "nav": 96763.3229,
+          "day_ret": 0.00122,
+          "turnover": 0.2
+        },
+        {
+          "date": "2026-11-09",
+          "nav": 98647.174,
+          "day_ret": 0.019477,
+          "turnover": 0.008
+        },
+        {
+          "date": "2026-11-10",
+          "nav": 98405.1779,
+          "day_ret": -0.002345,
+          "turnover": 0.108
+        },
+        {
+          "date": "2026-11-11",
+          "nav": 99297.4425,
+          "day_ret": 0.00937,
+          "turnover": 0.3
+        },
+        {
+          "date": "2026-11-12",
+          "nav": 98954.521,
+          "day_ret": -0.003272,
+          "turnover": 0.182
+        },
+        {
+          "date": "2026-11-13",
+          "nav": 98663.482,
+          "day_ret": -0.002556,
+          "turnover": 0.386
+        }
+      ]
+    }
+  },
+  "missing_price_warnings": [],
+  "applied_snapshots": [
+    "2026-09-03",
+    "2026-09-04",
+    "2026-09-07",
+    "2026-09-08",
+    "2026-09-09",
+    "2026-09-10",
+    "2026-09-11",
+    "2026-09-23",
+    "2026-09-25",
+    "2026-09-29",
+    "2026-09-30",
+    "2026-10-01",
+    "2026-10-02",
+    "2026-10-05",
+    "2026-10-08",
+    "2026-10-09",
+    "2026-10-12",
+    "2026-10-15",
+    "2026-10-16",
+    "2026-10-19",
+    "2026-10-20",
+    "2026-10-21",
+    "2026-10-22",
+    "2026-10-23",
+    "2026-10-26",
+    "2026-10-27",
+    "2026-10-28",
+    "2026-10-29",
+    "2026-10-30",
+    "2026-11-02",
+    "2026-11-03",
+    "2026-11-04",
+    "2026-11-06",
+    "2026-11-09",
+    "2026-11-10",
+    "2026-11-11",
+    "2026-11-12",
+    "2026-11-13"
+  ]
+}
