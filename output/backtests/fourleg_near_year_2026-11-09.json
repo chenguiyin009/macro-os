@@ -1,0 +1,246 @@
+{
+  "as_of_report": "2026-11-09",
+  "data_as_of": "2026-11-06",
+  "production_unchanged": true,
+  "live_four_leg_paper": {
+    "window": [
+      "2026-09-01",
+      "2026-11-05"
+    ],
+    "trading_days_budget": 44,
+    "rule": "combined_budget(min四腿) × next-day asset return; residual cash=0%; turnover cost 10bps",
+    "mean_combined": 0.2966,
+    "binding_counts": {
+      "分母": 21,
+      "NQ动因": 16,
+      "减震器": 7
+    },
+    "strategy": {
+      "QQQ": {
+        "n": 44,
+        "total_pct": -2.44,
+        "ann_pct": -13.17,
+        "mdd_pct": -5.53,
+        "sharpe": -1.51,
+        "mean_daily_pct": -0.0545
+      },
+      "SMH": {
+        "n": 44,
+        "total_pct": -5.81,
+        "ann_pct": -29.0,
+        "mdd_pct": -11.65,
+        "sharpe": -1.74,
+        "mean_daily_pct": -0.1304
+      },
+      "SPX": {
+        "n": 44,
+        "total_pct": -1.2,
+        "ann_pct": -6.68,
+        "mdd_pct": -2.47,
+        "sharpe": -1.24,
+        "mean_daily_pct": -0.0269
+      }
+    },
+    "buy_hold_same_window": {
+      "QQQ": {
+        "n": 44,
+        "total_pct": -6.04,
+        "ann_pct": -30.03,
+        "mdd_pct": -13.59,
+        "sharpe": -1.2,
+        "mean_daily_pct": -0.1293
+      },
+      "SMH": {
+        "n": 44,
+        "total_pct": -11.79,
+        "ann_pct": -51.26,
+        "mdd_pct": -26.79,
+        "sharpe": -1.08,
+        "mean_daily_pct": -0.2394
+      },
+      "SPX": {
+        "n": 44,
+        "total_pct": -3.42,
+        "ann_pct": -18.07,
+        "mdd_pct": -5.84,
+        "sharpe": -1.16,
+        "mean_daily_pct": -0.0743
+      }
+    },
+    "excess_pp": {
+      "QQQ": 3.6,
+      "SMH": 5.98,
+      "SPX": 2.22
+    },
+    "note": "This is the ONLY window with live production four-leg combined snapshots on disk (48 reports)."
+  },
+  "near_year_kernel_plus_dampener": {
+    "window": [
+      "2025-11-06",
+      "2026-11-06"
+    ],
+    "trading_days": 259,
+    "code": "live kernel decide() + C-grade tech dampener; NOT full four-leg min(theme/NQ)",
+    "proxy_note": "tech drawdown from SMH (SOXX _eq_sox.csv corrupted 2026-11-05/06: 450→131)",
+    "dampener_active_days": 23,
+    "dampener_active_pct": 8.9,
+    "mean_base_budget": 0.5695,
+    "mean_damp_budget": 0.5432,
+    "strategy_dampened": {
+      "QQQ": {
+        "gross": {
+          "n": 259,
+          "total_pct": 18.27,
+          "ann_pct": 17.73,
+          "mdd_pct": -4.11,
+          "sharpe": 1.72,
+          "mean_daily_pct": 0.0669
+        },
+        "net_10bps": {
+          "n": 259,
+          "total_pct": 17.34,
+          "ann_pct": 16.83,
+          "mdd_pct": -4.36,
+          "sharpe": 1.63,
+          "mean_daily_pct": 0.0639
+        },
+        "mean_budget": 0.5432
+      },
+      "SMH": {
+        "gross": {
+          "n": 259,
+          "total_pct": 54.08,
+          "ann_pct": 52.29,
+          "mdd_pct": -9.65,
+          "sharpe": 2.4,
+          "mean_daily_pct": 0.1764
+        },
+        "net_10bps": {
+          "n": 259,
+          "total_pct": 53.08,
+          "ann_pct": 51.33,
+          "mdd_pct": -9.78,
+          "sharpe": 2.36,
+          "mean_daily_pct": 0.1739
+        },
+        "mean_budget": 0.5432
+      },
+      "SPX": {
+        "gross": {
+          "n": 259,
+          "total_pct": 12.7,
+          "ann_pct": 12.34,
+          "mdd_pct": -2.43,
+          "sharpe": 1.98,
+          "mean_daily_pct": 0.047
+        },
+        "net_10bps": {
+          "n": 259,
+          "total_pct": 11.57,
+          "ann_pct": 11.24,
+          "mdd_pct": -2.52,
+          "sharpe": 1.8,
+          "mean_daily_pct": 0.043
+        },
+        "mean_budget": 0.5432
+      }
+    },
+    "strategy_baseline_no_dampener": {
+      "QQQ": {
+        "gross": {
+          "n": 259,
+          "total_pct": 16.85,
+          "ann_pct": 16.36,
+          "mdd_pct": -6.51,
+          "sharpe": 1.46,
+          "mean_daily_pct": 0.0626
+        },
+        "net_10bps": {
+          "n": 259,
+          "total_pct": 16.16,
+          "ann_pct": 15.69,
+          "mdd_pct": -6.7,
+          "sharpe": 1.4,
+          "mean_daily_pct": 0.0603
+        },
+        "mean_budget": 0.5695
+      },
+      "SMH": {
+        "gross": {
+          "n": 259,
+          "total_pct": 45.83,
+          "ann_pct": 44.35,
+          "mdd_pct": -15.36,
+          "sharpe": 1.88,
+          "mean_daily_pct": 0.1568
+        },
+        "net_10bps": {
+          "n": 259,
+          "total_pct": 45.18,
+          "ann_pct": 43.72,
+          "mdd_pct": -15.43,
+          "sharpe": 1.85,
+          "mean_daily_pct": 0.155
+        },
+        "mean_budget": 0.5695
+      },
+      "SPX": {
+        "gross": {
+          "n": 259,
+          "total_pct": 13.4,
+          "ann_pct": 13.01,
+          "mdd_pct": -2.54,
+          "sharpe": 1.98,
+          "mean_daily_pct": 0.0494
+        },
+        "net_10bps": {
+          "n": 259,
+          "total_pct": 12.48,
+          "ann_pct": 12.12,
+          "mdd_pct": -2.54,
+          "sharpe": 1.84,
+          "mean_daily_pct": 0.0463
+        },
+        "mean_budget": 0.5695
+      }
+    },
+    "buy_hold": {
+      "QQQ": {
+        "n": 259,
+        "total_pct": 5.76,
+        "ann_pct": 5.6,
+        "mdd_pct": -14.82,
+        "sharpe": 0.27,
+        "mean_daily_pct": 0.0304
+      },
+      "SMH": {
+        "n": 259,
+        "total_pct": 29.46,
+        "ann_pct": 28.56,
+        "mdd_pct": -33.07,
+        "sharpe": 0.68,
+        "mean_daily_pct": 0.1347
+      },
+      "SPX": {
+        "n": 259,
+        "total_pct": 8.54,
+        "ann_pct": 8.3,
+        "mdd_pct": -9.1,
+        "sharpe": 0.62,
+        "mean_daily_pct": 0.0352
+      }
+    }
+  },
+  "existing_artifacts": {
+    "backtest_last_year_dampener.md": "2025-07-18~2026-07-17; kernel+dampener; SOXX/QQQ",
+    "scheme_a_re_risk_backtest.md": "recent_full 2023-08-01~2026-08-13; DEFENSE=min(kernel,tech,denom) approx 3-leg"
+  },
+  "limitations": [
+    "Full production four-leg combined_budget history on disk only covers 2026-09-01..2026-11-06 (48 files).",
+    "Near-year panel uses kernel+tech dampener only (theme/NQ ceilings not reconstructed historically).",
+    "Feature frame DXY FRED ends 2026-10-30; later days may be thinner / ffilled.",
+    "SOXX local _eq_sox.csv broken on 2026-11-05/06; SMH used as tech proxy.",
+    "Cash residual = 0% overstates timing drag vs buy&hold; compare relative numbers.",
+    "Gy live style is short-NQ only; this paper long exposure = combined * asset. Not Gy short PnL."
+  ]
+}
