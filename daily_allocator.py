@@ -80,6 +80,11 @@ EQ_ACUTE_SMOOTH = -0.07
 EQ_ACUTE_RAW = -0.10
 EQ_SOFT_LO = -0.07
 EQ_SOFT_HI = -0.05
+# eq_acute 恢复退出（2026-11-14，回测见 output/research/gate_recovery_exit_bt_2026-11-14.*）
+EQ_ACUTE_RAW_MODE = "current"     # current=当前20日峰值回撤(trajectory.naive)；window=旧口径近21根最坏峰谷
+RECOVERY_EXIT_ENABLED = True      # acute 且 自谷底反弹≥10% 且 5日回撤斜率>0 → acute 降为 soft(0.5)
+RECOVERY_MIN_REBOUND = 0.10
+RECOVERY_SLOPE_DAYS = 5
 WARN_A_EQUITY = 0.75   # Book A WARN 时保留权益比例
 WARN_SAT_FRAC = 0.50   # Book B/C WARN 时卫星保留比例
 TRINITY_FILTER_ENABLED = True  # 生产默认开启 Phase1 滤网（回测 C/A + Trinity）
@@ -103,6 +108,7 @@ def _apply_gate_params():
     """从 gate_params.json 覆盖分数闸阈值（标定结果）。"""
     global SCORE_BEAR_THR, SCORE_WARN_LO, EQ_ACUTE_SMOOTH, EQ_ACUTE_RAW
     global EQ_SOFT_LO, EQ_SOFT_HI, GATE_SAT_FULL_BELOW, GATE_SAT_ZERO_AT
+    global EQ_ACUTE_RAW_MODE, RECOVERY_EXIT_ENABLED, RECOVERY_MIN_REBOUND, RECOVERY_SLOPE_DAYS
     path = os.path.join(HERE, "gate_params.json")
     if not os.path.isfile(path):
         return False
@@ -125,6 +131,14 @@ def _apply_gate_params():
             GATE_SAT_FULL_BELOW = float(pr["sat_full_below"])
         if "sat_zero_at" in pr:
             GATE_SAT_ZERO_AT = float(pr["sat_zero_at"])
+        if "eq_acute_raw_mode" in pr:
+            EQ_ACUTE_RAW_MODE = str(pr["eq_acute_raw_mode"])
+        if "recovery_exit_enabled" in pr:
+            RECOVERY_EXIT_ENABLED = bool(pr["recovery_exit_enabled"])
+        if "recovery_min_rebound" in pr:
+            RECOVERY_MIN_REBOUND = float(pr["recovery_min_rebound"])
+        if "recovery_slope_days" in pr:
+            RECOVERY_SLOPE_DAYS = int(pr["recovery_slope_days"])
         return True
     except Exception as e:
         print(f"  ! gate_params 加载失败: {e}", file=sys.stderr)
@@ -466,6 +480,79 @@ def load_macro(path: str | None) -> dict | None:
         return None
 
 
+def equity_legs_from_tech(tech: dict | None, raw_mode: str = "current", recovery: bool = True) -> dict:
+    """eq_acute / eq_soft 腿（纯函数，便于单测）。
+
+    raw_mode=current：raw_dd 取当前 20 日峰值回撤（trajectory.naive_20d_peak_dd_pct，
+      与 gate_legs 标定口径一致）；缺失时回退到 tech_drawdown_raw（窗口最坏，保守）。
+    raw_mode=window：旧口径，tech_drawdown_raw = 近 21 根收盘窗口内最坏峰谷回撤
+      （深跌后会原样挂约 20 个交易日，是滞后主因）。
+    recovery=True：acute 且 自谷底反弹≥RECOVERY_MIN_REBOUND 且 N日回撤斜率>0 → 降为 soft。
+    """
+    tech = tech or {}
+    td = tech.get("decision") or {}
+    traj = tech.get("trajectory") if isinstance(tech.get("trajectory"), dict) else None
+    out = {"smooth_dd": None, "raw_dd": None, "raw_dd_window": None, "raw_dd_source": None,
+           "eq_acute": False, "eq_soft": False, "eq_acute_why": "", "eq_soft_why": "",
+           "recovery_exit": False, "recovery_why": ""}
+    smooth = td.get("tech_drawdown")
+    if smooth is None:
+        smooth = tech.get("tech_drawdown")
+    win_raw = tech.get("tech_drawdown_raw")
+    cur_raw = None
+    if traj is not None:
+        try:
+            cur_raw = float(traj.get("naive_20d_peak_dd_pct")) / 100.0
+        except (TypeError, ValueError):
+            cur_raw = None
+    if raw_mode == "current" and cur_raw is not None:
+        raw, src = cur_raw, "current_20d"
+    elif win_raw is not None:
+        raw, src = win_raw, "window_worst21"
+    else:
+        raw, src = cur_raw, ("current_20d" if cur_raw is not None else None)
+    out["smooth_dd"] = float(smooth) if smooth is not None else None
+    out["raw_dd"] = float(raw) if raw is not None else None
+    out["raw_dd_window"] = float(win_raw) if win_raw is not None else None
+    out["raw_dd_source"] = src
+
+    acute = False
+    bits = []
+    if out["raw_dd"] is not None and out["raw_dd"] <= EQ_ACUTE_RAW:
+        acute = True
+        bits.append(f"raw_dd={out['raw_dd']:.2%}≤{EQ_ACUTE_RAW:.0%}")
+    if out["smooth_dd"] is not None and out["smooth_dd"] <= EQ_ACUTE_SMOOTH:
+        acute = True
+        bits.append(f"smooth_dd={out['smooth_dd']:.2%}≤{EQ_ACUTE_SMOOTH:.0%}")
+    if td.get("dampener_active"):
+        acute = True
+        bits.append("减震器触发")
+
+    soft = False
+    soft_bits = []
+    if acute and recovery:
+        from gate_recovery import recovery_exit_from_trajectory
+        ok, why = recovery_exit_from_trajectory(
+            traj, {"recovery_min_rebound": RECOVERY_MIN_REBOUND, "recovery_slope_days": RECOVERY_SLOPE_DAYS}
+        )
+        out["recovery_why"] = why
+        if ok:
+            out["recovery_exit"] = True
+            acute = False
+            soft = True
+            bits.append(f"→恢复退出降为soft（{why}）")
+            soft_bits.append("acute 恢复退出降档")
+    out["eq_acute"] = acute
+    out["eq_acute_why"] = "；".join(bits) if bits else f"未达急性（raw≤{EQ_ACUTE_RAW:.0%} 或 smooth≤{EQ_ACUTE_SMOOTH:.0%}）"
+    if (not acute) and (not soft) and out["smooth_dd"] is not None:
+        if EQ_SOFT_LO <= out["smooth_dd"] < EQ_SOFT_HI:
+            soft = True
+            soft_bits.append(f"smooth∈[{EQ_SOFT_LO:.0%},{EQ_SOFT_HI:.0%})")
+    out["eq_soft"] = soft
+    out["eq_soft_why"] = "；".join(soft_bits) if soft_bits else "无 soft 带"
+    return out
+
+
 def score_gate(macro: dict | None) -> dict:
     """分数闸：返回 legs + score + state∈{OFF,WARN,BEAR}。"""
     g = {
@@ -517,41 +604,20 @@ def score_gate(macro: dict | None) -> dict:
     )
 
     # --- equity acute / soft ---
-    smooth = td.get("tech_drawdown")
-    if smooth is None:
-        smooth = tech.get("tech_drawdown")
-    raw = tech.get("tech_drawdown_raw")
-    if raw is None and isinstance(tech.get("trajectory"), dict):
-        # 有时只有百分比
-        try:
-            raw = float(tech["trajectory"].get("naive_20d_peak_dd_pct")) / 100.0
-        except Exception:
-            raw = None
-    g["smooth_dd"] = float(smooth) if smooth is not None else None
-    g["raw_dd"] = float(raw) if raw is not None else None
-
-    acute = False
-    acute_bits = []
-    if g["raw_dd"] is not None and g["raw_dd"] <= EQ_ACUTE_RAW:
-        acute = True
-        acute_bits.append(f"raw_dd={g['raw_dd']:.2%}≤{EQ_ACUTE_RAW:.0%}")
-    if g["smooth_dd"] is not None and g["smooth_dd"] <= EQ_ACUTE_SMOOTH:
-        acute = True
-        acute_bits.append(f"smooth_dd={g['smooth_dd']:.2%}≤{EQ_ACUTE_SMOOTH:.0%}")
-    if td.get("dampener_active"):
-        acute = True
-        acute_bits.append("减震器触发")
-    g["eq_acute"] = acute
-    g["eq_acute_why"] = "；".join(acute_bits) if acute_bits else "未达急性（raw≤-10% 或 smooth≤-7%）"
-
-    soft = False
-    soft_bits = []
-    if (not acute) and g["smooth_dd"] is not None:
-        if EQ_SOFT_LO <= g["smooth_dd"] < EQ_SOFT_HI:
-            soft = True
-            soft_bits.append(f"smooth∈[{EQ_SOFT_LO:.0%},{EQ_SOFT_HI:.0%})")
-    g["eq_soft"] = soft
-    g["eq_soft_why"] = "；".join(soft_bits) if soft_bits else "无 soft 带"
+    _eq = equity_legs_from_tech(tech, raw_mode=EQ_ACUTE_RAW_MODE, recovery=RECOVERY_EXIT_ENABLED)
+    g.update(_eq)
+    # 影子：旧规则（窗口最坏 raw + 无恢复退出），仅对照，不进仓位
+    _leg = equity_legs_from_tech(tech, raw_mode="window", recovery=False)
+    _leg_score = (
+        (1.0 if g["denom"] else 0.0) + (1.0 if g["nq"] else 0.0)
+        + (1.0 if _leg["eq_acute"] else 0.0) + 0.5 * (1.0 if _leg["eq_soft"] else 0.0)
+    )
+    g["legacy_rule"] = {
+        "eq_acute": _leg["eq_acute"], "eq_soft": _leg["eq_soft"], "raw_dd": _leg["raw_dd"],
+        "score": round(_leg_score, 2),
+        "state": "BEAR" if _leg_score >= SCORE_BEAR_THR else ("WARN" if _leg_score >= SCORE_WARN_LO else "OFF"),
+        "sat_mult": sat_mult_from_score(_leg_score),
+    }
 
     score = (
         1.0 * (1.0 if g["denom"] else 0.0)
@@ -852,7 +918,14 @@ def build_gate_block(g: dict) -> str:
         f"| NQ 硬否决 | {'ON' if g['nq'] else 'off'} · {g['nq_why']} |\n"
         f"| equity 急性 | {'ON' if g['eq_acute'] else 'off'} · {g['eq_acute_why']} |\n"
         f"| equity soft | {'ON' if g['eq_soft'] else 'off'} · {g['eq_soft_why']} |\n"
-        f"| smooth_dd / raw_dd | {sm_s} / {rw_s} |\n"
+        f"| smooth_dd / raw_dd | {sm_s} / {rw_s}（raw口径 {g.get('raw_dd_source') or '—'}"
+        f"{'；窗口最坏 ' + format(g['raw_dd_window'], '.2%') if g.get('raw_dd_window') is not None else ''}） |\n"
+        f"| 恢复退出 | {'ON 降档' if g.get('recovery_exit') else 'off'} · {g.get('recovery_why') or '—'} |\n"
+        + (
+            f"| 旧规则对照（影子） | score={g['legacy_rule']['score']} → {g['legacy_rule']['state']}"
+            f" · sat_mult={g['legacy_rule']['sat_mult']:.2f}（不进仓位） |\n"
+            if isinstance(g.get("legacy_rule"), dict) else ""
+        )
     )
 
 

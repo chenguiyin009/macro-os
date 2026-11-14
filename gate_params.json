@@ -17,7 +17,11 @@
     "gap_denom_dd": -0.12,
     "nq_vix_hard": 30.0,
     "nq_vix_soft": 26.0,
-    "nq_dd": -0.1
+    "nq_dd": -0.1,
+    "eq_acute_raw_mode": "current",
+    "recovery_exit_enabled": true,
+    "recovery_min_rebound": 0.1,
+    "recovery_slope_days": 5
   },
   "meta": {
     "obj": 15.14661013962,
@@ -45,6 +49,11 @@
     "bear_pct": 0.1554379210779596,
     "bear_23": 0.004,
     "n_eval": 108,
-    "note": "gap legs no-ffill + grid; BookC 70/30 sat*sat_mult continuous; sat proxy=S3"
+    "note": "gap legs no-ffill + grid; BookC 70/30 sat*sat_mult continuous; sat proxy=S3",
+    "recovery_exit_2026_11_14": {
+      "rule": "raw_dd 改当前20日回撤；acute 且 自谷底反弹≥10% 且 5日回撤斜率>0 → 降为 soft",
+      "backtest": "output/research/gate_recovery_exit_bt_2026-11-14.md",
+      "rollback": "eq_acute_raw_mode=window, recovery_exit_enabled=false"
+    }
   }
 }
