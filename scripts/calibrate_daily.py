@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from loaders import (  # noqa: E402
+    fill_a_share_from_sina,
     BarStatus,
     annotate_source_gap,
     basket_members_for,
@@ -190,9 +191,20 @@ def _refresh_a_share_bars(
         if st is not None and st.skipped_cache and has_need:
             continue
         if not has_need:
-            if st is None:
-                st = BarStatus(source=src.get(t) or "none", last_date=last)
+            # 2026-11-14：Yahoo 最新日常为 NaN → 用 Sina 日K 只追加缺失日期（与对A结构标签同一逻辑）
+            added, serr = fill_a_share_from_sina(t, need)
+            if added:
+                sources[t] = f"{src.get(t) or 'cache'}+sina"
+                last = series_last_date(load_close_series(t))
+                status[t] = BarStatus(source=sources[t], last_date=last,
+                                      notes=(list(st.notes) if st else []) + [f"sina 追加 {','.join(d.isoformat() for d in added)}"])
+                if last is not None and last >= need:
+                    continue
+            if st is None or added:
+                st = status.get(t) or BarStatus(source=src.get(t) or "none", last_date=last)
                 status[t] = st
+            if serr:
+                st.notes.append(f"sina: {serr}")
             annotate_source_gap(t, need, st)
     return sources, status, expected
 

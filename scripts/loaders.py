@@ -751,3 +751,46 @@ def theme_forward_return(
         return r, tgt, (None if r is not None else f"{proxy} 缺 {as_of}→{tgt} 收盘")
     r, d = session_return(s, as_of, horizon)
     return r, d, (None if r is not None else f"{proxy} 缺 {horizon}D 收益")
+
+
+
+def fill_a_share_from_sina(
+    ticker: str,
+    need_through: date,
+    *,
+    sina_fetch=None,
+) -> Tuple[List[date], Optional[str]]:
+    """2026-11-14：A 股 ETF 缓存缺到 need_through 时，用 Sina 日 K 只追加缺失日期（不改旧行）。
+
+    复用 tech-rotation/scripts/a_share_bars.py（与对A结构标签同一套补位逻辑）。
+    返回 (追加的日期, 错误)。非 A 股 ETF 直接跳过。
+    """
+    import a_share_bars as ab  # type: ignore  # TECH_ROT/scripts 已在 sys.path
+
+    if ticker not in ab.SINA_SYMBOL:
+        return [], "not a-share etf"
+    cached = load_close_series(ticker)
+    last = series_last_date(cached)
+    if last is not None and last >= need_through:
+        return [], None
+    fresh, err = (sina_fetch or ab.sina_daily)(ticker)
+    if fresh is None:
+        return [], err
+    merged, added = ab.append_missing(cached, fresh, need_through)
+    if not added:
+        return [], None
+    cpath = _find_cache_csv(ticker) or (TECH_ROT / "data" / "tech_price_cache" / f"{ticker}.csv")
+    cpath.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        old = pd.read_csv(cpath) if cpath.exists() else pd.DataFrame(columns=["Date", "Close", "Volume"])
+        rows = pd.DataFrame({"Date": [d.isoformat() for d in added],
+                             "Close": [float(merged[pd.Timestamp(d)]) for d in added],
+                             "Volume": [float("nan")] * len(added)})
+        cols = list(old.columns) if len(old.columns) else ["Date", "Close", "Volume"]
+        out = pd.concat([old, rows.reindex(columns=cols)], ignore_index=True)
+        tmp = cpath.with_suffix(".csv.tmp")
+        out.to_csv(tmp, index=False)
+        tmp.replace(cpath)
+    except Exception as exc:  # noqa: BLE001
+        return [], f"persist {type(exc).__name__}: {exc}"
+    return added, None
