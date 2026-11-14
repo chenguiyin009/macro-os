@@ -47,8 +47,8 @@ _PROXY_OFF_VALUES = ("", "off", "none", "0", "false", "no")
 
 # ---- 版本与有效期（与 Pine 流水线盖戳区一致）----
 VER_TXT = "会员版 v1.3m"
-EXP_TXT = "2026-11-07"
-EXPIRY = dt.date(2026, 11, 7)
+EXP_TXT = "2099-12-31"
+EXPIRY = dt.date(2099, 12, 31)
 
 # ---- 引擎固定参数（与内部版完全一致）----
 TREND_LEN = 20

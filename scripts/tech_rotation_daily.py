@@ -56,8 +56,8 @@ _PROXY_OFF_VALUES = ("", "off", "none", "0", "false", "no")
 
 # ---- 版本与有效期（与会员渠道盖戳区一致）----
 VER_TXT = "科技板块资金轮动观测机 v2.6.1r"
-EXP_TXT = "2026-11-07"
-EXPIRY = dt.date(2026, 11, 7)
+EXP_TXT = "2099-12-31"
+EXPIRY = dt.date(2099, 12, 31)
 
 # ---- 引擎固定参数（与 Pine 内部版完全一致）----
 TREND_LEN = 20
