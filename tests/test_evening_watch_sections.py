@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""晚报旁证 8–11 节：规则 v1 判读与 consolidator 挂接（2026-11-14）。"""
+"""晚报旁证 8–11 节：Q4 规则 v2 阈值判读与 consolidator 挂接（2026-11-14）。"""
 import importlib.util
 import json
 import sys
@@ -21,26 +21,87 @@ def test_helpers():
     assert ews.pct_change_n([], "2026-11-06", 5) == (None, None, None)
 
 
-def test_verdicts_match_hand_written_1029_1112():
-    # 10-29 手写：a 支持 / b 未定 / c 未定 / d 偏支持/未定 / f 证伪
-    assert ews.verdict_a(64) == "支持"
-    assert ews.verdict_b(-0.3, 3.8) == "未定"
-    assert ews.verdict_c(0.2, 4.09, 17.19, 0.7) == "未定"
-    assert ews.verdict_d(0.4, 3.2, -0.1) == "偏支持/未定"
-    assert ews.verdict_f(-2.4, 0.2, -0.1, 0.7)[0] == "证伪"
-    # 11-12 手写：a 支持 / b 未定 / c 偏支持 / d 证伪 / e 未定（H.8 同比缺）/ f 证伪
-    assert ews.verdict_a(88.5) == "支持"
-    assert ews.verdict_b(-1.5, -2.8) == "未定"
-    assert ews.verdict_c(1.7, 4.23, 17.75, -1.1) == "偏支持"
-    assert ews.verdict_d(-2.2, -1.0, -5.3) == "证伪"
-    assert ews.verdict_e(None, None, 4.2).startswith("未定")
-    assert ews.verdict_f(6.5, 1.7, -5.3, -1.1)[0] == "证伪"
+# 2026-11-14：删除 v1 的「复现 10-29/11-12 手写结论」断言（用户：q4不能反推）。
+# 以下只检验 v2 各阈值的边界语义，输入为人造数，不对应任何历史日期。
+q4 = ews.q4
+
+
+def test_rules_version_and_notes():
+    assert q4.RULES_VERSION == "q4_view_rules_v2"
+    assert set(q4.THRESHOLD_NOTES) == {"a1", "a2", "a3", "b", "c", "d", "e", "f"}
+
+
+def test_a1_hike_path_thresholds():
+    # ≥2 次加息被定价且 2Y 高于 EFFR ≥25bp → 支持
+    assert q4.judge_a1(50.0, 4.13, 3.88)["verdict"] == "支持"
+    # 1y 只定价约 1 次 → 未定
+    assert q4.judge_a1(40.0, 4.30, 3.88)["verdict"] == "未定"
+    # 1y ≥50 但 2Y−EFFR 只有 +20bp → 未定（两腿须同时确认）
+    assert q4.judge_a1(80.0, 4.08, 3.88)["verdict"] == "未定"
+    # 1y ≤25bp → 证伪；2Y 低于政策利率 → 证伪
+    assert q4.judge_a1(25.0, 4.30, 3.88)["verdict"] == "证伪"
+    assert q4.judge_a1(90.0, 3.85, 3.88)["verdict"] == "证伪"
+
+
+def test_a2_five_percent_band():
+    assert q4.judge_a2(4.70, 4.80)["verdict"] == "支持"   # 均值 4.75
+    assert q4.judge_a2(4.50, 4.60)["verdict"] == "未定"
+    assert q4.judge_a2(4.40, 4.55)["verdict"] == "证伪"   # 均值 4.475 < 4.50
+
+
+def test_a3_long_bond_avoid():
+    assert q4.judge_a3(-2.0, 0.0)["verdict"] == "支持"
+    assert q4.judge_a3(0.5, 15.0)["verdict"] == "支持"
+    assert q4.judge_a3(1.0, 5.0)["verdict"] == "未定"
+    assert q4.judge_a3(3.0, 20.0)["verdict"] == "证伪"   # 证伪优先：长端大涨即回避付出代价
+
+
+def test_b_tradability_and_deadline():
+    assert q4.judge_b(2.0, -20.0, 1.0, "2026-11-13")["verdict"] == "支持"
+    assert q4.judge_b(-1.9, 19.0, 9.9, "2026-11-13")["verdict"] == "未定"
+    assert q4.judge_b(0.1, 1.0, 1.0, "2026-11-13")["verdict"] == "未定"   # 窗口内不证伪
+    assert q4.judge_b(0.1, 1.0, 1.0, "2027-04-01")["verdict"] == "证伪"
+
+
+def test_c_four_subsignals():
+    # 实际现金 1.6pp 支持、DXY +1% 支持、2 个大跌日 支持、SPY−RSP +1pp 支持
+    r = q4.judge_c(4.0, 2.4, 1.0, 2, -2.0, 2.0, 1.0)
+    assert r["verdict"] == "支持" and r["score"] == 4
+    # 实际现金 0.5pp 证伪、DXY -1% 证伪、0 大跌日且回撤 -1% 证伪、等权领先 证伪
+    assert q4.judge_c(2.9, 2.4, -1.0, 0, -1.0, 0.0, 1.0)["verdict"] == "证伪"
+    # 支持 2 证伪 1 → 净 1 → 未定
+    r = q4.judge_c(4.0, 2.4, 1.0, 0, -1.0, 0.0, 0.5)
+    assert r["subs"] == {"c1": "支持", "c2": "支持", "c3": "证伪", "c4": "未定"} and r["verdict"] == "未定"
+    # 20D 回撤 -5% 即便无单日大跌也算回撤
+    assert q4.judge_c(4.0, 2.4, 0.0, 0, -5.0, 0.0, 0.0)["subs"]["c3"] == "支持"
+
+
+def test_d_e_f_thresholds():
+    assert q4.judge_d(4.0)["verdict"] == "支持"
+    assert q4.judge_d(3.9)["verdict"] == "未定"
+    assert q4.judge_d(-4.0)["verdict"] == "证伪"
+    assert q4.judge_e(6.0, 6.25)["verdict"] == "支持"
+    assert q4.judge_e(6.0, 6.1)["verdict"] == "未定"
+    assert q4.judge_e(6.5, 6.25)["verdict"] == "证伪"
+    assert q4.judge_f(-5.0, 0.5, -1.0, 0.0)["verdict"] == "支持"
+    assert q4.judge_f(-5.0, 0.5, -1.0, -2.0)["verdict"] == "未定"   # 金未弱于股
+    assert q4.judge_f(1.0, 1.0, -2.0, -1.0)["verdict"] == "证伪"
+
+
+def test_window_helpers():
+    assert q4.drop_days([100, 98, 98, 99], -1.5) == 1
+    assert abs(q4.max_drawdown_pct([100, 110, 99, 105]) - (-10.0)) < 1e-9
+    assert q4.drop_days([100], -1.5) is None
 
 
 def test_missing_data_never_judged():
-    assert ews.verdict_a(None) == "数据缺失"
-    assert ews.verdict_c(None, 4, 20, -1) == "数据缺失"
-    assert ews.verdict_f(None, 1, 1, 1)[0] == "数据缺失"
+    assert q4.judge_a1(None, 4.1, 3.9)["verdict"] == q4.MISSING
+    assert q4.judge_b(1.0, None, 1.0, "2026-11-13")["verdict"] == q4.MISSING
+    assert q4.judge_c(None, 2.4, 1.0, 2, -2.0, 2.0, 1.0)["verdict"] == q4.MISSING
+    assert q4.judge_e(None, 6.0)["verdict"] == q4.MISSING
+    assert q4.judge_f(None, 1, 1, 1)["verdict"] == q4.MISSING
+    p = ews.build("2026-11-13", Path("/nonexistent"), fetch=False)
+    assert set(p["verdicts"].values()) == {q4.MISSING}
 
 
 def test_render_cp_units(tmp_path):

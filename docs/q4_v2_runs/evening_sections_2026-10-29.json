@@ -1,0 +1,606 @@
+{
+  "date": "2026-10-29",
+  "schema": "evening_sections_v2",
+  "gaps": [],
+  "shock": {
+    "date": "2026-10-29",
+    "as_of": "2026-10-29",
+    "generated_at": "2026-10-30T21:53:06",
+    "script": "市场冲击消化能力评判 v2.2 (Python headless port)",
+    "source": "yfinance daily (MOVE abstained: TV-only)",
+    "params": {
+      "lb": 1,
+      "z_len": 120,
+      "vix_pct_len": 252,
+      "z_exam": 1.0,
+      "z_big": 1.5,
+      "q_strain": 0.5,
+      "q_fail": 1.0,
+      "enter1": 3,
+      "enter2": 5,
+      "dur_zn": 6.4,
+      "dur_ub": 22.0
+    },
+    "fragility_level": 0,
+    "fragility_state": "吸收正常",
+    "weak_link": "波动(20日)",
+    "day_code": 2,
+    "day_text": "强冲击 · 冲击加剧 · 61分",
+    "shock_score": 61,
+    "big_hit_today": true,
+    "big_fail_today": false,
+    "record_20d": {
+      "hit": 13,
+      "strain": 3,
+      "fail": 2,
+      "rate_fail": 1,
+      "dxy_fail": 1,
+      "cred_fail": 0,
+      "vol_fail": 2
+    },
+    "do": "按各机指令正常执行, 冲击日照常守低吸纪律",
+    "dont": "别把单独一天的国债下跌过度解读",
+    "legs": {
+      "rate": {
+        "abstain": false,
+        "hit": true,
+        "code": 2,
+        "code_text": "冲击加剧",
+        "z": -1.947,
+        "bp": -9.221,
+        "long_end": false,
+        "q": 0.546,
+        "dir": "利率急跌"
+      },
+      "dxy": {
+        "abstain": false,
+        "hit": true,
+        "code": 2,
+        "code_text": "冲击加剧",
+        "z": -1.238,
+        "ret_pct": -0.356,
+        "q": 0.859,
+        "dir": "美元急跌"
+      },
+      "credit": {
+        "abstain": false,
+        "hit": false,
+        "code": 0,
+        "code_text": "无冲击",
+        "z": -0.058,
+        "q": null,
+        "qual_z": -0.67
+      },
+      "vol": {
+        "abstain": false,
+        "hit": false,
+        "code": 0,
+        "code_text": "无冲击",
+        "z": 0.232,
+        "pct": 51.19,
+        "q": null
+      }
+    },
+    "damage_gauge": {
+      "eq_dmg_z": 1.064,
+      "es_z": -0.911,
+      "nq_z": -1.217
+    },
+    "fingerprints": {
+      "margin_call": false,
+      "sell_america": false,
+      "btc_canary": false
+    },
+    "aux": {
+      "gc_z": -0.442,
+      "btc_z": -1.136,
+      "kre_z": 0.921,
+      "move_z": null
+    },
+    "note": "分母压力旁证：仅观察+报警，不进主状态机，不动合成预算。 门槛为初值未标定(SA-1)，当参考不当指令。 MOVE 缺数弃权。"
+  },
+  "article": {
+    "date": "2026-10-29",
+    "as_of": "2026-10-29",
+    "generated_at": "2026-10-30T13:53:23Z",
+    "script": "article_macro_watch_daily.py",
+    "schema": "macro-os.article-macro-watch.v1",
+    "role": "article_narrative_crosscheck",
+    "bound_to_combined_min": false,
+    "note": "思路观测旁证：只观察+报警；不进 compute_combined_budget；不放松/不覆盖分母 tight→0.35；不做第六腿。",
+    "quality": "ok",
+    "degraded": false,
+    "degraded_reason": null,
+    "fed_1y_hike_bp": 64.0,
+    "fed": {
+      "fed_1y_hike_bp": 64.0,
+      "meeting_anchor": {
+        "date": "2027-10-27",
+        "contract": "ZQV7",
+        "horizon_days": 365
+      },
+      "meetings_in_horizon": [
+        {
+          "date": "2026-12-09",
+          "contract": "ZQZ6",
+          "expected_rate": 4.0747,
+          "cum_hike_bp": 20.0
+        },
+        {
+          "date": "2027-01-27",
+          "contract": "ZQF7",
+          "expected_rate": 4.155,
+          "cum_hike_bp": 28.0
+        },
+        {
+          "date": "2027-03-17",
+          "contract": "ZQH7",
+          "expected_rate": 4.3048,
+          "cum_hike_bp": 43.0
+        },
+        {
+          "date": "2027-04-28",
+          "contract": "ZQJ7",
+          "expected_rate": 4.38,
+          "cum_hike_bp": 50.5
+        },
+        {
+          "date": "2027-06-09",
+          "contract": "ZQM7",
+          "expected_rate": 4.4672,
+          "cum_hike_bp": 59.2
+        },
+        {
+          "date": "2027-07-28",
+          "contract": "ZQN7",
+          "expected_rate": 4.495,
+          "cum_hike_bp": 62.0
+        },
+        {
+          "date": "2027-09-15",
+          "contract": "ZQU7",
+          "expected_rate": 4.5202,
+          "cum_hike_bp": 64.5
+        },
+        {
+          "date": "2027-10-27",
+          "contract": "ZQV7",
+          "expected_rate": 4.515,
+          "cum_hike_bp": 64.0
+        }
+      ],
+      "algo_version": "cme_settlement_cum_v1",
+      "source": "cme-fedwatch+CME_settlement+FRED_EFFR",
+      "quality": "ok",
+      "degraded": false,
+      "degraded_reason": null,
+      "effr": 3.88,
+      "current_target": "3.75%-4.00%",
+      "trade_date": "2026-10-29",
+      "expected_rate_1y": 4.515,
+      "current_mid": 3.875,
+      "disclaimer": "开源自算 CME 日结算 FedWatch；与官网 QuikStrike/盘中可能偏差，接受偏差；失败不编造 bp。",
+      "target_source": "fred",
+      "schedule_status": {
+        "state": "ok",
+        "remaining": 10,
+        "last_known": "2028-01-26"
+      }
+    },
+    "wti_last": 102.0,
+    "wti": {
+      "wti_last": 102.0,
+      "as_of": "2026-10-29",
+      "ticker": "CL=F",
+      "source": "yfinance",
+      "quality": "ok",
+      "narrative_line": 90.0,
+      "note": "作者叙事线绝对价门槛 90（观察文案，不进合成 min）",
+      "above_narrative_line": true
+    },
+    "dgs10": 5.05,
+    "tnx": null,
+    "rates_10y": {
+      "dgs10": 5.05,
+      "tnx": null,
+      "as_of": "2026-10-28",
+      "source": "FRED:DGS10",
+      "quality": "ok",
+      "unit": "percent"
+    },
+    "t10yie": 2.35,
+    "t10yie_detail": {
+      "t10yie": 2.35,
+      "as_of": "2026-10-29",
+      "mean": 2.306,
+      "mean_lookback_calendar_days": 1095,
+      "deviation": 0.044,
+      "deviation_bp": 4.4,
+      "source": "FRED:T10YIE",
+      "quality": "ok",
+      "unit": "percent",
+      "n_obs": 750
+    },
+    "t10yie_vs_mean": {
+      "last": 2.35,
+      "mean": 2.306,
+      "deviation": 0.044,
+      "deviation_bp": 4.4,
+      "lookback_calendar_days": 1095
+    },
+    "move": 97.18,
+    "move_detail": {
+      "move": 97.18,
+      "as_of": null,
+      "quality": "ok",
+      "source": "tradingview_cfd_scanner:TVC:MOVE",
+      "abstain_reason": null,
+      "note": "旁证展示用；不进合成 min / 不进冲击吸收计算。"
+    },
+    "abstain_reason": null,
+    "tv_symbol": "CBOT:ZQU2027",
+    "tv_price": 95.485,
+    "tv_implied_rate": 4.515,
+    "tv_1y_hike_bp": 64.0,
+    "tv_delta_bp": 0.0,
+    "tv_crosscheck": {
+      "tv_symbol": "CBOT:ZQU2027",
+      "tv_price": 95.485,
+      "tv_implied_rate": 4.515,
+      "tv_1y_hike_bp": 64.0,
+      "delta_bp": 0.0,
+      "cme_1y_hike_bp": 64.0,
+      "current_mid_used": 3.875,
+      "source": "cli:--tv-price",
+      "status": "ok",
+      "degraded_reason": null,
+      "note": "TV 对照：implied=100-price；tv_1y_hike_bp=(implied-current_mid)*100；delta_bp=tv−CME自算。不进合成 min。"
+    },
+    "thresholds": {
+      "fed_1y_hike_bp_warn": 70,
+      "fed_1y_hike_bp_elevated": 100,
+      "fed_1y_hike_bp_extreme": 110,
+      "wti_narrative_line": 90.0,
+      "copy": "Fed 一年累计加息定价门槛（观察）：70/100/110 bp；WTI 作者叙事线绝对价 90.0 （过线仅表示全球风险溢价抬升，禁止解读为「中国特有崩盘」）。本旁证不进合成 min / 不改 denom_policy。",
+      "wti_over_line_copy": "全球风险溢价抬升（油价叙事线）；不暗示中国特有崩盘 / 不单独归因 A 股。"
+    },
+    "fed_alert_level": "calm",
+    "alerts": [
+      "WTI 102.0 ≥ 叙事线 90.0：全球风险溢价抬升（油价叙事线）；不暗示中国特有崩盘 / 不单独归因 A 股。"
+    ],
+    "hk_liquidity": {
+      "as_of": "2026-10-29",
+      "quality": "ok",
+      "degraded_reason": null,
+      "one_liner": "南向净买卖 -3359万（2026-10-29）；港股成交额代理 113.8亿HKD（2800.HK）；恒科 -2.75% vs 恒指 -0.59%（差 -2.16pp）",
+      "southbound": {
+        "net_wan": -3358.88,
+        "as_of": "2026-10-29",
+        "buy_wan": 31397.31,
+        "sell_wan": 34756.19,
+        "source": "eastmoney:RPT_MUTUAL_DEAL_HISTORY",
+        "mutual_type": "006",
+        "unit": "万元",
+        "quality": "ok",
+        "degraded_reason": null
+      },
+      "hk_turnover": {
+        "turnover_hkd": 11381981404.0,
+        "turnover_yi": 113.82,
+        "as_of": "2026-10-29",
+        "source": "yfinance:2800.HK Close×Volume (proxy)",
+        "proxy": true,
+        "quality": "ok",
+        "note": "全市场成交额难直取；2800.HK 成交额仅作流动性代理，非官方港股总成交。"
+      },
+      "hstech_vs_hsi": {
+        "hsi_ret": -0.005897,
+        "hstech_ret": -0.02749,
+        "spread_hstech_minus_hsi": -0.021593,
+        "hsi_as_of": "2026-10-29",
+        "hstech_as_of": "2026-10-29",
+        "hsi_source": "yfinance:^HSI",
+        "hstech_source": "yfinance:3032.HK (HSTECH ETF proxy; ^HSTECH often unavailable)",
+        "quality": "ok"
+      },
+      "bound_to_combined_min": false,
+      "note": "港股资金面旁证：观察一行；不进合成 min / 不改 denom_policy。"
+    },
+    "hk_liquidity_one_liner": "南向净买卖 -3359万（2026-10-29）；港股成交额代理 113.8亿HKD（2800.HK）；恒科 -2.75% vs 恒指 -0.59%（差 -2.16pp）",
+    "fallback_policy": {
+      "version": "article_macro_watch_fallback_v1",
+      "bound_to_combined_min": false,
+      "doc": "docs/ARTICLE_MACRO_WATCH.md",
+      "legs": {
+        "fed_1y_hike_bp": [
+          "cme-fedwatch+FRED_EFFR",
+          "cme-settlement+NYFed:EFFR",
+          "cme-settlement+ZQ/^IRX",
+          "tv_zqu_implied_v1"
+        ],
+        "tv_crosscheck": [
+          "ARTICLE_TV_PRICE|--tv-price",
+          "tradingview_scanner_http"
+        ],
+        "wti": [
+          "yfinance:CL=F",
+          "bar_sources",
+          "FRED:DCOILWTICO"
+        ],
+        "dgs10": [
+          "FRED:DGS10",
+          "yfinance:^TNX"
+        ],
+        "t10yie": [
+          "FRED:T10YIE",
+          "Treasury:nom10-real10",
+          "cache:_bei_daily.csv"
+        ],
+        "move": [
+          "tradingview_cfd_scanner:TVC:MOVE",
+          "abstain"
+        ],
+        "hk_liquidity": [
+          "eastmoney:RPT_MUTUAL_DEAL_HISTORY(MUTUAL_TYPE=006 南向合计)",
+          "yfinance:^HSI+3032.HK day%",
+          "yfinance:2800.HK Close×Volume as 港股成交额代理"
+        ]
+      },
+      "lag_notes": {
+        "t10yie_cache": "data/_bei_daily.csv may lag ~1 US trading day vs live FRED",
+        "t10yie_treasury": "Treasury nom−real ≈ BEI; may differ from FRED T10YIE by a few bp",
+        "fed_settlement": "CME free settlement feed ~last 5 business days",
+        "hk_southbound": "Eastmoney NET_DEAL_AMT unit=万元；周末/假日可能仍为上一交易日",
+        "hk_turnover_proxy": "全市场成交额难直取时用 2800.HK 成交额代理，标注 proxy"
+      }
+    }
+  },
+  "cp": {
+    "series": "COMPOUT",
+    "unit": "十亿美元",
+    "last": 1498.953515625,
+    "wchg": -3.6135078130000693,
+    "date": "2026-10-28"
+  },
+  "h8": {
+    "series": "TOTBKCR",
+    "unit": "十亿美元",
+    "last": 20025.0788,
+    "wchg": 10.677599999999074,
+    "date": "2026-10-28",
+    "yoy_pct": 6.2911146280430374,
+    "yoy_4w_ago_pct": 5.910883901832853,
+    "yoy_13w_ago_pct": 6.336073948161092
+  },
+  "px": {
+    "tlt": {
+      "ticker": "TLT",
+      "last": 81.48999786376953,
+      "chg5_pct": -0.3058478181228508,
+      "chg20_pct": 4.864237323163434,
+      "date": "2026-10-29"
+    },
+    "spy": {
+      "ticker": "SPY",
+      "last": 769.3599853515625,
+      "chg5_pct": 0.7068384763070146,
+      "chg20_pct": 0.70288815113142,
+      "date": "2026-10-29",
+      "drop_days_20d": 0,
+      "maxdd_20d_pct": -2.4541523435379298
+    },
+    "rsp": {
+      "ticker": "RSP",
+      "last": 220.0399932861328,
+      "chg5_pct": 0.8340170723347251,
+      "chg20_pct": 5.282293438341057,
+      "date": "2026-10-29"
+    },
+    "hyg": {
+      "ticker": "HYG",
+      "last": 77.58000183105469,
+      "chg5_pct": 0.6225724597059612,
+      "chg20_pct": 0.884265658885508,
+      "date": "2026-10-29"
+    },
+    "lqd": {
+      "ticker": "LQD",
+      "last": 104.22000122070312,
+      "chg5_pct": -0.057535058780289194,
+      "chg20_pct": 2.146429939829253,
+      "date": "2026-10-29"
+    },
+    "dbc": {
+      "ticker": "DBC",
+      "last": 33.720001220703125,
+      "chg5_pct": 0.44683207400217917,
+      "chg20_pct": 2.961835788406497,
+      "date": "2026-10-29"
+    },
+    "copper": {
+      "ticker": "HG=F",
+      "last": 6.580999851226807,
+      "chg5_pct": 3.4341792368057567,
+      "chg20_pct": 1.5273060634752422,
+      "date": "2026-10-29"
+    },
+    "gold": {
+      "ticker": "GC=F",
+      "last": 4031.39990234375,
+      "chg5_pct": -0.7142153654190686,
+      "chg20_pct": -4.066818415790275,
+      "date": "2026-10-29"
+    },
+    "wti": {
+      "ticker": "CL=F",
+      "last": 102.0,
+      "chg5_pct": 2.5434791879446417,
+      "chg20_pct": 9.830943236139822,
+      "date": "2026-10-29"
+    },
+    "brent": {
+      "ticker": "BZ=F",
+      "last": 114.87999725341797,
+      "chg5_pct": 1.511000364177706,
+      "chg20_pct": 12.286189028227934,
+      "date": "2026-10-29"
+    },
+    "dxy": {
+      "ticker": "DX-Y.NYB",
+      "last": 102.04000091552734,
+      "chg5_pct": 0.42318699202130716,
+      "chg20_pct": -0.058763525455840515,
+      "date": "2026-10-29"
+    },
+    "eurusd": {
+      "ticker": "EURUSD=X",
+      "last": 1.1155734062194824,
+      "chg5_pct": -0.702807612159273,
+      "chg20_pct": -1.5138259500601547,
+      "date": "2026-10-29"
+    },
+    "vix": {
+      "ticker": "^VIX",
+      "last": 17.200000762939453,
+      "chg5_pct": -9.616394417632756,
+      "chg20_pct": 4.94204639081679,
+      "date": "2026-10-29"
+    },
+    "us2y": {
+      "series": "DGS2",
+      "last": 4.61,
+      "chg5_bp": -4.0000000000000036,
+      "chg20_bp": -26.999999999999957,
+      "date": "2026-10-29"
+    },
+    "us5y": {
+      "series": "DGS5",
+      "last": 4.78,
+      "chg5_bp": 0.0,
+      "chg20_bp": -30.99999999999996,
+      "date": "2026-10-29"
+    },
+    "us10y": {
+      "series": "DGS10",
+      "last": 4.98,
+      "chg5_bp": 2.000000000000046,
+      "chg20_bp": -30.99999999999996,
+      "date": "2026-10-29"
+    },
+    "us30y": {
+      "series": "DGS30",
+      "last": 5.32,
+      "chg5_bp": 3.000000000000025,
+      "chg20_bp": -31.99999999999994,
+      "date": "2026-10-29"
+    },
+    "us3m": {
+      "series": "DGS3MO",
+      "last": 4.18,
+      "chg5_bp": -4.0000000000000036,
+      "chg20_bp": -2.000000000000046,
+      "date": "2026-10-29"
+    },
+    "effr": {
+      "series": "EFFR",
+      "last": 3.88,
+      "chg5_bp": 0.0,
+      "chg20_bp": 0.0,
+      "date": "2026-10-29"
+    },
+    "sofr": {
+      "series": "SOFR",
+      "last": 3.94,
+      "chg5_bp": 4.0000000000000036,
+      "chg20_bp": 4.0000000000000036,
+      "date": "2026-10-29"
+    },
+    "t10yie": {
+      "series": "T10YIE",
+      "last": 2.35,
+      "chg5_bp": 3.000000000000025,
+      "chg20_bp": -0.9999999999999787,
+      "date": "2026-10-29"
+    },
+    "hy_oas": {
+      "series": "BAMLH0A0HYM2",
+      "last": 3.26,
+      "chg5_bp": -14.000000000000012,
+      "chg20_bp": 1.9999999999999574,
+      "date": "2026-10-29"
+    }
+  },
+  "bund10y": {
+    "last": 3.36,
+    "date": "2026-10-29",
+    "chg5_bp": -2.0,
+    "chg20_bp": -24.0,
+    "source": "Bundesbank BBSSY WT1010（最新10年期Bund收益率，日）"
+  },
+  "q4": {
+    "a1": {
+      "verdict": "支持",
+      "us2y_effr_bp": 73.0,
+      "as_of": "Fed1y 2026-10-29；FRED 2026-10-29/2026-10-29"
+    },
+    "a2": {
+      "verdict": "未定",
+      "mean_2y5y": 4.695,
+      "as_of": "FRED 2026-10-29"
+    },
+    "a3": {
+      "verdict": "证伪",
+      "as_of": "TLT 2026-10-29；DGS30 2026-10-29"
+    },
+    "b": {
+      "verdict": "未定",
+      "legs_hit": [
+        "Bund"
+      ],
+      "n": 1,
+      "as_of": "EURUSD 2026-10-29；Bund 2026-10-29；WTI 2026-10-29"
+    },
+    "c": {
+      "verdict": "未定",
+      "subs": {
+        "c1": "支持",
+        "c2": "未定",
+        "c3": "证伪",
+        "c4": "证伪"
+      },
+      "score": -1,
+      "real_cash_pp": 1.83,
+      "spy_minus_rsp_pp": -4.58,
+      "as_of": "FRED 2026-10-29/2026-10-29；DXY 2026-10-29；SPY 2026-10-29"
+    },
+    "d": {
+      "verdict": "未定",
+      "as_of": "DBC 2026-10-29"
+    },
+    "e": {
+      "verdict": "未定",
+      "slope_pp": -0.04,
+      "as_of": "H.8 2026-10-28；HY OAS 2026-10-29；CP 2026-10-28"
+    },
+    "f": {
+      "verdict": "证伪",
+      "n": 1,
+      "conds": {
+        "10Y下行": false,
+        "美元未加速": true,
+        "金领跌": false
+      },
+      "as_of": "FRED 2026-10-29；DXY/金/SPY 2026-10-29"
+    }
+  },
+  "verdicts": {
+    "a1": "支持",
+    "a2": "未定",
+    "a3": "证伪",
+    "b": "未定",
+    "c": "未定",
+    "d": "未定",
+    "e": "未定",
+    "f": "证伪"
+  }
+}

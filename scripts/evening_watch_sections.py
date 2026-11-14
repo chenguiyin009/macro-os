@@ -8,8 +8,8 @@
   8  冲击吸收旁证     ← output/shock_absorption_<date>.json
   9  思路观测旁证     ← output/article_macro_watch_<date>.json
   10 美国商业票据/H.8 ← FRED COMPOUT（周，十亿美元）/ TOTBKCR（周，十亿美元）
-  11 用户 Q4 判断对照 ← FRED 收益率/EFFR/SOFR + yfinance 收盘；判读为「规则 v1」
-     （由 10-29、11-12 两份手写判读反推的机械规则，仅观察，可调）
+  11 用户 Q4 判断对照 ← FRED 收益率/EFFR/SOFR/T10YIE/HY OAS + yfinance 收盘 + Bundesbank；
+     判读为「规则 v2」（scripts/q4_view_rules.py，阈值由经济含义推导，不拟合手写；仅观察）
 
 单位注意：COMPOUT 单位是十亿美元，1507.5 = 1.5075 万亿美元 = 15075 亿美元。
 11-12 晚报手写成「1507.5亿美元」是单位错（少 10 倍），本脚本统一输出「十亿美元 + 万亿」。
@@ -29,6 +29,11 @@ from typing import Any, Dict, List, Optional, Tuple
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
+_SCRIPTS = Path(__file__).resolve().parent
+if str(_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS))
+
+import q4_view_rules as q4  # noqa: E402
 
 logger = logging.getLogger("evening-sections")
 
@@ -37,8 +42,8 @@ YF_TICKERS = {
     "copper": "HG=F", "gold": "GC=F", "wti": "CL=F", "brent": "BZ=F",
     "dxy": "DX-Y.NYB", "eurusd": "EURUSD=X", "vix": "^VIX",
 }
-FRED_RATES = {"us2y": "DGS2", "us5y": "DGS5", "us10y": "DGS10", "us3m": "DGS3MO",
-              "effr": "EFFR", "sofr": "SOFR"}
+FRED_RATES = {"us2y": "DGS2", "us5y": "DGS5", "us10y": "DGS10", "us30y": "DGS30", "us3m": "DGS3MO",
+              "effr": "EFFR", "sofr": "SOFR", "t10yie": "T10YIE", "hy_oas": "BAMLH0A0HYM2"}
 
 
 # ---------------- pure helpers (unit-tested) ----------------
@@ -76,65 +81,7 @@ def _f(x: Optional[float]) -> bool:
     return x is not None
 
 
-def verdict_a(fed1y_bp: Optional[float]) -> str:
-    """a 利率路径（高位更久）：Fed 1y 加息定价 ≥50bp 支持；≤25bp 证伪；中间未定。"""
-    if not _f(fed1y_bp):
-        return "数据缺失"
-    if fed1y_bp >= 50:
-        return "支持"
-    if fed1y_bp <= 25:
-        return "证伪"
-    return "未定"
-
-
-def verdict_b(eur_5d: Optional[float], wti_5d: Optional[float]) -> str:
-    """b 欧元/欧债/能源：欧元 5D ≥+1% 且 WTI 5D ≤0 支持；欧元 ≤-1% 且 WTI ≥+3% 证伪；否则未定。"""
-    if not (_f(eur_5d) and _f(wti_5d)):
-        return "数据缺失"
-    if eur_5d >= 1.0 and wti_5d <= 0:
-        return "支持"
-    if eur_5d <= -1.0 and wti_5d >= 3.0:
-        return "证伪"
-    return "未定"
-
-
-def verdict_c(dxy_5d, us3m, vix, spy_5d) -> str:
-    """c 现金贵/美元贵/流动性回撤：DXY5D≥+1%、3M≥4%、VIX≥20、SPY5D<0 计数；4=支持，2–3=偏支持，≤1=未定。"""
-    vals = [dxy_5d, us3m, vix, spy_5d]
-    if any(v is None for v in vals):
-        return "数据缺失"
-    n = int(dxy_5d >= 1.0) + int(us3m >= 4.0) + int(vix >= 20) + int(spy_5d < 0)
-    return "支持" if n == 4 else ("偏支持" if n >= 2 else "未定")
-
-
-def verdict_d(dbc_5d, copper_5d, gold_5d) -> str:
-    """d 大宗不拖：DBC/铜/金 5D≥0 的个数；3=支持，2=偏支持/未定，1=未定，0=证伪。"""
-    vals = [dbc_5d, copper_5d, gold_5d]
-    if any(v is None for v in vals):
-        return "数据缺失"
-    n = sum(int(v >= 0) for v in vals)
-    return {3: "支持", 2: "偏支持/未定", 1: "未定", 0: "证伪"}[n]
-
-
-def verdict_e(h8_yoy_now, h8_yoy_4w, cp_wchg) -> str:
-    """e 信用斜率放缓：H.8 同比低于 4 周前且 CP 周减 → 支持；同比走高且 CP 周增 → 证伪；否则未定。"""
-    if h8_yoy_now is None or h8_yoy_4w is None or cp_wchg is None:
-        return "未定（数据缺失）"
-    slowing = h8_yoy_now < h8_yoy_4w
-    if slowing and cp_wchg < 0:
-        return "支持"
-    if (not slowing) and cp_wchg > 0:
-        return "证伪"
-    return "未定"
-
-
-def verdict_f(us10y_5d_bp, dxy_5d, gold_5d, spy_5d) -> Tuple[str, int]:
-    """f 三重流动性利空：10Y 5D 下行、DXY 5D ≤-0.5%、金跑输 SPY 且 SPY 5D<0；3=支持，2=未定，≤1=证伪。"""
-    vals = [us10y_5d_bp, dxy_5d, gold_5d, spy_5d]
-    if any(v is None for v in vals):
-        return "数据缺失", -1
-    n = int(us10y_5d_bp < 0) + int(dxy_5d <= -0.5) + int(gold_5d < spy_5d and spy_5d < 0)
-    return ("支持" if n == 3 else ("未定" if n == 2 else "证伪")), n
+# 2026-11-14：v1 verdict_a..f（由 10-29/11-12 手写判读反推）已删除，改用 scripts/q4_view_rules.py 规则 v2。
 
 
 # ---------------- data ----------------
@@ -152,7 +99,7 @@ def _fred(series: str, lookback_days: int) -> List[Tuple[str, float]]:
 def _yf(ticker: str) -> List[Tuple[str, float]]:
     try:
         import yfinance as yf
-        df = yf.download(ticker, period="3mo", interval="1d", progress=False, auto_adjust=False)
+        df = yf.download(ticker, period="6mo", interval="1d", progress=False, auto_adjust=False)
         if df is None or df.empty:
             return []
         s = df["Close"]
@@ -210,8 +157,10 @@ def bund_from_points(pts: List[Tuple[str, float]], date_str: str, source: str) -
         return None
     last_d, last_v = pts[-1]
     prev = pts[-6][1] if len(pts) >= 6 else None
+    prev20 = pts[-21][1] if len(pts) >= 21 else None
     return {"last": last_v, "date": last_d,
-            "chg5_bp": (round((last_v - prev) * 100, 1) if prev is not None else None), "source": source}
+            "chg5_bp": (round((last_v - prev) * 100, 1) if prev is not None else None),
+            "chg20_bp": (round((last_v - prev20) * 100, 1) if prev20 is not None else None), "source": source}
 
 
 def fetch_bund10y(date_str: str, get=None) -> Tuple[Optional[Dict[str, Any]], List[str]]:
@@ -219,7 +168,7 @@ def fetch_bund10y(date_str: str, get=None) -> Tuple[Optional[Dict[str, Any]], Li
     notes: List[str] = []
     for flow, key, label in BBK_SERIES:
         try:
-            txt = get(BBK_URL.format(flow=flow, key=key, n=20),
+            txt = get(BBK_URL.format(flow=flow, key=key, n=120),
                       {"Accept": "application/vnd.sdmx.data+csv;version=1.0.0", "User-Agent": "Mozilla/5.0"})
             b = bund_from_points(parse_bbk_csv(txt), date_str, label)
             if b:
@@ -233,7 +182,7 @@ def fetch_bund10y(date_str: str, get=None) -> Tuple[Optional[Dict[str, Any]], Li
     if pts:
         d, v = [(d, v) for d, v in pts if d <= date_str][-1]
         notes.append("Bund 10Y 用 FRED 月均兜底（无 5D）")
-        return {"last": v, "date": d, "chg5_bp": None, "source": "FRED IRLTLT01DEM156N（月均兜底）"}, notes
+        return {"last": v, "date": d, "chg5_bp": None, "chg20_bp": None, "source": "FRED IRLTLT01DEM156N（月均兜底）"}, notes
     return None, notes
 
 
@@ -249,7 +198,7 @@ def _load(report_dir: Path, stem: str, date_str: str) -> Optional[Dict[str, Any]
 
 def build(date_str: str, report_dir: Path, bund: Optional[Tuple[float, Optional[float]]] = None,
           fetch=True) -> Dict[str, Any]:
-    out: Dict[str, Any] = {"date": date_str, "schema": "evening_sections_v1", "gaps": []}
+    out: Dict[str, Any] = {"date": date_str, "schema": "evening_sections_v2", "gaps": []}
     out["shock"] = _load(report_dir, "shock_absorption", date_str)
     out["article"] = _load(report_dir, "article_macro_watch", date_str)
     if out["shock"] is None:
@@ -261,14 +210,20 @@ def build(date_str: str, report_dir: Path, bund: Optional[Tuple[float, Optional[
         for k, t in YF_TICKERS.items():
             pts = _yf(t)
             last, c5, d = pct_change_n(pts, date_str, 5)
-            _, c21, _ = pct_change_n(pts, date_str, 21)
-            px[k] = {"ticker": t, "last": last, "chg5_pct": c5, "chg21_pct": c21, "date": d}
+            _, c20, _ = pct_change_n(pts, date_str, q4.W_TREND)
+            px[k] = {"ticker": t, "last": last, "chg5_pct": c5, "chg20_pct": c20, "date": d}
+            if k == "spy":
+                win = [v for dd, v in pts if dd <= date_str][-(q4.W_TREND + 1):]
+                px[k]["drop_days_20d"] = q4.drop_days(win, q4.TH["c3_drop_day_pct"]) if len(win) == q4.W_TREND + 1 else None
+                px[k]["maxdd_20d_pct"] = q4.max_drawdown_pct(win) if len(win) == q4.W_TREND + 1 else None
             if last is None or d != date_str:
                 out["gaps"].append(f"{t} 收盘缺 {date_str}（最新 {d}）")
         for k, s in FRED_RATES.items():
-            pts = _fred(s, 60)
+            pts = _fred(s, 120)
             last, d5, d = diff_n(pts, date_str, 5)
-            px[k] = {"series": s, "last": last, "chg5_bp": (d5 * 100 if d5 is not None else None), "date": d}
+            _, d20, _ = diff_n(pts, date_str, q4.W_TREND)
+            px[k] = {"series": s, "last": last, "chg5_bp": (d5 * 100 if d5 is not None else None),
+                     "chg20_bp": (d20 * 100 if d20 is not None else None), "date": d}
             if d != date_str:
                 out["gaps"].append(f"FRED {s} 最新 {d}（{date_str} 未发布）")
         cp = _fred("COMPOUT", 500)
@@ -277,11 +232,12 @@ def build(date_str: str, report_dir: Path, bund: Optional[Tuple[float, Optional[
         h8l, h8w, h8d = diff_n(h8, date_str, 1)
         out["cp"] = {"series": "COMPOUT", "unit": "十亿美元", "last": cpl, "wchg": cpw, "date": cpd}
         out["h8"] = {"series": "TOTBKCR", "unit": "十亿美元", "last": h8l, "wchg": h8w, "date": h8d,
-                     "yoy_pct": yoy_weekly(h8, date_str), "yoy_4w_ago_pct": yoy_weekly(h8, date_str, 4)}
+                     "yoy_pct": yoy_weekly(h8, date_str), "yoy_4w_ago_pct": yoy_weekly(h8, date_str, 4),
+                     "yoy_13w_ago_pct": yoy_weekly(h8, date_str, q4.W_CREDIT)}
     out["px"] = px
     if bund:
         out["bund10y"] = {"last": bund[0], "chg5_bp": (round((bund[0] - bund[1]) * 100, 1) if bund[1] is not None else None),
-                          "date": date_str, "source": "手工覆盖 --bund10y / GYBOT_BUND10Y"}
+                          "chg20_bp": None, "date": date_str, "source": "手工覆盖 --bund10y / GYBOT_BUND10Y"}
     elif fetch:
         b, notes = fetch_bund10y(date_str)
         out["bund10y"] = b
@@ -290,19 +246,40 @@ def build(date_str: str, report_dir: Path, bund: Optional[Tuple[float, Optional[
             out["gaps"].append("Bund 10Y 所有来源失败")
     else:
         out["bund10y"] = None
-    art = out["article"] or {}
-    fed = art.get("fed_1y_hike_bp")
-    g = lambda k, f: (px.get(k) or {}).get(f)  # noqa: E731
-    out["verdicts"] = {
-        "a": verdict_a(fed),
-        "b": verdict_b(g("eurusd", "chg5_pct"), g("wti", "chg5_pct")),
-        "c": verdict_c(g("dxy", "chg5_pct"), g("us3m", "last"), g("vix", "last"), g("spy", "chg5_pct")),
-        "d": verdict_d(g("dbc", "chg5_pct"), g("copper", "chg5_pct"), g("gold", "chg5_pct")),
-        "e": verdict_e((out.get("h8") or {}).get("yoy_pct"), (out.get("h8") or {}).get("yoy_4w_ago_pct"),
-                       (out.get("cp") or {}).get("wchg")),
-        "f": verdict_f(g("us10y", "chg5_bp"), g("dxy", "chg5_pct"), g("gold", "chg5_pct"), g("spy", "chg5_pct"))[0],
-    }
+    out["q4"] = q4_judge(out, date_str)
+    out["verdicts"] = {k: v["verdict"] for k, v in out["q4"].items()}
     return out
+
+
+def q4_judge(out: Dict[str, Any], date_str: str) -> Dict[str, Dict[str, Any]]:
+    """规则 v2：每条观点 → 判定 + 所用数据（数值、as_of）。缺数据即「数据缺」。"""
+    px = out.get("px") or {}
+    g = lambda k, f: (px.get(k) or {}).get(f)  # noqa: E731
+    art = out.get("article") or {}
+    fed = art.get("fed_1y_hike_bp")
+    bund = out.get("bund10y") or {}
+    h8 = out.get("h8") or {}
+    r: Dict[str, Dict[str, Any]] = {}
+    a1 = q4.judge_a1(fed, g("us2y", "last"), g("effr", "last"))
+    a2 = q4.judge_a2(g("us2y", "last"), g("us5y", "last"))
+    a3 = q4.judge_a3(g("tlt", "chg20_pct"), g("us30y", "chg20_bp"))
+    for k, x in (("a1", a1), ("a2", a2), ("a3", a3)):
+        r[k] = x
+    r["a1"]["as_of"] = f"Fed1y {art.get('as_of') or art.get('date')}；FRED {g('us2y', 'date')}/{g('effr', 'date')}"
+    r["a2"]["as_of"] = f"FRED {g('us2y', 'date')}"
+    r["a3"]["as_of"] = f"TLT {g('tlt', 'date')}；DGS30 {g('us30y', 'date')}"
+    r["b"] = q4.judge_b(g("eurusd", "chg20_pct"), bund.get("chg20_bp"), g("wti", "chg20_pct"), date_str)
+    r["b"]["as_of"] = f"EURUSD {g('eurusd', 'date')}；Bund {bund.get('date')}；WTI {g('wti', 'date')}"
+    r["c"] = q4.judge_c(g("us3m", "last"), g("t10yie", "last"), g("dxy", "chg20_pct"), g("spy", "drop_days_20d"),
+                        g("spy", "maxdd_20d_pct"), g("spy", "chg20_pct"), g("rsp", "chg20_pct"))
+    r["c"]["as_of"] = f"FRED {g('us3m', 'date')}/{g('t10yie', 'date')}；DXY {g('dxy', 'date')}；SPY {g('spy', 'date')}"
+    r["d"] = q4.judge_d(g("dbc", "chg20_pct"))
+    r["d"]["as_of"] = f"DBC {g('dbc', 'date')}"
+    r["e"] = q4.judge_e(h8.get("yoy_pct"), h8.get("yoy_13w_ago_pct"))
+    r["e"]["as_of"] = f"H.8 {h8.get('date')}；HY OAS {g('hy_oas', 'date')}；CP {(out.get('cp') or {}).get('date')}"
+    r["f"] = q4.judge_f(g("us10y", "chg5_bp"), g("dxy", "chg5_pct"), g("gold", "chg5_pct"), g("spy", "chg5_pct"))
+    r["f"]["as_of"] = f"FRED {g('us10y', 'date')}；DXY/金/SPY {g('spy', 'date')}"
+    return r
 
 
 def _n(x, fmt="{:.2f}", na="缺失"):
@@ -344,22 +321,49 @@ def render(p: Dict[str, Any]) -> str:
     px, v = p.get("px") or {}, p.get("verdicts") or {}
     g = lambda k: px.get(k) or {}  # noqa: E731
     bund = p.get("bund10y") or {}
-    L += ["", "**11. 用户 Q4 判断对照**（规则 v1 机械判读，观察，不进 min；周涨跌=近 5 个交易日；收益率为 FRED 官方收盘）", ""]
-    L.append(f"- a 利率路径：**{v.get('a')}**。Fed 1y {((p.get('article') or {}).get('fed_1y_hike_bp'))}bp；"
-             f"2Y {_n(g('us2y').get('last'))}%({_s(g('us2y').get('chg5_bp'), '{:+.0f}bp')}) / 5Y {_n(g('us5y').get('last'))}%({_s(g('us5y').get('chg5_bp'), '{:+.0f}bp')}) / "
-             f"10Y {_n(g('us10y').get('last'))}%({_s(g('us10y').get('chg5_bp'), '{:+.0f}bp')})，FRED 截至 {g('us10y').get('date')}；TLT {_n(g('tlt').get('last'))}({_s(g('tlt').get('chg5_pct'))})。")
-    L.append(f"- b 欧元/欧债/能源：**{v.get('b')}**。EURUSD {_n(g('eurusd').get('last'), '{:.4f}')}({_s(g('eurusd').get('chg5_pct'))})，"
-             f"Bund10Y {_n(bund.get('last'))}%({_s(bund.get('chg5_bp'), '{:+.1f}bp')}；{bund.get('source') or '缺失'}），WTI {_n(g('wti').get('last'))}({_s(g('wti').get('chg5_pct'))})，Brent {_n(g('brent').get('last'))}({_s(g('brent').get('chg5_pct'))})。")
-    L.append(f"- c 现金贵/美元贵/流动性回撤：**{v.get('c')}**。DXY {_n(g('dxy').get('last'))}({_s(g('dxy').get('chg5_pct'))})，3M {_n(g('us3m').get('last'))}%，"
-             f"EFFR {_n(g('effr').get('last'))}% / SOFR {_n(g('sofr').get('last'))}%（{g('sofr').get('date')}），VIX {_n(g('vix').get('last'))}，SPY {_s(g('spy').get('chg5_pct'))} vs RSP {_s(g('rsp').get('chg5_pct'))}。")
-    L.append(f"- d 大宗不拖：**{v.get('d')}**。DBC {_n(g('dbc').get('last'))}({_s(g('dbc').get('chg5_pct'))}，月{_s(g('dbc').get('chg21_pct'))})，"
-             f"铜 {_n(g('copper').get('last'))}({_s(g('copper').get('chg5_pct'))}，月{_s(g('copper').get('chg21_pct'))})，金 {_n(g('gold').get('last'), '{:.0f}')}({_s(g('gold').get('chg5_pct'))})。")
-    L.append(f"- e 信用斜率放缓：**{v.get('e')}**。HYG {_s(g('hyg').get('chg5_pct'))} vs LQD {_s(g('lqd').get('chg5_pct'))}；"
-             f"H.8 同比 {_s(h8.get('yoy_pct'), '{:.2f}%')}（4 周前 {_s(h8.get('yoy_4w_ago_pct'), '{:.2f}%')}）；CP 周 {_s(cp.get('wchg'), '{:+.1f}')} 十亿美元。")
-    L.append(f"- f 三重流动性利空：**{v.get('f')}**。10Y 5D {_s(g('us10y').get('chg5_bp'), '{:+.0f}bp')}，DXY {_s(g('dxy').get('chg5_pct'))}，金 {_s(g('gold').get('chg5_pct'))} vs SPY {_s(g('spy').get('chg5_pct'))}。")
+    q = p.get("q4") or {}
+    qv = lambda k: (q.get(k) or {}).get("verdict", q4.MISSING)  # noqa: E731
+    art = p.get("article") or {}
+    h8 = p.get("h8") or {}
+    cp = p.get("cp") or {}
+    L += ["", f"**11. 用户 Q4 判断对照**（规则 v2 = {q4.RULES_VERSION}：阈值由观点的经济含义推导，不拟合历史手写；"
+              f"趋势窗口 {q4.W_TREND} 交易日、信用 {q4.W_CREDIT} 周、冲击 {q4.W_SHOCK} 交易日；仅观察，不进 min、不改任何腿）", ""]
+    a1 = q.get("a1") or {}
+    L.append(f"- a1 加息路径（26 再加一次/27 两次）：**{qv('a1')}**。Fed 1y 加息定价 {_n(art.get('fed_1y_hike_bp'), '{:.1f}')}bp，"
+             f"2Y {_n(g('us2y').get('last'))}% − EFFR {_n(g('effr').get('last'))}% = {_s(a1.get('us2y_effr_bp'), '{:+.0f}bp')}。"
+             f"阈值：1y ≥50bp 且 2Y−EFFR ≥+25bp 支持；1y ≤25bp 或 2Y−EFFR ≤0 证伪。as_of：{a1.get('as_of')}")
+    a2 = q.get("a2") or {}
+    L.append(f"- a2 2–5Y 约 5%：**{qv('a2')}**。2Y {_n(g('us2y').get('last'))}% / 5Y {_n(g('us5y').get('last'))}%，均值 {_n(a2.get('mean_2y5y'), '{:.2f}')}%"
+             f"（20D 2Y {_s(g('us2y').get('chg20_bp'), '{:+.0f}bp')}、5Y {_s(g('us5y').get('chg20_bp'), '{:+.0f}bp')}）。阈值：≥4.75% 支持；<4.50% 证伪。as_of：{a2.get('as_of')}")
+    a3 = q.get("a3") or {}
+    L.append(f"- a3 长债暂避：**{qv('a3')}**。TLT {_n(g('tlt').get('last'))}（20D {_s(g('tlt').get('chg20_pct'))}），30Y {_n(g('us30y').get('last'))}%（20D {_s(g('us30y').get('chg20_bp'), '{:+.0f}bp')}），"
+             f"10Y {_n(g('us10y').get('last'))}%（20D {_s(g('us10y').get('chg20_bp'), '{:+.0f}bp')}），10Y−2Y {_s((g('us10y').get('last') - g('us2y').get('last')) * 100 if g('us10y').get('last') is not None and g('us2y').get('last') is not None else None, '{:+.0f}bp')}。"
+             f"阈值：TLT 20D ≤-2% 或 30Y 20D ≥+15bp 支持；TLT 20D ≥+3% 证伪。as_of：{a3.get('as_of')}")
+    b_ = q.get("b") or {}
+    L.append(f"- b EURUSD/欧债/能源可交易：**{qv('b')}**。EURUSD {_n(g('eurusd').get('last'), '{:.4f}')}（20D {_s(g('eurusd').get('chg20_pct'))}），"
+             f"Bund10Y {_n(bund.get('last'))}%（20D {_s(bund.get('chg20_bp'), '{:+.0f}bp')}；{bund.get('source') or '缺失'}），WTI {_n(g('wti').get('last'))}（20D {_s(g('wti').get('chg20_pct'))}），"
+             f"Brent {_n(g('brent').get('last'))}（20D {_s(g('brent').get('chg20_pct'))}，旁证）；达标腿 {'、'.join(b_.get('legs_hit') or []) or '无'}。"
+             f"阈值：|20D| EURUSD ≥2% / Bund ≥20bp / WTI ≥10%，≥2 腿支持；{q4.B_DEADLINE} 前不判证伪。as_of：{b_.get('as_of')}")
+    c_ = q.get("c") or {}
+    cs = c_.get("subs") or {}
+    L.append(f"- c 现金贵/美元强/流动性回撤/指数优于个股：**{qv('c')}**（c1 {cs.get('c1')}，c2 {cs.get('c2')}，c3 {cs.get('c3')}，c4 {cs.get('c4')}）。"
+             f"3M {_n(g('us3m').get('last'))}% − 10Y 盈亏平衡 {_n(g('t10yie').get('last'))}% = 实际现金 {_s(c_.get('real_cash_pp'), '{:+.2f}pp')}；"
+             f"DXY {_n(g('dxy').get('last'))}（20D {_s(g('dxy').get('chg20_pct'))}）；SPY 20 日内 ≤-1.5% 日 {g('spy').get('drop_days_20d') if g('spy').get('drop_days_20d') is not None else '缺失'} 次、最大回撤 {_s(g('spy').get('maxdd_20d_pct'))}；"
+             f"SPY 20D {_s(g('spy').get('chg20_pct'))} vs RSP {_s(g('rsp').get('chg20_pct'))}；旁证 EFFR {_n(g('effr').get('last'))}% / SOFR {_n(g('sofr').get('last'))}%、VIX {_n(g('vix').get('last'))}。"
+             f"阈值见规则表。as_of：{c_.get('as_of')}")
+    d_ = q.get("d") or {}
+    L.append(f"- d 大宗不拖：**{qv('d')}**。DBC {_n(g('dbc').get('last'))}（20D {_s(g('dbc').get('chg20_pct'))}）；宽度 WTI 20D {_s(g('wti').get('chg20_pct'))}、铜 20D {_s(g('copper').get('chg20_pct'))}、金 20D {_s(g('gold').get('chg20_pct'))}。"
+             f"阈值：DBC 20D ≥+4% 支持；≤-4% 证伪。as_of：{d_.get('as_of')}")
+    e_ = q.get("e") or {}
+    L.append(f"- e 信用斜率放缓：**{qv('e')}**。H.8 同比 {_s(h8.get('yoy_pct'), '{:.2f}%')}，13 周前 {_s(h8.get('yoy_13w_ago_pct'), '{:.2f}%')}，斜率 {_s(e_.get('slope_pp'), '{:+.2f}pp')}；"
+             f"旁证 HY OAS {_n(g('hy_oas').get('last'))}%（20D {_s(g('hy_oas').get('chg20_bp'), '{:+.0f}bp')}），CP 周 {_s(cp.get('wchg'), '{:+.1f}')} 十亿美元，HYG 20D {_s(g('hyg').get('chg20_pct'))} vs LQD {_s(g('lqd').get('chg20_pct'))}。"
+             f"阈值：13 周同比变化 ≤-0.25pp 支持；≥+0.25pp 证伪。as_of：{e_.get('as_of')}")
+    f_ = q.get("f") or {}
+    L.append(f"- f 三重流动性利空（冲击诊断）：**{qv('f')}**（{f_.get('n', '缺')}/3）。10Y 5D {_s(g('us10y').get('chg5_bp'), '{:+.0f}bp')}，DXY 5D {_s(g('dxy').get('chg5_pct'))}，"
+             f"金 5D {_s(g('gold').get('chg5_pct'))} vs SPY 5D {_s(g('spy').get('chg5_pct'))}。阈值：10Y ≤-5bp、DXY ≤+0.5%、金 ≤-1% 且弱于 SPY。as_of：{f_.get('as_of')}")
     if p.get("gaps"):
         L += ["", "> 缺口：" + "；".join(p["gaps"])]
-    L += ["", "> 规则 v1 由 10-29、11-12 手写判读反推，见 `scripts/evening_watch_sections.py`；判读仅观察，不进合成 min、不改任何腿。", ""]
+    L += ["", "> Q4 规则 v2（`scripts/q4_view_rules.py`）阈值理由写在 THRESHOLD_NOTES；v1（反推手写）已废弃。判读仅观察，不进合成 min、不改任何腿，非交易信号。", ""]
     return "\n".join(L)
 
 
